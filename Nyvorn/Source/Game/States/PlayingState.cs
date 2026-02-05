@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
@@ -10,7 +11,9 @@ namespace Nyvorn.Source.Game.States
         GraphicsDevice graphicsDevice;
 
         private Texture2D _red;
+        private Texture2D _plataform;
         public Vector2 position;
+        public Vector2 platPosition;
         private Vector2 velocity;
 
         private const float moveSpeed = 150f; //velocidade
@@ -25,7 +28,11 @@ namespace Nyvorn.Source.Game.States
             _red = new Texture2D(graphicsDevice, 1, 1);
             _red.SetData(new[] { Color.White });
 
+            _plataform = new Texture2D(graphicsDevice, 1, 1);
+            _plataform.SetData(new[] { Color.White });
+
             position = new Vector2(50, 50);
+            platPosition = new Vector2(10, 350);
         }
 
         public void Update(GameTime gameTime)
@@ -39,12 +46,16 @@ namespace Nyvorn.Source.Game.States
             const int redW = 64;
             const int redH = 64;
 
+            float prevY = position.Y;
+            float prevBottom = (int)(prevY + redH);
+            
+
             // aplica a gravidade
             ApplyGravity(dt);
             position.Y += velocity.Y * dt;
 
             // colisão com as bordas da tela.
-            ResolveFloor(screenH, redH);
+            ResolveFloor(screenH, redW, redH, prevBottom);
 
             // chama o teclado
             KeyboardCheck(dt);
@@ -57,9 +68,37 @@ namespace Nyvorn.Source.Game.States
             velocity.Y += gravity * dt;
         }
 
-        private void ResolveFloor(int screenH, int redH)
+        private void ResolveFloor(int screenH, int redW, int redH, float prevBottom)
         {
             isGrounded = false;
+
+            const int platW = 700;
+            const int platH = 20;
+
+            Rectangle _redBounds = new Rectangle
+            (
+                (int)position.X,
+                (int)position.Y,
+                redW,
+                redH
+            );
+
+            Rectangle _plataformBounds = new Rectangle
+            (
+                (int)platPosition.X,
+                (int)platPosition.Y,
+                platW,
+                platH
+            ); 
+
+            if (_redBounds.Intersects(_plataformBounds) && prevBottom <= _plataformBounds.Top && velocity.Y >= 0)
+            {
+                position.Y = _plataformBounds.Top - redH;
+                velocity.Y = 0;
+                isGrounded = true;
+            }
+
+            //Impede de sair para fola da tela
             float floorY = screenH - redH;
             if (position.Y >= floorY)
             {
@@ -98,6 +137,7 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Begin();
 
             spriteBatch.Draw(_red, new Rectangle((int)position.X, (int)position.Y, 64, 64), Color.Red);
+            spriteBatch.Draw(_plataform, new Rectangle((int)platPosition.X, (int)platPosition.Y, 700, 20), Color.Green);
 
             spriteBatch.End();
         }
