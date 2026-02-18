@@ -3,9 +3,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.World;
 
-// esse arquivo é a classe do player, onde implementamos a lógica de movimento, física, colisões e animação do personagem.
-// Ele usa o Animator.cs pra controlar qual frame desenhar baseado no estado atual do player (Idle, Walk, Jump, Fall), e o PlayerAnimations.cs é o "banco de dados" das animações do player, onde cada estado tem um array de frames (Rectangles) associados a ele.
-
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public class Player
@@ -31,8 +28,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private const int FootSinkPx = 1;
 
         private const float moveSpeed = 150f;
-        private const float jumpSpeed = 2000f;
-        private float gravity = 8000f;
+        private const float jumpSpeed = 260f;
+        private float gravity = 800f;
 
         private int moveDir;
         private bool jumpPressed;

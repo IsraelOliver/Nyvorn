@@ -50,7 +50,7 @@ namespace Nyvorn.Source.Game.States
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
-            spriteBatch.Begin(transformMatrix: camera.GetViewMatrix());
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: camera.GetViewMatrix());
 
             worldMap.Draw(spriteBatch);
 
