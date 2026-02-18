@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PipelineBuildEvent xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <SourceFile>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/entities/player_sheet.png</SourceFile>
-  <SourceTime>2026-02-17T23:11:48.8232397-03:00</SourceTime>
+  <SourceTime>2026-02-18T10:58:16.0170439-03:00</SourceTime>
   <DestFile>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/bin/DesktopGL/Content/entities/player_sheet.xnb</DestFile>
-  <DestTime>2026-02-17T23:12:41.3663301-03:00</DestTime>
+  <DestTime>2026-02-18T11:23:00.8240988-03:00</DestTime>
   <Importer>TextureImporter</Importer>
   <ImporterTime>2025-10-20T11:25:32-03:00</ImporterTime>
   <Processor>TextureProcessor</Processor>

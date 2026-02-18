@@ -6,7 +6,6 @@ namespace Nyvorn.Source.World
 {
     public class WorldMap
     {
-        // Etapa 3: tamanho do mapa em tiles e tamanho do tile em pixels
         public int Width { get; }
         public int Height { get; }
         public int TileSize { get; }
@@ -15,10 +14,8 @@ namespace Nyvorn.Source.World
         private Texture2D _sand;
         private Texture2D _stone;
 
-        // Etapa 2: a grade que guarda o mundo
-        private readonly TileType[,] _tiles;
+        private readonly TileType[,] _tiles; // grade de tiles (x, y)
 
-        // Etapa 3: construtor cria a matriz
         public WorldMap(int width, int height, int tileSize)
         {
             Width = width;
@@ -28,8 +25,7 @@ namespace Nyvorn.Source.World
             _tiles = new TileType[Width, Height];
         }
 
-        // Etapa 4.1: pegar tile (com segurança)
-        public TileType GetTile(int x, int y)
+        public TileType GetTile(int x, int y) // essa função é para acessar o tipo de tile em (x, y)
         {
             if (!InBounds(x, y))
                 return TileType.Empty;
@@ -37,8 +33,7 @@ namespace Nyvorn.Source.World
             return _tiles[x, y];
         }
 
-        // Etapa 4.2: setar tile
-        public void SetTile(int x, int y, TileType type)
+        public void SetTile(int x, int y, TileType type) // essa função é para modificar o tipo de tile em (x, y)
         {
             if (!InBounds(x, y))
                 return;
@@ -46,29 +41,24 @@ namespace Nyvorn.Source.World
             _tiles[x, y] = type;
         }
 
-        // Etapa 4: utilitário
-        public bool InBounds(int x, int y)
+        public bool InBounds(int x, int y) // verifica se (x, y) está dentro dos limites do mapa
             => x >= 0 && y >= 0 && x < Width && y < Height;
 
-        // Etapa 4.3: regra de colisão (você decide aqui)
-        public bool IsSolid(TileType t)
+        public bool IsSolid(TileType t) // verifica se um tipo de tile é sólido (colisível)
         {
             return t == TileType.Dirt
                 || t == TileType.Stone
                 || t == TileType.Sand;
         }
 
-        public bool IsSolidAt(int x, int y) => IsSolid(GetTile(x, y));
+        public bool IsSolidAt(int x, int y) => IsSolid(GetTile(x, y)); // verifica se o tile em (x, y) é sólido diferente de IsSolid, que recebe o tipo do tile, essa função recebe as coordenadas e já retorna se é sólido ou não
 
-        // Etapa 4.4: tile -> pixels (útil pra desenhar e depurar)
-        public Rectangle GetTileBounds(int x, int y)
+        public Rectangle GetTileBounds(int x, int y) // retorna os limites em pixels do tile em (x, y) (útil pra desenhar e colisão)
             => new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize);
 
-        // Etapa 4.4: pixels -> tile (útil pra colisão e raycast)
-        public Point WorldToTile(Vector2 worldPos)
+        public Point WorldToTile(Vector2 worldPos) // converte uma posição em pixels para coordenadas de tile, ou seja, dado um ponto no mundo, retorna qual tile ele corresponde
             => new Point((int)(worldPos.X / TileSize), (int)(worldPos.Y / TileSize));
 
-        // Etapa 5: mapa de teste (fixo) para validar tudo
         public void GenerateTest()
         {
             // limpa tudo (Empty)
@@ -84,6 +74,12 @@ namespace Nyvorn.Source.World
             // plataforma
             for (int x = 10; x < 20; x++)
                 _tiles[x, groundY - 5] = TileType.Stone;
+
+            for (int x = 25; x < 40; x++)
+                _tiles[x, groundY - 10] = TileType.Sand;
+
+            for (int x = 45; x < 70; x++)
+                _tiles[x, groundY - 15] = TileType.Dirt;
 
             // parede esquerda e direita (só pra teste)
             for (int y = 0; y < Height; y++)

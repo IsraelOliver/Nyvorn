@@ -3,40 +3,46 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.World;
 
+// esse arquivo é a classe do player, onde implementamos a lógica de movimento, física, colisões e animação do personagem.
+// Ele usa o Animator.cs pra controlar qual frame desenhar baseado no estado atual do player (Idle, Walk, Jump, Fall), e o PlayerAnimations.cs é o "banco de dados" das animações do player, onde cada estado tem um array de frames (Rectangles) associados a ele.
+
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public class Player
     {
-        public Vector2 Position;     // posição do SPRITE (canto superior esquerdo do frame 17x24)
+        public Vector2 Position;
         private Vector2 Velocity;
 
         private bool isGrounded;
 
-        // FRAME do sprite (visual)
+        // sprite parte visual
         public const int SpriteW = 17;
         public const int SpriteH = 24;
 
-        // HITBOX real (colisão)
+        // hitbox do sprite
         public const int HitW = 14;
         public const int HitH = 23;
 
-        // Offsets da hitbox dentro do frame (começa no 2 e vai até 15/24 => offset 1)
+        // centaliza a hitbox exatamente em volta da textura do sprite
         public const int HitOffX = 1;
         public const int HitOffY = 1;
 
-        // Se você quer 1px do pé "dentro" do chão:
-        private const int FootSinkPx = 1; // coloque 0 se não quiser
+        // deixa o pe dentro do chao 1 pixel - puramentente visual kk
+        private const int FootSinkPx = 1;
 
         private const float moveSpeed = 150f;
-        private float gravity = 800f;
+        private const float jumpSpeed = 2000f;
+        private float gravity = 8000f;
+
+        private int moveDir;
+        private bool jumpPressed;
 
         // Animação
         private readonly Texture2D _sheet;
-        private int frameW = 17, frameH = 24;
-        private int frameX = 0, frameY = 1;
-        private float animTimer = 0f;
-        private float frameTime = 0.08f;
         private bool facingRight = true;
+
+        private Animator anim;
+        private AnimationState animState = AnimationState.Idle;
 
         public Player(Vector2 startPosition, Texture2D sheet)
         {
@@ -44,6 +50,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Velocity = Vector2.Zero;
             isGrounded = false;
             _sheet = sheet;
+
+            anim = new Animator(PlayerAnimations.Create(), AnimationState.Idle);
         }
 
         // Helpers da hitbox em coordenadas de mundo (pixels)
@@ -56,9 +64,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             float prevHitBottom = HitBottom;
             float prevHitTop    = HitTop;
+         
+            ReadInput();
 
-            KeyboardCheck(dt);
-
+            Velocity.X = moveDir * moveSpeed;
             Position.X += Velocity.X * dt;
             ResolveWorldCollisionsX(worldMap);
 
@@ -66,39 +75,61 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Position.Y += Velocity.Y * dt;
             ResolveWorldCollisionsY(worldMap, prevHitBottom, prevHitTop);
 
-            UpdateAnimation(dt);
+            UpdateAnimationState();
+
+            anim.Play(animState);
+            anim.Update(dt);
         }
 
         public void Draw(SpriteBatch spriteBatch)
         {
-            Rectangle src = new Rectangle(frameX * frameW, frameY * frameH, frameW, frameH);
+            Rectangle src = anim.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
             var drawPos = new Vector2((float)System.Math.Round(Position.X), (float)System.Math.Round(Position.Y));
             spriteBatch.Draw(_sheet, drawPos, src, Color.White, 0f, Vector2.Zero, 1f, fx, 0f);
         }
 
-        private void UpdateAnimation(float dt)
+        private void ReadInput()
         {
-            bool isMoving = Velocity.X != 0;
+            KeyboardState teclado = Keyboard.GetState();
 
-            if (isMoving)
+            moveDir = 0;
+            if (teclado.IsKeyDown(Keys.D))
+                moveDir = 1;
+            else if (teclado.IsKeyDown(Keys.A))
+                moveDir = -1;
+
+            jumpPressed = teclado.IsKeyDown(Keys.Space);
+        }
+
+        private void UpdateAnimationState()
+        {
+            if (moveDir > 0) facingRight = true;
+            else if (moveDir < 0) facingRight = false;
+
+            if (isGrounded && jumpPressed)
             {
-                frameY = 0; // correndo
-                facingRight = Velocity.X > 0;
-
-                animTimer += dt;
-                if (animTimer >= frameTime)
-                {
-                    animTimer -= frameTime;
-                    frameX = (frameX + 1) % 8;
-                }
+                Velocity.Y = -jumpSpeed;
+                isGrounded = false;
             }
-            else
+
+            const float apexThreshold = 5f;
+
+            if (!isGrounded)
             {
-                frameY = 1; // parado
-                frameX = 0;
-                animTimer = 0f;
+                if(Velocity.Y < -apexThreshold)
+                    animState = AnimationState.Jump;
+                else if (Velocity.Y > apexThreshold)
+                    animState = AnimationState.Fall;
+                else
+                    animState = AnimationState.Jump;
+            } else
+            {
+                if (moveDir != 0)
+                    animState = AnimationState.Walk;
+                else
+                    animState = AnimationState.Idle;
             }
         }
 
@@ -207,15 +238,27 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (isGrounded && teclado.IsKeyDown(Keys.Space))
             {
                 Velocity.Y = -260f;
+                animState = AnimationState.Jump;
                 isGrounded = false;
             }
 
             Velocity.X = 0f;
 
             if (teclado.IsKeyDown(Keys.D))
+            {
                 Velocity.X = moveSpeed;
-            else if (teclado.IsKeyDown(Keys.A))
+                animState = AnimationState.Walk;
+            } else if (teclado.IsKeyDown(Keys.A))
+            {
                 Velocity.X = -moveSpeed;
+                animState = AnimationState.Walk;
+            } else if (isGrounded)
+            {
+                animState = AnimationState.Idle;
+            } else if (Velocity.Y > 0)
+            {
+                animState = AnimationState.Fall;
+            }
         }
     }
 }
