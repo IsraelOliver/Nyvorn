@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {}
+    "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {}
   },
   "projects": {
-    "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {
+    "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
+        "projectUniqueName": "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
         "projectName": "Nyvorn",
-        "projectPath": "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
-        "packagesPath": "C:\\Users\\Israel\\.nuget\\packages\\",
-        "outputPath": "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\obj\\",
+        "projectPath": "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
+        "packagesPath": "C:\\Users\\hhhhi\\.nuget\\packages\\",
+        "outputPath": "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\Israel\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\hhhhi\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -67,19 +67,19 @@
           "downloadDependencies": [
             {
               "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[8.0.23, 8.0.23]"
+              "version": "[8.0.19, 8.0.19]"
             },
             {
               "name": "Microsoft.NETCore.App.Host.win-x64",
-              "version": "[8.0.23, 8.0.23]"
+              "version": "[8.0.19, 8.0.19]"
             },
             {
               "name": "Microsoft.NETCore.App.Ref",
-              "version": "[8.0.23, 8.0.23]"
+              "version": "[8.0.19, 8.0.19]"
             },
             {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[8.0.23, 8.0.23]"
+              "version": "[8.0.19, 8.0.19]"
             }
           ],
           "frameworkReferences": {
@@ -87,7 +87,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.310/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.304/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
