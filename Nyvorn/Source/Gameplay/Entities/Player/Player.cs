@@ -27,7 +27,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         // deixa o pe dentro do chao 1 pixel - puramentente visual kk
         private const int FootSinkPx = 1;
 
-        private const float moveSpeed = 150f;
+        private const float moveSpeed = 100f;
         private const float jumpSpeed = 260f;
         private float gravity = 800f;
 
