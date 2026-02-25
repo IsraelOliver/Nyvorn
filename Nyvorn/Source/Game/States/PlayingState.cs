@@ -31,7 +31,7 @@ namespace Nyvorn.Source.Game.States
             worldMap.SetTextures(dirt, sand, stone);
             worldMap.GenerateTest();
 
-            playerTexture = content.Load<Texture2D>("entities/player_sheet");
+            playerTexture = content.Load<Texture2D>("entities/player_body");
             player = new Player(new Vector2(90, 50), playerTexture);
             camera = new Camera2D();
         }

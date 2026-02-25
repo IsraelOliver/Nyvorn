@@ -4,12 +4,16 @@
   <Platform>DesktopGL</Platform>
   <Config />
   <SourceFiles>
-    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/dirt_block.png</File>
-    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/sand_block.png</File>
-    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/stone_block.png</File>
-    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/entities/player_sheet.png</File>
+    <File>c:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/dirt_block.png</File>
+    <File>c:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/sand_block.png</File>
+    <File>c:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/stone_block.png</File>
+    <File>c:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/entities/hand_back.png</File>
+    <File>c:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/entities/hand_front.png</File>
+    <File>c:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/entities/player_body.png</File>
   </SourceFiles>
   <DestFiles>
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
     <File xsi:nil="true" />
     <File xsi:nil="true" />
     <File xsi:nil="true" />

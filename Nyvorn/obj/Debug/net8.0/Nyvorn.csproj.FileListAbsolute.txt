@@ -75,4 +75,6 @@ C:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vo
 C:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\blocks\dirt_block.xnb
 C:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\blocks\sand_block.xnb
 C:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\blocks\stone_block.xnb
-C:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\entities\player_sheet.xnb
+c:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\entities\hand_back.xnb
+c:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\entities\hand_front.xnb
+c:\Users\Israel\Desktop\Israel\Programação\Game Project - C#\Projetos C#\Ny'vorn\Nyvorn-Reborn\Nyvorn\bin\Debug\net8.0\Content\entities\player_body.xnb

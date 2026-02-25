@@ -13,8 +13,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool isGrounded;
 
         // sprite parte visual
-        public const int SpriteW = 17;
-        public const int SpriteH = 24;
+        public const int SpriteW = 32;
+        public const int SpriteH = 32;
 
         // hitbox do sprite
         public const int HitW = 14;
@@ -83,8 +83,25 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Rectangle src = anim.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
-            var drawPos = new Vector2((float)System.Math.Round(Position.X), (float)System.Math.Round(Position.Y));
-            spriteBatch.Draw(_sheet, drawPos, src, Color.White, 0f, Vector2.Zero, 1f, fx, 0f);
+            float pivotX = HitLeft + HitW * 0.5f;
+            float pivotY = HitTop + HitH;
+
+            var pivotWorld = new Vector2(
+                (float)System.Math.Round(pivotX),
+                (float)System.Math.Round(pivotY)
+            );
+
+            spriteBatch.Draw(
+                _sheet,
+                pivotWorld,
+                src,
+                Color.White,
+                0f,
+                new Vector2(16f, 32f),
+                1f,
+                fx,
+                0f
+            );
         }
 
         private void ReadInput()
