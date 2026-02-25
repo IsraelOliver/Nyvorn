@@ -35,9 +35,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                         new Rectangle(2 * frameW, 0 * frameH, frameW, frameH),
                         new Rectangle(3 * frameW, 0 * frameH, frameW, frameH),
                         new Rectangle(4 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(5 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(6 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(7 * frameW, 0 * frameH, frameW, frameH)
+                        new Rectangle(5 * frameW, 0 * frameH, frameW, frameH)
                     }
                 },
 

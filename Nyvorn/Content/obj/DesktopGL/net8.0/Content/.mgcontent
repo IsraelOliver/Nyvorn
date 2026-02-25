@@ -4,10 +4,10 @@
   <Platform>DesktopGL</Platform>
   <Config />
   <SourceFiles>
-    <File>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/blocks/dirt_block.png</File>
-    <File>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/blocks/sand_block.png</File>
-    <File>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/blocks/stone_block.png</File>
-    <File>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/entities/player_sheet.png</File>
+    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/dirt_block.png</File>
+    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/sand_block.png</File>
+    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/stone_block.png</File>
+    <File>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/entities/player_sheet.png</File>
   </SourceFiles>
   <DestFiles>
     <File xsi:nil="true" />

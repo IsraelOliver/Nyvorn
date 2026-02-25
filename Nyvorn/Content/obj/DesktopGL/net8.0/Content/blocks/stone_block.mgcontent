@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PipelineBuildEvent xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <SourceFile>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/blocks/stone_block.png</SourceFile>
-  <SourceTime>2026-02-17T20:49:40.097077-03:00</SourceTime>
-  <DestFile>c:/Users/hhhhi/Desktop/Projeto/Nyvorn-Reborn/Nyvorn/Content/bin/DesktopGL/Content/blocks/stone_block.xnb</DestFile>
-  <DestTime>2026-02-17T21:26:28.9579458-03:00</DestTime>
+  <SourceFile>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/blocks/stone_block.png</SourceFile>
+  <SourceTime>2026-02-25T11:08:45.2557642-03:00</SourceTime>
+  <DestFile>C:/Users/Israel/Desktop/Israel/Programação/Game Project - C#/Projetos C#/Ny'vorn/Nyvorn-Reborn/Nyvorn/Content/bin/DesktopGL/Content/blocks/stone_block.xnb</DestFile>
+  <DestTime>2026-02-25T11:09:12.0920635-03:00</DestTime>
   <Importer>TextureImporter</Importer>
   <ImporterTime>2025-10-20T11:25:32-03:00</ImporterTime>
   <Processor>TextureProcessor</Processor>
