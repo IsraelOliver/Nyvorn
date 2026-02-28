@@ -7,29 +7,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public class Player
     {
-        public Vector2 Position;
+        public Vector2 Position; //é o pivot do pé
         private Vector2 Velocity;
 
         private bool isGrounded;
 
-        // sprite parte visual
-        public const int SpriteW = 17;
-        public const int SpriteH = 24;
+        // Textura do player
+        public const int SpriteW = 32;
+        public const int SpriteH = 32;
 
-        // hitbox do sprite
+        // Hitbox do player - fica envolta apenas do player
         public const int HitW = 14;
         public const int HitH = 23;
 
-        // centaliza a hitbox exatamente em volta da textura do sprite
-        public const int HitOffX = 1;
-        public const int HitOffY = 1;
-
-        // deixa o pe dentro do chao 1 pixel - puramentente visual kk
-        private const int FootSinkPx = 1;
-
         private const float moveSpeed = 100f;
-        private const float jumpSpeed = 260f;
-        private float gravity = 800f;
+        private const float jumpSpeed = 280f;
+        private const float gravity = 800f;
 
         private int moveDir;
         private bool jumpPressed;
@@ -38,36 +31,38 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly Texture2D _sheet;
         private bool facingRight = true;
 
-        private Animator anim;
+        private readonly Animator anim;
         private AnimationState animState = AnimationState.Idle;
 
-        public Player(Vector2 startPosition, Texture2D sheet)
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet)
         {
-            Position = startPosition;
+            Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
             isGrounded = false;
-            _sheet = sheet;
 
+            _sheet = sheet;
             anim = new Animator(PlayerAnimations.Create(), AnimationState.Idle);
         }
 
-        // Helpers da hitbox em coordenadas de mundo (pixels)
-        private float HitLeft   => Position.X + HitOffX;
-        private float HitRight  => Position.X + HitOffX + HitW - 1;
-        private float HitTop    => Position.Y + HitOffY;
-        private float HitBottom => Position.Y + HitOffY + HitH - 1;
+        // Hitbox derivada do pivot do pé
+        private float HitLeft   => Position.X - (HitW * 0.5f);
+        private float HitRight  => HitLeft + HitW - 1;
+        private float HitBottom => Position.Y;
+        private float HitTop    => HitBottom - HitH + 1;
 
         public void Update(float dt, WorldMap worldMap, int screenW, int screenH)
         {
             float prevHitBottom = HitBottom;
-            float prevHitTop    = HitTop;
-         
+            float prevHitTop = HitTop;
+
             ReadInput();
 
+            // Horizontal
             Velocity.X = moveDir * moveSpeed;
             Position.X += Velocity.X * dt;
             ResolveWorldCollisionsX(worldMap);
 
+            // Vertical
             ApplyGravity(dt);
             Position.Y += Velocity.Y * dt;
             ResolveWorldCollisionsY(worldMap, prevHitBottom, prevHitTop);
@@ -83,8 +78,26 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Rectangle src = anim.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
-            var drawPos = new Vector2((float)System.Math.Round(Position.X), (float)System.Math.Round(Position.Y));
-            spriteBatch.Draw(_sheet, drawPos, src, Color.White, 0f, Vector2.Zero, 1f, fx, 0f);
+            // Pixel snap do pivot (pé)
+            const float VisualFootSink = 1f;
+
+            var drawPos = new Vector2(
+                (float)System.Math.Round(Position.X),
+                (float)System.Math.Round(Position.Y + VisualFootSink)
+            );
+
+            // Origin = pivot na base do frame 32x32
+            spriteBatch.Draw(
+                _sheet,
+                drawPos,
+                src,
+                Color.White,
+                0f,
+                new Vector2(16f, 32f),
+                1f,
+                fx,
+                0f
+            );
         }
 
         private void ReadInput()
@@ -92,10 +105,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             KeyboardState teclado = Keyboard.GetState();
 
             moveDir = 0;
-            if (teclado.IsKeyDown(Keys.D))
-                moveDir = 1;
-            else if (teclado.IsKeyDown(Keys.A))
-                moveDir = -1;
+            if (teclado.IsKeyDown(Keys.D)) moveDir = 1;
+            else if (teclado.IsKeyDown(Keys.A)) moveDir = -1;
 
             jumpPressed = teclado.IsKeyDown(Keys.Space);
         }
@@ -115,18 +126,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             if (!isGrounded)
             {
-                if(Velocity.Y < -apexThreshold)
-                    animState = AnimationState.Jump;
-                else if (Velocity.Y > apexThreshold)
-                    animState = AnimationState.Fall;
-                else
-                    animState = AnimationState.Jump;
-            } else
+                if (Velocity.Y < -apexThreshold) animState = AnimationState.Jump;
+                else if (Velocity.Y > apexThreshold) animState = AnimationState.Fall;
+                else animState = AnimationState.Jump;
+            }
+            else
             {
-                if (moveDir != 0)
-                    animState = AnimationState.Walk;
-                else
-                    animState = AnimationState.Idle;
+                animState = (moveDir != 0) ? AnimationState.Walk : AnimationState.Idle;
             }
         }
 
@@ -139,6 +145,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             int ts = worldMap.TileSize;
 
+            // Amostras Y dentro da hitbox
             float top = HitTop + 1;
             float bottom = HitBottom - 1;
 
@@ -152,8 +159,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                 if (worldMap.IsSolidAt(tileX, tileYTop) || worldMap.IsSolidAt(tileX, tileYBottom))
                 {
+                    // Encosta o lado direito da hitbox na borda esquerda do tile sólido
                     float tileLeft = tileX * ts;
-                    Position.X = (tileLeft - HitW) - HitOffX;
+                    float newHitLeft = tileLeft - HitW;
+
+                    Position.X = newHitLeft + (HitW * 0.5f);
                     Velocity.X = 0;
                 }
             }
@@ -164,8 +174,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                 if (worldMap.IsSolidAt(tileX, tileYTop) || worldMap.IsSolidAt(tileX, tileYBottom))
                 {
+                    // Encosta o lado esquerdo da hitbox na borda direita do tile sólido
                     float tileRight = tileX * ts + ts;
-                    Position.X = tileRight - HitOffX;
+                    float newHitLeft = tileRight;
+
+                    Position.X = newHitLeft + (HitW * 0.5f);
                     Velocity.X = 0;
                 }
             }
@@ -177,8 +190,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             int ts = worldMap.TileSize;
 
-            float left = HitLeft;
-            float right = HitRight;
+            float left = HitLeft + 1;
+            float right = HitRight - 1;
 
             int tileXLeft = (int)(left / ts);
             int tileXRight = (int)(right / ts);
@@ -194,10 +207,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 {
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
+                        // Encosta o chão (HitBottom) no topo do tile
                         float tileTop = y * ts;
-                        float newHitTop = (tileTop - HitH) + FootSinkPx;
-
-                        Position.Y = newHitTop - HitOffY;
+                        Position.Y = tileTop; // HitBottom = Position.Y
 
                         Velocity.Y = 0;
                         isGrounded = true;
@@ -216,45 +228,17 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 {
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
+                        // Encosta o topo da hitbox no fundo do tile
                         float tileBottom = y * ts + ts;
-
                         float newHitTop = tileBottom;
 
-                        Position.Y = newHitTop - HitOffY;
+                        // HitTop = Position.Y - HitH + 1  =>  Position.Y = HitTop + HitH - 1
+                        Position.Y = newHitTop + HitH - 1;
+
                         Velocity.Y = 0;
                         return;
                     }
                 }
-            }
-        }
-
-        private void KeyboardCheck(float dt)
-        {
-            KeyboardState teclado = Keyboard.GetState();
-
-            if (isGrounded && teclado.IsKeyDown(Keys.Space))
-            {
-                Velocity.Y = -260f;
-                animState = AnimationState.Jump;
-                isGrounded = false;
-            }
-
-            Velocity.X = 0f;
-
-            if (teclado.IsKeyDown(Keys.D))
-            {
-                Velocity.X = moveSpeed;
-                animState = AnimationState.Walk;
-            } else if (teclado.IsKeyDown(Keys.A))
-            {
-                Velocity.X = -moveSpeed;
-                animState = AnimationState.Walk;
-            } else if (isGrounded)
-            {
-                animState = AnimationState.Idle;
-            } else if (Velocity.Y > 0)
-            {
-                animState = AnimationState.Fall;
             }
         }
     }

@@ -11,8 +11,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
     {
         public static Dictionary<AnimationState, Rectangle[]> Create()
         {
-            const int frameW = 17;
-            const int frameH = 24;
+            const int frameW = 32;
+            const int frameH = 32;
 
             return new Dictionary<AnimationState, Rectangle[]>
             {
@@ -35,9 +35,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                         new Rectangle(2 * frameW, 0 * frameH, frameW, frameH),
                         new Rectangle(3 * frameW, 0 * frameH, frameW, frameH),
                         new Rectangle(4 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(5 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(6 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(7 * frameW, 0 * frameH, frameW, frameH)
+                        new Rectangle(5 * frameW, 0 * frameH, frameW, frameH)
                     }
                 },
 

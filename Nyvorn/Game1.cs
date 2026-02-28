@@ -29,7 +29,6 @@ public class Game1 : Game
     protected override void LoadContent()
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
-
         _playingState = new PlayingState(GraphicsDevice, Content);
     }
 
