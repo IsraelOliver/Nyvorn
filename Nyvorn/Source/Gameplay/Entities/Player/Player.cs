@@ -9,18 +9,21 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
     {
         public Vector2 Position; //é o pivot do pé
         private Vector2 Velocity;
-
         private bool isGrounded;
 
         // Textura do player
         public const int SpriteW = 32;
         public const int SpriteH = 32;
 
+        private readonly Texture2D _body;
+        private readonly Texture2D _handBack;
+        private readonly Texture2D _handFront;
+
         // Hitbox do player - fica envolta apenas do player
         public const int HitW = 14;
         public const int HitH = 23;
 
-        private const float moveSpeed = 100f;
+        private const float moveSpeed = 80f;
         private const float jumpSpeed = 280f;
         private const float gravity = 800f;
 
@@ -28,19 +31,21 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool jumpPressed;
 
         // Animação
-        private readonly Texture2D _sheet;
         private bool facingRight = true;
 
         private readonly Animator anim;
         private AnimationState animState = AnimationState.Idle;
 
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet)
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack, Texture2D handFront)
         {
             Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
             isGrounded = false;
 
-            _sheet = sheet;
+            _body = sheet;
+            _handBack = handBack;
+            _handFront = handFront;
+
             anim = new Animator(PlayerAnimations.Create(), AnimationState.Idle);
         }
 
@@ -87,17 +92,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             );
 
             // Origin = pivot na base do frame 32x32
-            spriteBatch.Draw(
-                _sheet,
-                drawPos,
-                src,
-                Color.White,
-                0f,
-                new Vector2(16f, 32f),
-                1f,
-                fx,
-                0f
-            );
+            var origin = new Vector2(16f, 32f);
+
+            spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
         }
 
         private void ReadInput()
@@ -209,7 +208,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     {
                         // Encosta o chão (HitBottom) no topo do tile
                         float tileTop = y * ts;
-                        Position.Y = tileTop; // HitBottom = Position.Y
+                        Position.Y = tileTop;
 
                         Velocity.Y = 0;
                         isGrounded = true;

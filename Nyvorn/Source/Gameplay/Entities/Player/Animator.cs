@@ -55,7 +55,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 _timer -= FrameTime;
                 _frameIndex++;
 
-                // Evolução natural: ter Loop por estado via AnimationClip.
+                // ter Loop por estado via AnimationClip para o futuro, mas por enquanto só o Walk tem loop
                 if (_state == AnimationState.Walk)
                     _frameIndex %= frames.Length;
                 else

@@ -14,6 +14,8 @@ namespace Nyvorn.Source.Game.States
 
         private readonly WorldMap worldMap;
 
+        private Texture2D backHandTexture;
+        private Texture2D frontHandTexture;
         private Texture2D playerTexture;
         private Player player;
 
@@ -31,8 +33,10 @@ namespace Nyvorn.Source.Game.States
             worldMap.SetTextures(dirt, sand, stone);
             worldMap.GenerateTest();
 
+            backHandTexture = content.Load<Texture2D>("entities/hand_back");
             playerTexture = content.Load<Texture2D>("entities/player_body");
-            player = new Player(new Vector2(90, 50), playerTexture);
+            frontHandTexture = content.Load<Texture2D>("entities/hand_front");
+            player = new Player(new Vector2(90, 50), playerTexture, backHandTexture, frontHandTexture);
             camera = new Camera2D();
         }
 
