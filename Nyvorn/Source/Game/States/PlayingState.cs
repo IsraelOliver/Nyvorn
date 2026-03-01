@@ -16,7 +16,8 @@ namespace Nyvorn.Source.Game.States
 
         private Texture2D backHandTexture;
         private Texture2D frontHandTexture;
-        private Texture2D playerTexture;
+        private Texture2D bodyTexture;
+        private Texture2D legsTexture;
 
         private Texture2D attackHandbackTexture;
         private Texture2D attackHandfrontTexture;
@@ -38,15 +39,16 @@ namespace Nyvorn.Source.Game.States
             worldMap.SetTextures(dirt, sand, stone);
             worldMap.GenerateTest();
 
-            backHandTexture = content.Load<Texture2D>("entities/player/hand_back");
-            playerTexture = content.Load<Texture2D>("entities/player/player_body");
-            frontHandTexture = content.Load<Texture2D>("entities/player/hand_front");
+            backHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
+            bodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
+            legsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
+            frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
 
-            attackHandbackTexture = content.Load<Texture2D>("entities/player/attackHand_back");
-            attackHandfrontTexture = content.Load<Texture2D>("entities/player/attackHand_front");
-            attackBodyTexture = content.Load<Texture2D>("entities/player/attackPlayer_body");
+            attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
+            attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
+            attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
             
-            player = new Player(new Vector2(90, 50), playerTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture);
+            player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture);
             camera = new Camera2D();
         }
 

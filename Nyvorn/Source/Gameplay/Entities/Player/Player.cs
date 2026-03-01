@@ -45,20 +45,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly Texture2D _attackHandBack;
         private readonly Texture2D _attackHandFront;
         private readonly Texture2D _attackBody;
+        private readonly Texture2D _legs;
 
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack, Texture2D handFront, Texture2D attackHandBack, Texture2D attackHandFront, Texture2D attackBody)
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs)
         {
             Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
             isGrounded = false;
 
             _body = sheet;
-            _handBack = handBack;
-            _handFront = handFront;
+            _handBack = handBack_base;
+            _handFront = handFront_base;
+            _legs = legs;
 
-            _attackHandBack = attackHandBack;
-            _attackHandFront = attackHandFront;
-            _attackBody = attackBody;
+            _attackHandBack = handBack_attack;
+            _attackHandFront = handFront_attack;
+            _attackBody = body_attack;
 
             anim = new Animator(PlayerAnimations.CreateBase(), AnimationState.Idle);
             animAttack = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
@@ -114,18 +116,17 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             var origin = new Vector2(16f, 32f);
 
             
-            spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            spriteBatch.Draw(_legs, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
             
             if (!isAttacking)
             {   
                 spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-
-            } else
-            {   
-                spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White * 0.8f, 0f, origin, 1f, fx, 0f);
-                spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White * 0.8f, 0f, origin, 1f, fx, 0f);
-                spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White * 0.8f, 0f, origin, 1f, fx, 0f);
+            } else {   
+                spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
             }
         }
 
