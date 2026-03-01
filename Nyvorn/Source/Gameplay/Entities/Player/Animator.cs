@@ -48,7 +48,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (frames == null || frames.Length <= 1)
                 return;
 
-            _timer += dt; // essa linha faz o timer acumular o tempo desde a última troca de frame
+            _timer += dt;
 
             while (_timer >= FrameTime)
             {

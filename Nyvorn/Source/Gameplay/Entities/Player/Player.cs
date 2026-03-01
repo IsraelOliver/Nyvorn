@@ -9,7 +9,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
     {
         public Vector2 Position; //é o pivot do pé
         private Vector2 Velocity;
+
         private bool isGrounded;
+        private bool isAttacking;
+        private float attackTimer;
+        private const float AttackDuration = 0.3f;
 
         // Textura do player
         public const int SpriteW = 32;
@@ -59,8 +63,17 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
-
+            
             ReadInput();
+
+            if (isAttacking)
+            {
+                attackTimer -= dt;
+                if (attackTimer <= 0f)
+                {
+                    isAttacking = false;
+                }
+            }
 
             // Horizontal
             Velocity.X = moveDir * moveSpeed;
@@ -83,7 +96,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Rectangle src = anim.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
-            // Pixel snap do pivot (pé)
             const float VisualFootSink = 1f;
 
             var drawPos = new Vector2(
@@ -91,7 +103,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 (float)System.Math.Round(Position.Y + VisualFootSink)
             );
 
-            // Origin = pivot na base do frame 32x32
             var origin = new Vector2(16f, 32f);
 
             spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
@@ -102,18 +113,31 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private void ReadInput()
         {
             KeyboardState teclado = Keyboard.GetState();
+            MouseState mouse = Mouse.GetState();
 
             moveDir = 0;
             if (teclado.IsKeyDown(Keys.D)) moveDir = 1;
             else if (teclado.IsKeyDown(Keys.A)) moveDir = -1;
 
             jumpPressed = teclado.IsKeyDown(Keys.Space);
+
+            if (!isAttacking && mouse.LeftButton == ButtonState.Pressed)
+            {
+                isAttacking = true;
+                attackTimer = AttackDuration;
+            }
         }
 
         private void UpdateAnimationState()
         {
             if (moveDir > 0) facingRight = true;
             else if (moveDir < 0) facingRight = false;
+
+            if (isAttacking)
+            {
+                animState = AnimationState.Attack;
+                return;
+            }
 
             if (isGrounded && jumpPressed)
             {
@@ -133,6 +157,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {
                 animState = (moveDir != 0) ? AnimationState.Walk : AnimationState.Idle;
             }
+        }
+
+        private void Attack()
+        {
+            // Lógica de ataque (ex: detectar inimigos na frente do player, aplicar dano, etc.)
+            // Por enquanto, só ativa a animação de ataque e um timer para controlar a duração
         }
 
         private void ApplyGravity(float dt)

@@ -55,6 +55,17 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     {
                         new Rectangle(2 * frameW, 1 * frameH, frameW, frameH)
                     }
+                },
+
+                // Attack (linha 1, colunas 3–5)
+                {
+                    AnimationState.Attack,
+                    new[]
+                    {
+                        new Rectangle(3 * frameW, 1 * frameH, frameW, frameH),
+                        new Rectangle(4 * frameW, 1 * frameH, frameW, frameH),
+                        new Rectangle(5 * frameW, 1 * frameH, frameW, frameH)
+                    }
                 }
             };
         }
