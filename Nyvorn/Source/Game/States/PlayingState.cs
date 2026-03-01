@@ -17,6 +17,11 @@ namespace Nyvorn.Source.Game.States
         private Texture2D backHandTexture;
         private Texture2D frontHandTexture;
         private Texture2D playerTexture;
+
+        private Texture2D attackHandbackTexture;
+        private Texture2D attackHandfrontTexture;
+        private Texture2D attackBodyTexture;
+
         private Player player;
 
         private Camera2D camera;
@@ -33,10 +38,15 @@ namespace Nyvorn.Source.Game.States
             worldMap.SetTextures(dirt, sand, stone);
             worldMap.GenerateTest();
 
-            backHandTexture = content.Load<Texture2D>("entities/hand_back");
-            playerTexture = content.Load<Texture2D>("entities/player_body");
-            frontHandTexture = content.Load<Texture2D>("entities/hand_front");
-            player = new Player(new Vector2(90, 50), playerTexture, backHandTexture, frontHandTexture);
+            backHandTexture = content.Load<Texture2D>("entities/player/hand_back");
+            playerTexture = content.Load<Texture2D>("entities/player/player_body");
+            frontHandTexture = content.Load<Texture2D>("entities/player/hand_front");
+
+            attackHandbackTexture = content.Load<Texture2D>("entities/player/attackHand_back");
+            attackHandfrontTexture = content.Load<Texture2D>("entities/player/attackHand_front");
+            attackBodyTexture = content.Load<Texture2D>("entities/player/attackPlayer_body");
+            
+            player = new Player(new Vector2(90, 50), playerTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture);
             camera = new Camera2D();
         }
 

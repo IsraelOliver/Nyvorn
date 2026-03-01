@@ -9,14 +9,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public static class PlayerAnimations
     {
-        public static Dictionary<AnimationState, Rectangle[]> Create()
+        public static Dictionary<AnimationState, Rectangle[]> CreateBase()
         {
             const int frameW = 32;
             const int frameH = 32;
 
             return new Dictionary<AnimationState, Rectangle[]>
             {
-                // Idle (linha 1, coluna 0)
+                // Parado
                 {
                     AnimationState.Idle,
                     new[]
@@ -25,7 +25,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-                // Walk (linha 0, colunas 0–7)
+                // Correndo
                 {
                     AnimationState.Walk,
                     new[]
@@ -39,7 +39,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-                // Jump (linha 1, coluna 1)
+                // Pulo
                 {
                     AnimationState.Jump,
                     new[]
@@ -48,7 +48,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-                // Fall (linha 1, coluna 2)
+                // Queda
                 {
                     AnimationState.Fall,
                     new[]
@@ -56,15 +56,23 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                         new Rectangle(2 * frameW, 1 * frameH, frameW, frameH)
                     }
                 },
+            };
+        }
 
-                // Attack (linha 1, colunas 3–5)
+        public static Dictionary<AnimationState, Rectangle[]> CreateAttackShortSword()
+        {
+            const int frameW = 32;
+            const int frameH = 32;
+
+            return new Dictionary<AnimationState, Rectangle[]>
+            {
                 {
                     AnimationState.Attack,
                     new[]
                     {
-                        new Rectangle(3 * frameW, 1 * frameH, frameW, frameH),
-                        new Rectangle(4 * frameW, 1 * frameH, frameW, frameH),
-                        new Rectangle(5 * frameW, 1 * frameH, frameW, frameH)
+                        new Rectangle(0 * frameW, 0 * frameH, frameW, frameH),
+                        new Rectangle(1 * frameW, 0 * frameH, frameW, frameH),
+                        new Rectangle(2 * frameW, 0 * frameH, frameW, frameH)
                     }
                 }
             };

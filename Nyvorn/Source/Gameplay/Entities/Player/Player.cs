@@ -24,7 +24,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly Texture2D _handFront;
 
         // Hitbox do player - fica envolta apenas do player
-        public const int HitW = 14;
+        public const int HitW = 10;
         public const int HitH = 23;
 
         private const float moveSpeed = 80f;
@@ -38,9 +38,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool facingRight = true;
 
         private readonly Animator anim;
+        private readonly Animator animAttack;
+
         private AnimationState animState = AnimationState.Idle;
 
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack, Texture2D handFront)
+        private readonly Texture2D _attackHandBack;
+        private readonly Texture2D _attackHandFront;
+        private readonly Texture2D _attackBody;
+
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack, Texture2D handFront, Texture2D attackHandBack, Texture2D attackHandFront, Texture2D attackBody)
         {
             Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
@@ -50,10 +56,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             _handBack = handBack;
             _handFront = handFront;
 
-            anim = new Animator(PlayerAnimations.Create(), AnimationState.Idle);
+            _attackHandBack = attackHandBack;
+            _attackHandFront = attackHandFront;
+            _attackBody = attackBody;
+
+            anim = new Animator(PlayerAnimations.CreateBase(), AnimationState.Idle);
+            animAttack = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
         }
 
-        // Hitbox derivada do pivot do pé
         private float HitLeft   => Position.X - (HitW * 0.5f);
         private float HitRight  => HitLeft + HitW - 1;
         private float HitBottom => Position.Y;
@@ -66,14 +76,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             
             ReadInput();
 
-            if (isAttacking)
-            {
-                attackTimer -= dt;
-                if (attackTimer <= 0f)
-                {
-                    isAttacking = false;
-                }
-            }
+            Attack(dt);
 
             // Horizontal
             Velocity.X = moveDir * moveSpeed;
@@ -89,11 +92,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             anim.Play(animState);
             anim.Update(dt);
+            if (isAttacking)
+            {
+                animAttack.Update(dt);
+            }
         }
 
         public void Draw(SpriteBatch spriteBatch)
         {
             Rectangle src = anim.CurrentFrame;
+            Rectangle attackSrc = animAttack.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
             const float VisualFootSink = 1f;
@@ -105,9 +113,20 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             var origin = new Vector2(16f, 32f);
 
-            spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            
             spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-            spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            
+            if (!isAttacking)
+            {   
+                spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+
+            } else
+            {   
+                spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White * 0.8f, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White * 0.8f, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White * 0.8f, 0f, origin, 1f, fx, 0f);
+            }
         }
 
         private void ReadInput()
@@ -125,6 +144,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {
                 isAttacking = true;
                 attackTimer = AttackDuration;
+                
+                animAttack.Reset();
+                animAttack.Play(AnimationState.Attack);
             }
         }
 
@@ -135,8 +157,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             if (isAttacking)
             {
-                animState = AnimationState.Attack;
-                return;
+
             }
 
             if (isGrounded && jumpPressed)
@@ -159,10 +180,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
         }
 
-        private void Attack()
+        private void Attack(float dt)
         {
-            // Lógica de ataque (ex: detectar inimigos na frente do player, aplicar dano, etc.)
-            // Por enquanto, só ativa a animação de ataque e um timer para controlar a duração
+            if (isAttacking)
+            {
+                attackTimer -= dt;
+                if (attackTimer <= 0f)
+                {
+                    isAttacking = false;
+                }
+            }
         }
 
         private void ApplyGravity(float dt)
