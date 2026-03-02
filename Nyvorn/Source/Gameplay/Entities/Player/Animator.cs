@@ -1,9 +1,6 @@
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 
-// esse arquivo é a "máquina de estados" que controla qual frame desenhar baseado no estado atual do player (Idle, Walk, Jump, Fall).
-// O PlayerAnimations.cs é o "banco de dados" das animações do player, onde cada estado tem um array de frames (Rectangles) associados a ele.
-
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public class Animator
@@ -88,7 +85,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 Rectangle[] frames = _animations[_state];
                 if (frames == null || frames.Length == 0) return true;
 
-                // Walk é loop, então nunca "termina"
                 if (_state == AnimationState.Walk) return false;
 
                 return _frameIndex >= frames.Length - 1;

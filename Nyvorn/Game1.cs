@@ -10,7 +10,6 @@ public class Game1 : Game
     private GraphicsDeviceManager _graphics;
     private SpriteBatch _spriteBatch;
 
-    // PlayignState
     private PlayingState _playingState;
 
     public Game1()
@@ -37,7 +36,6 @@ public class Game1 : Game
         if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
             Exit();
         
-        // chama o update de dentro da classe PlayingState
         _playingState.Update(gameTime);
 
         base.Update(gameTime);
@@ -47,7 +45,6 @@ public class Game1 : Game
     {
         GraphicsDevice.Clear(Color.CornflowerBlue);
 
-        // chama o draw de dentro da classe PlayingState
         _playingState.Draw(gameTime, _spriteBatch);
 
         base.Draw(gameTime);

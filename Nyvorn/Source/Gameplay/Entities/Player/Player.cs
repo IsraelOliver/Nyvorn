@@ -264,7 +264,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 {
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
-                        // Encosta o chão (HitBottom) no topo do tile
                         float tileTop = y * ts;
                         Position.Y = tileTop;
 
@@ -285,11 +284,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 {
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
-                        // Encosta o topo da hitbox no fundo do tile
                         float tileBottom = y * ts + ts;
                         float newHitTop = tileBottom;
 
-                        // HitTop = Position.Y - HitH + 1  =>  Position.Y = HitTop + HitH - 1
                         Position.Y = newHitTop + HitH - 1;
 
                         Velocity.Y = 0;
