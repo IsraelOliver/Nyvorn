@@ -11,16 +11,24 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private Vector2 Velocity;
 
         private bool isGrounded;
+        private bool isAttacking;
+        private float attackTimer;
+        private MouseState prevMouse;
+        private const float AttackDuration = 0.3f;
 
         // Textura do player
         public const int SpriteW = 32;
         public const int SpriteH = 32;
 
+        private readonly Texture2D _body;
+        private readonly Texture2D _handBack;
+        private readonly Texture2D _handFront;
+
         // Hitbox do player - fica envolta apenas do player
-        public const int HitW = 14;
+        public const int HitW = 10;
         public const int HitH = 23;
 
-        private const float moveSpeed = 100f;
+        private const float moveSpeed = 90f;
         private const float jumpSpeed = 280f;
         private const float gravity = 800f;
 
@@ -28,23 +36,37 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool jumpPressed;
 
         // Animação
-        private readonly Texture2D _sheet;
         private bool facingRight = true;
 
         private readonly Animator anim;
+        private readonly Animator animAttack;
+
         private AnimationState animState = AnimationState.Idle;
 
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet)
+        private readonly Texture2D _attackHandBack;
+        private readonly Texture2D _attackHandFront;
+        private readonly Texture2D _attackBody;
+        private readonly Texture2D _legs;
+
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs)
         {
             Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
             isGrounded = false;
 
-            _sheet = sheet;
-            anim = new Animator(PlayerAnimations.Create(), AnimationState.Idle);
+            _body = sheet;
+            _handBack = handBack_base;
+            _handFront = handFront_base;
+            _legs = legs;
+
+            _attackHandBack = handBack_attack;
+            _attackHandFront = handFront_attack;
+            _attackBody = body_attack;
+
+            anim = new Animator(PlayerAnimations.CreateBase(), AnimationState.Idle);
+            animAttack = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
         }
 
-        // Hitbox derivada do pivot do pé
         private float HitLeft   => Position.X - (HitW * 0.5f);
         private float HitRight  => HitLeft + HitW - 1;
         private float HitBottom => Position.Y;
@@ -54,8 +76,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
-
+            
             ReadInput();
+
+            Attack(dt);
 
             // Horizontal
             Velocity.X = moveDir * moveSpeed;
@@ -76,9 +100,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public void Draw(SpriteBatch spriteBatch)
         {
             Rectangle src = anim.CurrentFrame;
+            Rectangle attackSrc = animAttack.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
-            // Pixel snap do pivot (pé)
             const float VisualFootSink = 1f;
 
             var drawPos = new Vector2(
@@ -86,29 +110,43 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 (float)System.Math.Round(Position.Y + VisualFootSink)
             );
 
-            // Origin = pivot na base do frame 32x32
-            spriteBatch.Draw(
-                _sheet,
-                drawPos,
-                src,
-                Color.White,
-                0f,
-                new Vector2(16f, 32f),
-                1f,
-                fx,
-                0f
-            );
+            var origin = new Vector2(16f, 32f);
+
+            
+            spriteBatch.Draw(_legs, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            
+            if (!isAttacking)
+            {   
+                spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            } else {   
+                spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+            }
         }
 
         private void ReadInput()
         {
             KeyboardState teclado = Keyboard.GetState();
+            MouseState mouse = Mouse.GetState();
 
             moveDir = 0;
             if (teclado.IsKeyDown(Keys.D)) moveDir = 1;
             else if (teclado.IsKeyDown(Keys.A)) moveDir = -1;
 
             jumpPressed = teclado.IsKeyDown(Keys.Space);
+
+            bool click = mouse.LeftButton == ButtonState.Pressed &&
+                        prevMouse.LeftButton == ButtonState.Released;
+
+            if (!isAttacking && click)
+            {
+                StartAttack();
+            }
+
+            prevMouse = mouse;
         }
 
         private void UpdateAnimationState()
@@ -136,6 +174,26 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
         }
 
+        private void Attack(float dt)
+        {
+            if (!isAttacking)
+                return;
+
+            animAttack.Update(dt);
+
+            if (animAttack.IsFinished)
+                isAttacking = false;
+        }
+
+        private void StartAttack()
+        {
+            isAttacking = true;
+            attackTimer = AttackDuration;
+
+            animAttack.Reset();
+            animAttack.Play(AnimationState.Attack);
+        }
+
         private void ApplyGravity(float dt)
         {
             Velocity.Y += gravity * dt;
@@ -145,7 +203,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             int ts = worldMap.TileSize;
 
-            // Amostras Y dentro da hitbox
             float top = HitTop + 1;
             float bottom = HitBottom - 1;
 
@@ -209,7 +266,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     {
                         // Encosta o chão (HitBottom) no topo do tile
                         float tileTop = y * ts;
-                        Position.Y = tileTop; // HitBottom = Position.Y
+                        Position.Y = tileTop;
 
                         Velocity.Y = 0;
                         isGrounded = true;

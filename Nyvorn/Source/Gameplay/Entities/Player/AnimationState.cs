@@ -5,6 +5,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         Idle = 0,
         Walk = 1,
         Jump = 2,
-        Fall = 3
+        Fall = 3,
+        Attack = 4
     }
 }

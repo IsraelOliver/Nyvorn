@@ -48,14 +48,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (frames == null || frames.Length <= 1)
                 return;
 
-            _timer += dt; // essa linha faz o timer acumular o tempo desde a última troca de frame
+            _timer += dt;
 
             while (_timer >= FrameTime)
             {
                 _timer -= FrameTime;
                 _frameIndex++;
 
-                // Evolução natural: ter Loop por estado via AnimationClip.
+                // ter Loop por estado via AnimationClip para o futuro, mas por enquanto só o Walk tem loop
                 if (_state == AnimationState.Walk)
                     _frameIndex %= frames.Length;
                 else
@@ -76,6 +76,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                 int safe = _frameIndex % frames.Length;
                 return frames[safe];
+            }
+        }
+
+        public bool IsFinished
+        {
+            get
+            {
+                if (!_animations.ContainsKey(_state)) return true;
+
+                Rectangle[] frames = _animations[_state];
+                if (frames == null || frames.Length == 0) return true;
+
+                // Walk é loop, então nunca "termina"
+                if (_state == AnimationState.Walk) return false;
+
+                return _frameIndex >= frames.Length - 1;
             }
         }
 
