@@ -79,6 +79,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
         }
 
+        public bool IsFinished
+        {
+            get
+            {
+                if (!_animations.ContainsKey(_state)) return true;
+
+                Rectangle[] frames = _animations[_state];
+                if (frames == null || frames.Length == 0) return true;
+
+                // Walk é loop, então nunca "termina"
+                if (_state == AnimationState.Walk) return false;
+
+                return _frameIndex >= frames.Length - 1;
+            }
+        }
+
         public void Reset()
         {
             _frameIndex = 0;

@@ -13,6 +13,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool isGrounded;
         private bool isAttacking;
         private float attackTimer;
+        private MouseState prevMouse;
         private const float AttackDuration = 0.3f;
 
         // Textura do player
@@ -27,7 +28,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public const int HitW = 10;
         public const int HitH = 23;
 
-        private const float moveSpeed = 80f;
+        private const float moveSpeed = 90f;
         private const float jumpSpeed = 280f;
         private const float gravity = 800f;
 
@@ -94,10 +95,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             anim.Play(animState);
             anim.Update(dt);
-            if (isAttacking)
-            {
-                animAttack.Update(dt);
-            }
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -141,14 +138,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             jumpPressed = teclado.IsKeyDown(Keys.Space);
 
-            if (!isAttacking && mouse.LeftButton == ButtonState.Pressed)
+            bool click = mouse.LeftButton == ButtonState.Pressed &&
+                        prevMouse.LeftButton == ButtonState.Released;
+
+            if (!isAttacking && click)
             {
-                isAttacking = true;
-                attackTimer = AttackDuration;
-                
-                animAttack.Reset();
-                animAttack.Play(AnimationState.Attack);
+                StartAttack();
             }
+
+            prevMouse = mouse;
         }
 
         private void UpdateAnimationState()
@@ -183,14 +181,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private void Attack(float dt)
         {
-            if (isAttacking)
-            {
-                attackTimer -= dt;
-                if (attackTimer <= 0f)
-                {
-                    isAttacking = false;
-                }
-            }
+            if (!isAttacking)
+                return;
+
+            animAttack.Update(dt);
+
+            if (animAttack.IsFinished)
+                isAttacking = false;
+        }
+
+        private void StartAttack()
+        {
+            isAttacking = true;
+            attackTimer = AttackDuration;
+
+            animAttack.Reset();
+            animAttack.Play(AnimationState.Attack);
         }
 
         private void ApplyGravity(float dt)
@@ -202,7 +208,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             int ts = worldMap.TileSize;
 
-            // Amostras Y dentro da hitbox
             float top = HitTop + 1;
             float bottom = HitBottom - 1;
 
