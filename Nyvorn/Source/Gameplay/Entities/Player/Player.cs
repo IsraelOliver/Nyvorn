@@ -51,6 +51,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly Texture2D _attackHandFront;
         private readonly Texture2D _attackBody;
         private readonly Texture2D _legs;
+        private readonly Texture2D _handFront_weaponRun;
 
         private Vector2 frameTopLeft;
         private Vector2 handLocal;
@@ -58,7 +59,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         Texture2D debugPixel;
 
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs, Texture2D stickTexture)
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs, Texture2D stickTexture, Texture2D handFront_weaponRun)
         {
             Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
@@ -74,6 +75,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             _attackBody = body_attack;
 
             equippedWeapon = new ShortStick(stickTexture);
+            _handFront_weaponRun = handFront_weaponRun;
 
             debugPixel = new Texture2D(sheet.GraphicsDevice, 1, 1);
             debugPixel.SetData(new[] { Color.Red });
@@ -135,10 +137,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {   
                 spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-                if (moveDir != 0) equippedWeapon.SetWalk();
-                else equippedWeapon.SetIdle();
-                equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
-                spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                if (equippedWeapon != null && moveDir != 0)
+                {   
+                    equippedWeapon.SetWalk();
+                    equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
+                    spriteBatch.Draw(_handFront_weaponRun, drawPos, new Rectangle(0,0,32,32), Color.White, 0f, origin, 1f, fx, 0f);
+                } else
+                {
+                    if (moveDir != 0) equippedWeapon.SetWalk();
+                    else equippedWeapon.SetIdle();
+                    equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
+                    spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                }
                 spriteBatch.Draw(debugPixel, handWorld, Color.White);
             } else {   
                 spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
@@ -217,11 +227,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             animAttack.Play(AnimationState.Attack);
         }
 
-        private void ApplyGravity(float dt)
-        {
-            Velocity.Y += gravity * dt;
-        }
-
         private void ConvertToWorld()
         {
             var drawPos = new Vector2(
@@ -240,6 +245,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
 
             handWorld = frameTopLeft + handLocal;
+        }
+
+        private void ApplyGravity(float dt)
+        {
+            Velocity.Y += gravity * dt;
         }
 
         private void ResolveWorldCollisionsX(WorldMap worldMap)

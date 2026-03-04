@@ -21,6 +21,7 @@ namespace Nyvorn.Source.Game.States
         private Texture2D legsTexture;
 
         private Texture2D shortStickTexture;
+        private Texture2D handFront_weaponRun;
 
         private Texture2D attackHandbackTexture;
         private Texture2D attackHandfrontTexture;
@@ -49,12 +50,13 @@ namespace Nyvorn.Source.Game.States
             frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
 
             shortStickTexture = content.Load<Texture2D>("weapons/shortStick");
+            handFront_weaponRun = content.Load<Texture2D>("entities/player/handFront_weaponRun");
 
             attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
             attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
             attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
             
-            player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture, shortStickTexture);
+            player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture, shortStickTexture, handFront_weaponRun);
             shortStick = new ShortStick(shortStickTexture);
             camera = new Camera2D();
         }
