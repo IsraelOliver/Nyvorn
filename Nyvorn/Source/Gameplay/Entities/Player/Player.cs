@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.World;
+using Nyvorn.Source.Gameplay.Combat.Weapons;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
@@ -15,6 +16,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private float attackTimer;
         private MouseState prevMouse;
         private const float AttackDuration = 0.3f;
+        private Weapon equippedWeapon;
 
         // Textura do player
         public const int SpriteW = 32;
@@ -23,6 +25,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly Texture2D _body;
         private readonly Texture2D _handBack;
         private readonly Texture2D _handFront;
+        
 
         // Hitbox do player - fica envolta apenas do player
         public const int HitW = 10;
@@ -55,7 +58,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         Texture2D debugPixel;
 
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs)
+        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs, Texture2D stickTexture)
         {
             Position = startPositionPivotFoot;
             Velocity = Vector2.Zero;
@@ -69,6 +72,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             _attackHandBack = handBack_attack;
             _attackHandFront = handFront_attack;
             _attackBody = body_attack;
+
+            equippedWeapon = new ShortStick(stickTexture);
 
             debugPixel = new Texture2D(sheet.GraphicsDevice, 1, 1);
             debugPixel.SetData(new[] { Color.Red });
@@ -138,6 +143,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(debugPixel, handWorld, Color.White);
             }
+
+            equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
 
         }
 
