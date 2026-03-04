@@ -91,7 +91,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
-            
+            bool isMoving = moveDir != 0;
             
             ReadInput();
 
@@ -135,17 +135,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {   
                 spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                if (moveDir != 0) equippedWeapon.SetWalk();
+                else equippedWeapon.SetIdle();
+                equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
                 spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(debugPixel, handWorld, Color.White);
             } else {   
                 spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+                equippedWeapon.SetAttackFrame(animAttack.FrameIndex);
+                equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
                 spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(debugPixel, handWorld, Color.White);
             }
-
-            equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
-
         }
 
         private void ReadInput()
@@ -233,10 +235,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Animator a = isAttacking ? animAttack : anim;
             handLocal = PlayerAnimations.GetHandAnchor(a);
 
-            if (!facingRight == true)
-            {
+            if (!facingRight)
                 handLocal.X = 31 - handLocal.X;
-            }
+
 
             handWorld = frameTopLeft + handLocal;
         }
