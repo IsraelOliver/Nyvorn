@@ -72,9 +72,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         }
 
         static readonly Vector2[] IdleHandAnchors =
-{
-    new Vector2(9, 23)
-};
+        {
+            new Vector2(9, 23)
+        };
 
         static readonly Vector2[] WalkHandAnchors =
         {
