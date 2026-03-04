@@ -15,6 +15,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public float FrameTime { get; set; } = 0.08f;
 
+        public AnimationState CurrentState => _state;
+        public int FrameIndex => _frameIndex;
+
         public Animator(Dictionary<AnimationState, Rectangle[]> animations, AnimationState startState = AnimationState.Idle)
         {
             _animations = animations;

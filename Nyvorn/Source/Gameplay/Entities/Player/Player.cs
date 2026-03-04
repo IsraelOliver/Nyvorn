@@ -34,19 +34,26 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private int moveDir;
         private bool jumpPressed;
+        const float VisualFootSink = 1f;
 
         // Animação
         private bool facingRight = true;
 
+        private AnimationState animState = AnimationState.Idle;
+
         private readonly Animator anim;
         private readonly Animator animAttack;
-
-        private AnimationState animState = AnimationState.Idle;
 
         private readonly Texture2D _attackHandBack;
         private readonly Texture2D _attackHandFront;
         private readonly Texture2D _attackBody;
         private readonly Texture2D _legs;
+
+        private Vector2 frameTopLeft;
+        private Vector2 handLocal;
+        private Vector2 handWorld;
+
+        Texture2D debugPixel;
 
         public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs)
         {
@@ -63,6 +70,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             _attackHandFront = handFront_attack;
             _attackBody = body_attack;
 
+            debugPixel = new Texture2D(sheet.GraphicsDevice, 1, 1);
+            debugPixel.SetData(new[] { Color.Red });
+
             anim = new Animator(PlayerAnimations.CreateBase(), AnimationState.Idle);
             animAttack = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
         }
@@ -76,6 +86,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
+            
             
             ReadInput();
 
@@ -95,6 +106,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             anim.Play(animState);
             anim.Update(dt);
+
+            ConvertToWorld();
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -102,8 +115,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Rectangle src = anim.CurrentFrame;
             Rectangle attackSrc = animAttack.CurrentFrame;
             var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
-
-            const float VisualFootSink = 1f;
 
             var drawPos = new Vector2(
                 (float)System.Math.Round(Position.X),
@@ -120,11 +131,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(debugPixel, handWorld, Color.White);
             } else {   
                 spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(debugPixel, handWorld, Color.White);
             }
+
         }
 
         private void ReadInput()
@@ -197,6 +211,27 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private void ApplyGravity(float dt)
         {
             Velocity.Y += gravity * dt;
+        }
+
+        private void ConvertToWorld()
+        {
+            var drawPos = new Vector2(
+                (float)System.Math.Round(Position.X),
+                (float)System.Math.Round(Position.Y + VisualFootSink)
+            );
+            var origin = new Vector2(16f, 32f);
+
+            frameTopLeft = drawPos - origin;
+
+            Animator a = isAttacking ? animAttack : anim;
+            handLocal = PlayerAnimations.GetHandAnchor(a);
+
+            if (!facingRight == true)
+            {
+                handLocal.X = 31 - handLocal.X;
+            }
+
+            handWorld = frameTopLeft + handLocal;
         }
 
         private void ResolveWorldCollisionsX(WorldMap worldMap)

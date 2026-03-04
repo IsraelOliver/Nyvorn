@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
@@ -12,7 +13,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             return new Dictionary<AnimationState, Rectangle[]>
             {
-                // Parado
                 {
                     AnimationState.Idle,
                     new[]
@@ -21,7 +21,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-                // Correndo
                 {
                     AnimationState.Walk,
                     new[]
@@ -35,7 +34,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-                // Pulo
                 {
                     AnimationState.Jump,
                     new[]
@@ -44,7 +42,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-                // Queda
                 {
                     AnimationState.Fall,
                     new[]
@@ -72,6 +69,26 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 }
             };
+        }
+
+        static readonly Vector2[] AttackHandAnchors =
+        {
+            new Vector2(7, 13), // frame 0
+            new Vector2(17, 16), // frame 1
+            new Vector2(14, 24)  // frame 2
+        };
+
+        public static Vector2 GetHandAnchor(Animator animator)
+        {
+            if (animator.CurrentState == AnimationState.Attack)
+            {
+                int i = Math.Clamp(animator.FrameIndex, 0, 2);
+                    return AttackHandAnchors[i];
+                }
+            else
+            {
+                    return new Vector2(9, 23);
+                }
         }
     }
 }
