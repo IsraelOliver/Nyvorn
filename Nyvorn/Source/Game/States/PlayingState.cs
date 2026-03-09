@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.World;
@@ -21,6 +22,7 @@ namespace Nyvorn.Source.Game.States
         private Texture2D legsTexture;
 
         private Texture2D shortStickTexture;
+        private Texture2D handFront_weaponRun;
 
         private Texture2D attackHandbackTexture;
         private Texture2D attackHandfrontTexture;
@@ -49,12 +51,13 @@ namespace Nyvorn.Source.Game.States
             frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
 
             shortStickTexture = content.Load<Texture2D>("weapons/shortStick");
+            handFront_weaponRun = content.Load<Texture2D>("entities/player/handFront_weaponRun");
 
             attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
             attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
             attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
             
-            player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture, shortStickTexture);
+            player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture, shortStickTexture, handFront_weaponRun);
             shortStick = new ShortStick(shortStickTexture);
             camera = new Camera2D();
         }
@@ -65,9 +68,13 @@ namespace Nyvorn.Source.Game.States
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
-          
-            player.Update(dt, worldMap, screenW, screenH);
-            camera.Follow(player.Position + new Vector2(8f, 12f), screenW, screenH);;
+
+            MouseState mouse = Mouse.GetState();
+            Matrix inverseView = Matrix.Invert(camera.GetViewMatrix());
+            Vector2 mouseWorld = Vector2.Transform(new Vector2(mouse.X, mouse.Y), inverseView);
+
+            player.Update(dt, worldMap, screenW, screenH, mouseWorld);
+            camera.Follow(player.Position + new Vector2(8f, 12f), screenW, screenH);
 
         }
 

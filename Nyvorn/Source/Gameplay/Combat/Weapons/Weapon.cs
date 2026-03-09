@@ -6,9 +6,16 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
     public class Weapon
     {
         protected readonly Texture2D texture;
+
         protected readonly int frameW;
         protected readonly int frameH;
+
         protected readonly Point pivot;
+
+        public virtual void SetIdle() { }
+        public virtual void SetWalk() { }
+
+        public virtual void SetAttackFrame(int frameIndex) { }
 
         protected int frameX;
         protected int frameY;
