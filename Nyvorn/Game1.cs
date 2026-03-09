@@ -1,16 +1,17 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Game;
 using Nyvorn.Source.Game.States;
 
 namespace Nyvorn;
 
 public class Game1 : Game
 {
-    private GraphicsDeviceManager _graphics;
+    private readonly GraphicsDeviceManager _graphics;
     private SpriteBatch _spriteBatch;
 
-    private PlayingState _playingState;
+    private StateMachine _stateMachine;
 
     public Game1()
     {
@@ -21,22 +22,22 @@ public class Game1 : Game
 
     protected override void Initialize()
     {
-
         base.Initialize();
     }
 
     protected override void LoadContent()
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
-        _playingState = new PlayingState(GraphicsDevice, Content);
+        _stateMachine = new StateMachine();
+        _stateMachine.ChangeState(new PlayingState(GraphicsDevice, Content));
     }
 
     protected override void Update(GameTime gameTime)
     {
         if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
             Exit();
-        
-        _playingState.Update(gameTime);
+
+        _stateMachine.Update(gameTime);
 
         base.Update(gameTime);
     }
@@ -45,7 +46,7 @@ public class Game1 : Game
     {
         GraphicsDevice.Clear(Color.CornflowerBlue);
 
-        _playingState.Draw(gameTime, _spriteBatch);
+        _stateMachine.Draw(gameTime, _spriteBatch);
 
         base.Draw(gameTime);
     }

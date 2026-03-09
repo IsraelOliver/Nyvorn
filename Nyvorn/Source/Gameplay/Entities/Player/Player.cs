@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Engine.Input;
+using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.World;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
 
@@ -14,7 +15,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool isGrounded;
         private bool isAttacking;
         private float attackTimer;
-        private MouseState prevMouse;
+        private int attackSequence;
+        private float hurtCooldownTimer;
+        private float knockbackVelocityX;
+
+        private Rectangle attackHitbox;
+        public bool HasActiveAttackHitbox => !attackHitbox.IsEmpty;
+        public Rectangle AttackHitbox => attackHitbox;
+        public int AttackSequence => attackSequence;
+        public int Health { get; private set; } = 100;
+        public int MaxHealth => 100;
+        public bool IsAlive => Health > 0;
+
         private const float AttackDuration = 0.3f;
         private Weapon equippedWeapon;
 
@@ -33,7 +45,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private const float moveSpeed = 90f;
         private const float jumpSpeed = 280f;
-        private const float gravity = 800f;
+        private const float GravityScale = 1f;
 
         private int moveDir;
         private bool jumpPressed;
@@ -56,6 +68,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private Vector2 frameTopLeft;
         private Vector2 handLocal;
         private Vector2 handWorld;
+
+        private float HitLeft => Position.X - (HitW * 0.5f);
+        private float HitRight => HitLeft + HitW - 1;
+        private float HitBottom => Position.Y;
+        private float HitTop => HitBottom - HitH + 1;
 
         Texture2D debugPixel;
 
@@ -82,27 +99,29 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             anim = new Animator(PlayerAnimations.CreateBase(), AnimationState.Idle);
             animAttack = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
+            attackSequence = 0;
+            hurtCooldownTimer = 0f;
+            knockbackVelocityX = 0f;
         }
 
-        private float HitLeft => Position.X - (HitW * 0.5f);
-        private float HitRight => HitLeft + HitW - 1;
-        private float HitBottom => Position.Y;
-        private float HitTop => HitBottom - HitH + 1;
-
-        public void Update(float dt, WorldMap worldMap, int screenW, int screenH)
+        public void Update(float dt, WorldMap worldMap, InputState input, Vector2 mouseWorld)
         {
+            if (hurtCooldownTimer > 0f)
+                hurtCooldownTimer -= dt;
+
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
-            bool isMoving = moveDir != 0;
 
-            ReadInput();
+            ApplyInput(input, mouseWorld);
 
             Attack(dt);
 
             // Horizontal
             Velocity.X = moveDir * moveSpeed;
-            Position.X += Velocity.X * dt;
-            ResolveWorldCollisionsX(worldMap);
+            float totalVelocityX = Velocity.X + knockbackVelocityX;
+            Position.X += totalVelocityX * dt;
+            ResolveWorldCollisionsX(worldMap, totalVelocityX);
+            knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * 12f, 0f, 1f));
 
             // Vertical
             ApplyGravity(dt);
@@ -110,11 +129,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             ResolveWorldCollisionsY(worldMap, prevHitBottom, prevHitTop);
 
             UpdateAnimationState();
-
             anim.Play(animState);
             anim.Update(dt);
 
             ConvertToWorld();
+            UpdateAttackHitbox();
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -174,34 +193,50 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
                 spriteBatch.Draw(debugPixel, handWorld, Color.White);
             }
+
+            spriteBatch.Draw(debugPixel, attackHitbox, Color.Red * 0.4f);
         }
 
-        private void ReadInput()
+        public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, HitW, HitH);
+
+        public bool TryReceiveDamage(int damage)
         {
-            KeyboardState teclado = Keyboard.GetState();
-            MouseState mouse = Mouse.GetState();
+            if (!IsAlive)
+                return false;
 
-            moveDir = 0;
-            if (teclado.IsKeyDown(Keys.D)) moveDir = 1;
-            else if (teclado.IsKeyDown(Keys.A)) moveDir = -1;
+            if (hurtCooldownTimer > 0f)
+                return false;
 
-            jumpPressed = teclado.IsKeyDown(Keys.Space);
+            Health = System.Math.Max(0, Health - damage);
+            hurtCooldownTimer = 0.35f;
+            return true;
+        }
 
-            bool click = mouse.LeftButton == ButtonState.Pressed &&
-                        prevMouse.LeftButton == ButtonState.Released;
+        public void ApplyKnockback(float forceX, float forceY = -60f)
+        {
+            knockbackVelocityX = forceX;
+            if (forceY < Velocity.Y)
+                Velocity.Y = forceY;
+        }
 
-            if (!isAttacking && click)
+        private void ApplyInput(InputState input, Vector2 mouseWorld)
+        {
+            moveDir = input.MoveDir;
+            jumpPressed = input.JumpPressed;
+
+            if (!isAttacking && input.AttackPressed)
             {
-                StartAttack();
+                StartAttack(mouseWorld);
             }
-
-            prevMouse = mouse;
         }
 
         private void UpdateAnimationState()
         {
-            if (moveDir > 0) facingRight = true;
-            else if (moveDir < 0) facingRight = false;
+            if (!isAttacking)
+            {
+                if (moveDir > 0) facingRight = true;
+                else if (moveDir < 0) facingRight = false;
+            }
 
             if (isGrounded && jumpPressed)
             {
@@ -232,13 +267,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             animAttack.Update(dt);
 
             if (attackTimer <= 0f)
+            {
                 isAttacking = false;
+                if (moveDir != 0)
+                    facingRight = moveDir > 0;
+            }
         }
 
-        private void StartAttack()
+        private void StartAttack(Vector2 mouseWorld)
         {
             isAttacking = true;
+            facingRight = mouseWorld.X >= Position.X;
             attackTimer = AttackDuration;
+            attackSequence++;
 
             animAttack.Reset();
             animAttack.Play(AnimationState.Attack);
@@ -264,12 +305,25 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             handWorld = frameTopLeft + handLocal;
         }
 
-        private void ApplyGravity(float dt)
+        private void UpdateAttackHitbox()
         {
-            Velocity.Y += gravity * dt;
+            attackHitbox = Rectangle.Empty;
+
+            if (!isAttacking)
+                return;
+
+            if (!equippedWeapon.IsActiveFrame(animAttack.FrameIndex))
+                return;
+
+            attackHitbox = equippedWeapon.GetAttackHitbox(handWorld, facingRight);
         }
 
-        private void ResolveWorldCollisionsX(WorldMap worldMap)
+        private void ApplyGravity(float dt)
+        {
+            Velocity.Y += PhysicsSettings.WorldGravity * GravityScale * dt;
+        }
+
+        private void ResolveWorldCollisionsX(WorldMap worldMap, float velocityX)
         {
             int ts = worldMap.TileSize;
 
@@ -279,7 +333,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             int tileYTop = (int)(top / ts);
             int tileYBottom = (int)(bottom / ts);
 
-            if (Velocity.X > 0)
+            if (velocityX > 0)
             {
                 float right = HitRight;
                 int tileX = (int)(right / ts);
@@ -292,9 +346,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                     Position.X = newHitLeft + (HitW * 0.5f);
                     Velocity.X = 0;
+                    knockbackVelocityX = 0f;
                 }
             }
-            else if (Velocity.X < 0)
+            else if (velocityX < 0)
             {
                 float left = HitLeft;
                 int tileX = (int)(left / ts);
@@ -307,6 +362,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                     Position.X = newHitLeft + (HitW * 0.5f);
                     Velocity.X = 0;
+                    knockbackVelocityX = 0f;
                 }
             }
         }

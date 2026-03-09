@@ -17,6 +17,8 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 
         public virtual void SetAttackFrame(int frameIndex) { }
 
+        public virtual bool IsActiveFrame(int frameIndex) { return false; }
+
         protected int frameX;
         protected int frameY;
 
@@ -35,6 +37,11 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         {
             frameX = x;
             frameY = y;
+        }
+
+        public virtual Rectangle GetAttackHitbox(Vector2 handWorld, bool facingRight)
+        {
+            return Rectangle.Empty;
         }
 
         public virtual void Draw(SpriteBatch spriteBatch, Vector2 handWorld, bool facingRight)
