@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {}
+    "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {}
   },
   "projects": {
-    "C:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {
+    "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
+        "projectUniqueName": "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
         "projectName": "Nyvorn",
-        "projectPath": "C:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
+        "projectPath": "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
         "packagesPath": "C:\\Users\\hhhhi\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\obj\\",
+        "outputPath": "c:\\Users\\hhhhi\\Desktop\\Projeto\\Nyvorn-Reborn\\Nyvorn\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\hhhhi\\AppData\\Roaming\\NuGet\\NuGet.Config"

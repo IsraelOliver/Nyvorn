@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Engine.Input;
+using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.World;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
 
@@ -14,7 +15,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool isGrounded;
         private bool isAttacking;
         private float attackTimer;
-        private MouseState prevMouse;
         private const float AttackDuration = 0.3f;
         private Weapon equippedWeapon;
 
@@ -33,7 +33,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private const float moveSpeed = 90f;
         private const float jumpSpeed = 280f;
-        private const float gravity = 800f;
+        private const float GravityScale = 0.1f;
 
         private int moveDir;
         private bool jumpPressed;
@@ -89,12 +89,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private float HitBottom => Position.Y;
         private float HitTop => HitBottom - HitH + 1;
 
-        public void Update(float dt, WorldMap worldMap, int screenW, int screenH, Vector2 mouseWorld)
+        public void Update(float dt, WorldMap worldMap, InputState input, Vector2 mouseWorld)
         {
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
 
-            ReadInput(mouseWorld);
+            ApplyInput(input, mouseWorld);
 
             Attack(dt);
 
@@ -175,26 +175,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
         }
 
-        private void ReadInput(Vector2 mouseWorld)
+        private void ApplyInput(InputState input, Vector2 mouseWorld)
         {
-            KeyboardState teclado = Keyboard.GetState();
-            MouseState mouse = Mouse.GetState();
+            moveDir = input.MoveDir;
+            jumpPressed = input.JumpPressed;
 
-            moveDir = 0;
-            if (teclado.IsKeyDown(Keys.D)) moveDir = 1;
-            else if (teclado.IsKeyDown(Keys.A)) moveDir = -1;
-
-            jumpPressed = teclado.IsKeyDown(Keys.Space);
-
-            bool click = mouse.LeftButton == ButtonState.Pressed &&
-                        prevMouse.LeftButton == ButtonState.Released;
-
-            if (!isAttacking && click)
+            if (!isAttacking && input.AttackPressed)
             {
                 StartAttack(mouseWorld);
             }
-
-            prevMouse = mouse;
         }
 
         private void UpdateAnimationState()
@@ -273,7 +262,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private void ApplyGravity(float dt)
         {
-            Velocity.Y += gravity * dt;
+            Velocity.Y += PhysicsSettings.WorldGravity * GravityScale * dt;
         }
 
         private void ResolveWorldCollisionsX(WorldMap worldMap)

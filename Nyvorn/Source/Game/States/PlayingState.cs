@@ -1,37 +1,22 @@
-using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Input;
-using Nyvorn.Source.Gameplay.Entities.Player;
+using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.World;
-using Nyvorn.Source.Gameplay.Combat.Weapons;
 
 namespace Nyvorn.Source.Game.States
 {
-    public class PlayingState
+    public class PlayingState : IGameState
     {
-        GraphicsDevice graphicsDevice;
+        private readonly GraphicsDevice graphicsDevice;
 
         private readonly WorldMap worldMap;
 
-        private Texture2D backHandTexture;
-        private Texture2D frontHandTexture;
-        private Texture2D bodyTexture;
-        private Texture2D legsTexture;
-
-        private Texture2D shortStickTexture;
-        private Texture2D handFront_weaponRun;
-
-        private Texture2D attackHandbackTexture;
-        private Texture2D attackHandfrontTexture;
-        private Texture2D attackBodyTexture;
-
-        private Player player;
-        private ShortStick shortStick;
-
-        private Camera2D camera;
+        private readonly Player player;
+        private readonly Camera2D camera;
+        private readonly InputService inputService = new();
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content)
         {
@@ -45,22 +30,25 @@ namespace Nyvorn.Source.Game.States
             worldMap.SetTextures(dirt, sand, stone);
             worldMap.GenerateTest();
 
-            backHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
-            bodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
-            legsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
-            frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
+            var backHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
+            var bodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
+            var legsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
+            var frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
 
-            shortStickTexture = content.Load<Texture2D>("weapons/shortStick");
-            handFront_weaponRun = content.Load<Texture2D>("entities/player/handFront_weaponRun");
+            var shortStickTexture = content.Load<Texture2D>("weapons/shortStick");
+            var handFront_weaponRun = content.Load<Texture2D>("entities/player/handFront_weaponRun");
 
-            attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
-            attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
-            attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
+            var attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
+            var attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
+            var attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
             
             player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture, shortStickTexture, handFront_weaponRun);
-            shortStick = new ShortStick(shortStickTexture);
             camera = new Camera2D();
         }
+
+        public void OnEnter() { }
+
+        public void OnExit() { }
 
         public void Update(GameTime gameTime)
         {
@@ -69,11 +57,10 @@ namespace Nyvorn.Source.Game.States
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
 
-            MouseState mouse = Mouse.GetState();
-            Matrix inverseView = Matrix.Invert(camera.GetViewMatrix());
-            Vector2 mouseWorld = Vector2.Transform(new Vector2(mouse.X, mouse.Y), inverseView);
+            InputState input = inputService.Update();
+            Vector2 mouseWorld = camera.ScreenToWorld(input.MouseScreenPosition);
 
-            player.Update(dt, worldMap, screenW, screenH, mouseWorld);
+            player.Update(dt, worldMap, input, mouseWorld);
             camera.Follow(player.Position + new Vector2(8f, 12f), screenW, screenH);
 
         }

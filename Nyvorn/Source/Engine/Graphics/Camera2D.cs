@@ -55,5 +55,11 @@ namespace Nyvorn.Source.Engine.Graphics
                 Matrix.CreateRotationZ(Rotation) *
                 Matrix.CreateScale(Zoom, Zoom, 1f);
         }
+
+        public Vector2 ScreenToWorld(Vector2 screenPosition)
+        {
+            Matrix inverseView = Matrix.Invert(GetViewMatrix());
+            return Vector2.Transform(screenPosition, inverseView);
+        }
     }
 }
