@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.Gameplay.Entities.Enemies.EnemyAnimations;
 using Nyvorn.Source.World;
 using System;
 
@@ -8,24 +9,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
     public class Enemy
     {
         private readonly Texture2D texture;
+        private readonly Texture2D debugPixel;
+        private readonly EnemyAnimator animator;
 
         private const int FrameW = 32;
         private const int FrameH = 32;
-        private const int WalkRow = 0;
-        private const int IdleJumpFallRow = 1;
-        private const int WalkFrameStart = 0;
-        private const int WalkFrameEnd = 5;
-        private const int IdleCol = 0;
-        private const int JumpCol = 1;
-        private const int FallCol = 2;
-
-        private int animRow = IdleJumpFallRow;
-        private int animCol = IdleCol;
-        private float animTimer;
         private Vector2 position;
         private float velocityY;
         private float knockbackVelocityX;
-        private bool isGrounded;
+        private float attackTimer;
+        private float hurtTimer;
 
         private readonly int maxHealth;
         private int health;
@@ -48,16 +41,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             this.position = position;
             this.maxHealth = maxHealth;
             health = maxHealth;
-            animRow = IdleJumpFallRow;
-            animCol = IdleCol;
-            animTimer = 0f;
             velocityY = 0f;
             knockbackVelocityX = 0f;
-            isGrounded = false;
+            attackTimer = 0f;
+            hurtTimer = 0f;
+
+            animator = new EnemyAnimator(EnemyTestAnimations.Create(), EnemyAnimState.Idle);
+
+            debugPixel = new Texture2D(texture.GraphicsDevice, 1, 1);
+            debugPixel.SetData(new[] { Color.Lime });
         }
 
         public void Update(float dt, WorldMap worldMap)
         {
+            if (attackTimer > 0f) attackTimer -= dt;
+            if (hurtTimer > 0f) hurtTimer -= dt;
+
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
 
@@ -67,7 +66,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             velocityY += 800f * dt;
             position.Y += velocityY * dt;
             ResolveWorldCollisionsY(worldMap, prevHitBottom, prevHitTop);
-            UpdateAnimation(dt);
+
+            EnemyAnimState state = ResolveAnimState();
+            animator.Play(state);
+            animator.Update(dt);
         }
 
         public bool TryReceiveDamage(Rectangle attackHitbox, int attackSequence, int damage)
@@ -83,6 +85,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
             health = Math.Max(0, health - damage);
             lastDamageAttackSequence = attackSequence;
+            hurtTimer = 0.15f;
             return true;
         }
 
@@ -93,54 +96,31 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                 velocityY = forceY;
         }
 
+        public void TriggerAttackVisual(float duration = 0.12f)
+        {
+            if (!IsAlive)
+                return;
+
+            if (duration > attackTimer)
+                attackTimer = duration;
+        }
+
         public void Draw(SpriteBatch spriteBatch)
         {
             if (!IsAlive)
                 return;
 
-            Rectangle src = new Rectangle(animCol * FrameW, animRow * FrameH, FrameW, FrameH);
+            Rectangle src = animator.CurrentFrame;
+            if (src == Rectangle.Empty)
+                src = new Rectangle(0, 1 * FrameH, FrameW, FrameH);
+
             Vector2 origin = new Vector2(16f, 32f);
             spriteBatch.Draw(texture, Position, src, Color.White, 0f, origin, 1f, SpriteEffects.None, 0f);
-        }
-
-        private void UpdateAnimation(float dt)
-        {
-            const float apexThreshold = 6f;
-
-            if (!isGrounded)
-            {
-                animRow = IdleJumpFallRow;
-                animCol = velocityY < -apexThreshold ? JumpCol : FallCol;
-                animTimer = 0f;
-                return;
-            }
-
-            bool isWalking = Math.Abs(knockbackVelocityX) > 8f;
-
-            if (!isWalking)
-            {
-                animRow = IdleJumpFallRow;
-                animCol = IdleCol;
-                animTimer = 0f;
-                return;
-            }
-
-            animRow = WalkRow;
-            animTimer += dt;
-
-            const float walkFrameTime = 0.1f;
-            while (animTimer >= walkFrameTime)
-            {
-                animTimer -= walkFrameTime;
-                animCol++;
-                if (animCol > WalkFrameEnd || animCol < WalkFrameStart)
-                    animCol = WalkFrameStart;
-            }
+            spriteBatch.Draw(debugPixel, Hurtbox, Color.Lime * 0.5f);
         }
 
         private void ResolveWorldCollisionsY(WorldMap worldMap, float prevHitBottom, float prevHitTop)
         {
-            isGrounded = false;
             int ts = worldMap.TileSize;
 
             float left = HitLeft + 1;
@@ -159,7 +139,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                     {
                         position.Y = y * ts;
                         velocityY = 0f;
-                        isGrounded = true;
                         return;
                     }
                 }
@@ -180,6 +159,24 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                     }
                 }
             }
+        }
+
+        private EnemyAnimState ResolveAnimState()
+        {
+            if (!IsAlive)
+                return EnemyAnimState.Dead;
+
+            if (hurtTimer > 0f)
+                return EnemyAnimState.Hurt;
+
+            if (attackTimer > 0f)
+                return EnemyAnimState.Attack;
+
+            bool isMoving = Math.Abs(knockbackVelocityX) > 8f;
+            if (isMoving)
+                return EnemyAnimState.Move;
+
+            return EnemyAnimState.Idle;
         }
 
     }

@@ -94,6 +94,7 @@ namespace Nyvorn.Source.Game.States
                     bool tookDamage = player.TryReceiveDamage(damage: 10);
                     if (tookDamage)
                     {
+                        enemy.TriggerAttackVisual();
                         float dir = player.Position.X >= enemy.Position.X ? 1f : -1f;
                         player.ApplyKnockback(180f * dir, -75f);
                     }
