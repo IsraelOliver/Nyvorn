@@ -1,425 +1,215 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
-using Nyvorn.Source.Engine.Physics;
-using Nyvorn.Source.World;
+using Nyvorn.Source.Gameplay.Combat.Interfaces;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
+using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
-    public class Player
+    public class Player : IDamageable, IHitSource
     {
-        public Vector2 Position; //é o pivot do pé
-        private Vector2 Velocity;
+        private readonly PlayerCombat combat;
+        private readonly PlayerMotor motor;
+        private readonly PlayerAnimator playerAnimator;
 
-        private bool isGrounded;
-        private bool isAttacking;
-        private float attackTimer;
-        private int attackSequence;
-        private float hurtCooldownTimer;
-        private float knockbackVelocityX;
+        public Vector2 Position => motor.Position;
+        Vector2 IDamageable.Position => Position;
+        public bool HasActiveAttackHitbox => combat.HasActiveAttackHitbox;
+        public Rectangle AttackHitbox => combat.AttackHitbox;
+        public int AttackSequence => combat.AttackSequence;
+        bool IHitSource.HasActiveHitbox => HasActiveAttackHitbox;
+        Rectangle IHitSource.ActiveHitbox => AttackHitbox;
+        int IHitSource.HitSequence => AttackSequence;
+        public int Health => combat.Health;
+        public int MaxHealth => combat.MaxHealth;
+        public bool IsAlive => combat.IsAlive;
+        public bool IsInvincible => combat.IsInvincible;
 
-        private Rectangle attackHitbox;
-        public bool HasActiveAttackHitbox => !attackHitbox.IsEmpty;
-        public Rectangle AttackHitbox => attackHitbox;
-        public int AttackSequence => attackSequence;
-        public int Health { get; private set; } = 100;
-        public int MaxHealth => 100;
-        public bool IsAlive => Health > 0;
+        private const float DodgeSpeed = 230f;
 
-        private const float AttackDuration = 0.3f;
-        private Weapon equippedWeapon;
-
-        // Textura do player
         public const int SpriteW = 32;
         public const int SpriteH = 32;
-
-        private readonly Texture2D _body;
-        private readonly Texture2D _handBack;
-        private readonly Texture2D _handFront;
-
-
-        // Hitbox do player - fica envolta apenas do player
         public const int HitW = 10;
         public const int HitH = 23;
 
-        private const float moveSpeed = 90f;
-        private const float jumpSpeed = 280f;
-        private const float GravityScale = 1f;
+        private const float MoveSpeed = 90f;
 
         private int moveDir;
         private bool jumpPressed;
-        const float VisualFootSink = 1f;
 
-        // Animação
-        private bool facingRight = true;
-
-        private AnimationState animState = AnimationState.Idle;
-
-        private readonly Animator anim;
-        private readonly Animator animAttack;
-
-        private readonly Texture2D _attackHandBack;
-        private readonly Texture2D _attackHandFront;
-        private readonly Texture2D _attackBody;
-        private readonly Texture2D _legs;
-        private readonly Texture2D _handFront_weaponRun;
-
-        private Vector2 frameTopLeft;
-        private Vector2 handLocal;
+        private readonly Texture2D body;
+        private readonly Texture2D handBack;
+        private readonly Texture2D handFront;
+        private readonly Texture2D attackHandBack;
+        private readonly Texture2D attackHandFront;
+        private readonly Texture2D attackBody;
+        private readonly Texture2D legs;
+        private readonly Texture2D handFrontWeaponRun;
+        private readonly Texture2D dodgeTexture;
+        private readonly Texture2D debugPixel;
         private Vector2 handWorld;
 
-        private float HitLeft => Position.X - (HitW * 0.5f);
-        private float HitRight => HitLeft + HitW - 1;
-        private float HitBottom => Position.Y;
-        private float HitTop => HitBottom - HitH + 1;
-
-        Texture2D debugPixel;
-
-        public Player(Vector2 startPositionPivotFoot, Texture2D sheet, Texture2D handBack_base, Texture2D handFront_base, Texture2D handBack_attack, Texture2D handFront_attack, Texture2D body_attack, Texture2D legs, Texture2D stickTexture, Texture2D handFront_weaponRun)
+        public Player(
+            Vector2 startPositionPivotFoot,
+            Texture2D sheet,
+            Texture2D handBackBase,
+            Texture2D handFrontBase,
+            Texture2D handBackAttack,
+            Texture2D handFrontAttack,
+            Texture2D bodyAttack,
+            Texture2D legs,
+            Texture2D handFrontWeaponRun,
+            Texture2D dodgeTexture)
         {
-            Position = startPositionPivotFoot;
-            Velocity = Vector2.Zero;
-            isGrounded = false;
+            body = sheet;
+            handBack = handBackBase;
+            handFront = handFrontBase;
+            this.legs = legs;
+            attackHandBack = handBackAttack;
+            attackHandFront = handFrontAttack;
+            attackBody = bodyAttack;
+            this.handFrontWeaponRun = handFrontWeaponRun;
+            this.dodgeTexture = dodgeTexture;
 
-            _body = sheet;
-            _handBack = handBack_base;
-            _handFront = handFront_base;
-            _legs = legs;
-
-            _attackHandBack = handBack_attack;
-            _attackHandFront = handFront_attack;
-            _attackBody = body_attack;
-
-            equippedWeapon = new ShortStick(stickTexture);
-            _handFront_weaponRun = handFront_weaponRun;
-
+            motor = new PlayerMotor(startPositionPivotFoot);
+            Texture2D emptyWeaponTexture = new Texture2D(sheet.GraphicsDevice, 1, 1);
+            emptyWeaponTexture.SetData(new[] { Color.Transparent });
+            combat = new PlayerCombat(new NullWeapon(emptyWeaponTexture));
+            playerAnimator = new PlayerAnimator();
             debugPixel = new Texture2D(sheet.GraphicsDevice, 1, 1);
             debugPixel.SetData(new[] { Color.Red });
-
-            anim = new Animator(PlayerAnimations.CreateBase(), AnimationState.Idle);
-            animAttack = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
-            attackSequence = 0;
-            hurtCooldownTimer = 0f;
-            knockbackVelocityX = 0f;
         }
 
         public void Update(float dt, WorldMap worldMap, InputState input, Vector2 mouseWorld)
         {
-            if (hurtCooldownTimer > 0f)
-                hurtCooldownTimer -= dt;
-
-            float prevHitBottom = HitBottom;
-            float prevHitTop = HitTop;
+            combat.Tick(dt);
 
             ApplyInput(input, mouseWorld);
+            combat.UpdateDodge(dt);
+            bool facingRight = playerAnimator.FacingRight;
+            combat.UpdateAttack(dt, moveDir, ref facingRight);
+            playerAnimator.SetFacing(facingRight);
 
-            Attack(dt);
+            float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * DodgeSpeed : moveDir * MoveSpeed;
+            motor.Update(dt, worldMap, horizontalVelocity);
 
-            // Horizontal
-            Velocity.X = moveDir * moveSpeed;
-            float totalVelocityX = Velocity.X + knockbackVelocityX;
-            Position.X += totalVelocityX * dt;
-            ResolveWorldCollisionsX(worldMap, totalVelocityX);
-            knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * 12f, 0f, 1f));
+            if (motor.IsGrounded && jumpPressed)
+                motor.TryJump();
 
-            // Vertical
-            ApplyGravity(dt);
-            Position.Y += Velocity.Y * dt;
-            ResolveWorldCollisionsY(worldMap, prevHitBottom, prevHitTop);
-
-            UpdateAnimationState();
-            anim.Play(animState);
-            anim.Update(dt);
-
-            ConvertToWorld();
-            UpdateAttackHitbox();
+            playerAnimator.Update(dt, motor.Velocity, moveDir, motor.IsGrounded, combat.IsAttacking, combat.IsDodging);
+            bool useAttackHandPose = combat.IsAttacking && combat.UsesAttackHandPose;
+            bool useWeaponWalkAnchor = combat.HasVisibleWeaponEquipped && combat.UsesAttackHandPose && moveDir != 0 && motor.IsGrounded && !combat.IsAttacking;
+            handWorld = playerAnimator.GetHandWorld(Position, useAttackHandPose, useWeaponWalkAnchor, combat.AttackAnimator);
+            combat.UpdateAttackHitbox(handWorld, playerAnimator.FacingRight);
         }
 
         public void Draw(SpriteBatch spriteBatch)
         {
-            Rectangle src = anim.CurrentFrame;
-            Rectangle attackSrc = animAttack.CurrentFrame;
-            var fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
-
-            var drawPos = new Vector2(
-                (float)System.Math.Round(Position.X),
-                (float)System.Math.Round(Position.Y + VisualFootSink)
-            );
-
-            bool weaponEquipped = equippedWeapon != null;
-            bool isMoving = moveDir != 0;
-            bool weaponRunPose = weaponEquipped && isMoving && isGrounded && !isAttacking;
-
-            var origin = new Vector2(16f, 32f);
-
-            spriteBatch.Draw(_legs, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-
-            if (!isAttacking)
+            if (combat.IsDodging)
             {
-                spriteBatch.Draw(_handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-                spriteBatch.Draw(_body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                DrawDodge(spriteBatch);
+                return;
+            }
+
+            Rectangle src = playerAnimator.BaseFrame;
+            Rectangle attackSrc = combat.AttackAnimator.CurrentFrame;
+            SpriteEffects fx = playerAnimator.Effects;
+            Vector2 drawPos = playerAnimator.GetDrawPosition(Position);
+            bool isMoving = moveDir != 0;
+            bool hasVisibleWeaponEquipped = combat.HasVisibleWeaponEquipped;
+            bool useAttackHandPose = combat.IsAttacking && combat.UsesAttackHandPose;
+            bool weaponRunPose = hasVisibleWeaponEquipped && combat.UsesAttackHandPose && isMoving && motor.IsGrounded && !combat.IsAttacking;
+            Vector2 origin = new Vector2(16f, 32f);
+
+            spriteBatch.Draw(legs, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+
+            if (!useAttackHandPose)
+            {
+                spriteBatch.Draw(handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                spriteBatch.Draw(body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 if (weaponRunPose)
                 {
-                    equippedWeapon.SetWalk();
-                    equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
-                    spriteBatch.Draw(_handFront_weaponRun, drawPos, new Rectangle(0, 0, 32, 32), Color.White, 0f, origin, 1f, fx, 0f);
+                    combat.EquippedWeapon.SetWalk();
+                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
+                    spriteBatch.Draw(handFrontWeaponRun, drawPos, new Rectangle(0, 0, 32, 32), Color.White, 0f, origin, 1f, fx, 0f);
                 }
                 else
                 {
-                    if (!isGrounded && Velocity.Y > 0)
-                    {
-                        equippedWeapon.SetAttackFrame(0);
-                    }
+                    if (combat.IsAttacking)
+                        combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimator.FrameIndex);
+                    else if (!motor.IsGrounded && motor.Velocity.Y > 0)
+                        combat.EquippedWeapon.SetAttackFrame(0);
                     else if (moveDir != 0)
-                    {
-                        equippedWeapon.SetWalk();
-                    }
+                        combat.EquippedWeapon.SetWalk();
                     else
-                    {
-                        equippedWeapon.SetIdle();
-                    }
-                    equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
-                    spriteBatch.Draw(_handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+                        combat.EquippedWeapon.SetIdle();
+
+                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
+                    spriteBatch.Draw(handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 }
-                spriteBatch.Draw(debugPixel, handWorld, Color.White);
-            }
-            else
-            {
-                spriteBatch.Draw(_attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
-                spriteBatch.Draw(_attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
-                equippedWeapon.SetAttackFrame(animAttack.FrameIndex);
-                equippedWeapon.Draw(spriteBatch, handWorld, facingRight);
-                spriteBatch.Draw(_attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
-                spriteBatch.Draw(debugPixel, handWorld, Color.White);
+
+                if (hasVisibleWeaponEquipped)
+                    spriteBatch.Draw(debugPixel, handWorld, Color.White);
+                return;
             }
 
-            spriteBatch.Draw(debugPixel, attackHitbox, Color.Red * 0.4f);
+            spriteBatch.Draw(attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+            spriteBatch.Draw(attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+            combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimator.FrameIndex);
+            combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
+            spriteBatch.Draw(attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+            if (hasVisibleWeaponEquipped)
+                spriteBatch.Draw(debugPixel, handWorld, Color.White);
         }
 
         public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, HitW, HitH);
+        private float HitLeft => Position.X - (HitW * 0.5f);
+        private float HitTop => Position.Y - HitH + 1f;
+
+        bool IDamageable.TryReceiveHit(Rectangle hitbox, int hitSequence, int damage)
+        {
+            return combat.TryReceiveHit(Hurtbox, hitbox, damage);
+        }
 
         public bool TryReceiveDamage(int damage)
         {
-            if (!IsAlive)
-                return false;
+            return combat.TryReceiveDamage(damage);
+        }
 
-            if (hurtCooldownTimer > 0f)
-                return false;
-
-            Health = System.Math.Max(0, Health - damage);
-            hurtCooldownTimer = 0.35f;
-            return true;
+        public void SetEquippedWeapon(Weapon weapon)
+        {
+            combat.SetEquippedWeapon(weapon);
         }
 
         public void ApplyKnockback(float forceX, float forceY = -60f)
         {
-            knockbackVelocityX = forceX;
-            if (forceY < Velocity.Y)
-                Velocity.Y = forceY;
+            motor.ApplyKnockback(forceX, forceY);
+        }
+
+        void IHitSource.OnHitConnected()
+        {
         }
 
         private void ApplyInput(InputState input, Vector2 mouseWorld)
         {
             moveDir = input.MoveDir;
-            jumpPressed = input.JumpPressed;
+            jumpPressed = !combat.IsDodging && input.JumpPressed;
 
-            if (!isAttacking && input.AttackPressed)
-            {
-                StartAttack(mouseWorld);
-            }
+            if (input.DodgePressed && combat.TryStartDodge(motor.IsGrounded, input.DodgeDir, playerAnimator.FacingRight, out bool dodgeFacingRight))
+                playerAnimator.SetFacing(dodgeFacingRight);
+
+            if (input.AttackPressed && combat.TryStartAttack(Position, mouseWorld, out bool attackFacingRight))
+                playerAnimator.SetFacing(attackFacingRight);
         }
 
-        private void UpdateAnimationState()
+        private void DrawDodge(SpriteBatch spriteBatch)
         {
-            if (!isAttacking)
-            {
-                if (moveDir > 0) facingRight = true;
-                else if (moveDir < 0) facingRight = false;
-            }
-
-            if (isGrounded && jumpPressed)
-            {
-                Velocity.Y = -jumpSpeed;
-                isGrounded = false;
-            }
-
-            const float apexThreshold = 5f;
-
-            if (!isGrounded)
-            {
-                if (Velocity.Y < -apexThreshold) animState = AnimationState.Jump;
-                else if (Velocity.Y > apexThreshold) animState = AnimationState.Fall;
-                else animState = AnimationState.Jump;
-            }
-            else
-            {
-                animState = (moveDir != 0) ? AnimationState.Walk : AnimationState.Idle;
-            }
-        }
-
-        private void Attack(float dt)
-        {
-            if (!isAttacking)
-                return;
-
-            attackTimer -= dt;
-            animAttack.Update(dt);
-
-            if (attackTimer <= 0f)
-            {
-                isAttacking = false;
-                if (moveDir != 0)
-                    facingRight = moveDir > 0;
-            }
-        }
-
-        private void StartAttack(Vector2 mouseWorld)
-        {
-            isAttacking = true;
-            facingRight = mouseWorld.X >= Position.X;
-            attackTimer = AttackDuration;
-            attackSequence++;
-
-            animAttack.Reset();
-            animAttack.Play(AnimationState.Attack);
-        }
-
-        private void ConvertToWorld()
-        {
-            var drawPos = new Vector2(
-                (float)System.Math.Round(Position.X),
-                (float)System.Math.Round(Position.Y + VisualFootSink)
-            );
-            var origin = new Vector2(16f, 32f);
-
-            frameTopLeft = drawPos - origin;
-
-            Animator a = isAttacking ? animAttack : anim;
-            handLocal = PlayerAnimations.GetHandAnchor(a);
-
-            if (!facingRight)
-                handLocal.X = 31 - handLocal.X;
-
-
-            handWorld = frameTopLeft + handLocal;
-        }
-
-        private void UpdateAttackHitbox()
-        {
-            attackHitbox = Rectangle.Empty;
-
-            if (!isAttacking)
-                return;
-
-            if (!equippedWeapon.IsActiveFrame(animAttack.FrameIndex))
-                return;
-
-            attackHitbox = equippedWeapon.GetAttackHitbox(handWorld, facingRight);
-        }
-
-        private void ApplyGravity(float dt)
-        {
-            Velocity.Y += PhysicsSettings.WorldGravity * GravityScale * dt;
-        }
-
-        private void ResolveWorldCollisionsX(WorldMap worldMap, float velocityX)
-        {
-            int ts = worldMap.TileSize;
-
-            float top = HitTop + 1;
-            float bottom = HitBottom - 1;
-
-            int tileYTop = (int)(top / ts);
-            int tileYBottom = (int)(bottom / ts);
-
-            if (velocityX > 0)
-            {
-                float right = HitRight;
-                int tileX = (int)(right / ts);
-
-                if (worldMap.IsSolidAt(tileX, tileYTop) || worldMap.IsSolidAt(tileX, tileYBottom))
-                {
-                    // Encosta o lado direito da hitbox na borda esquerda do tile sólido
-                    float tileLeft = tileX * ts;
-                    float newHitLeft = tileLeft - HitW;
-
-                    Position.X = newHitLeft + (HitW * 0.5f);
-                    Velocity.X = 0;
-                    knockbackVelocityX = 0f;
-                }
-            }
-            else if (velocityX < 0)
-            {
-                float left = HitLeft;
-                int tileX = (int)(left / ts);
-
-                if (worldMap.IsSolidAt(tileX, tileYTop) || worldMap.IsSolidAt(tileX, tileYBottom))
-                {
-                    // Encosta o lado esquerdo da hitbox na borda direita do tile sólido
-                    float tileRight = tileX * ts + ts;
-                    float newHitLeft = tileRight;
-
-                    Position.X = newHitLeft + (HitW * 0.5f);
-                    Velocity.X = 0;
-                    knockbackVelocityX = 0f;
-                }
-            }
-        }
-
-        private void ResolveWorldCollisionsY(WorldMap worldMap, float prevHitBottom, float prevHitTop)
-        {
-            isGrounded = false;
-
-            int ts = worldMap.TileSize;
-
-            float left = HitLeft + 1;
-            float right = HitRight - 1;
-
-            int tileXLeft = (int)(left / ts);
-            int tileXRight = (int)(right / ts);
-
-            if (Velocity.Y > 0)
-            {
-                float bottom = HitBottom;
-
-                int fromY = (int)(prevHitBottom / ts);
-                int toY = (int)(bottom / ts);
-
-                for (int y = fromY; y <= toY; y++)
-                {
-                    if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
-                    {
-                        float tileTop = y * ts;
-                        Position.Y = tileTop;
-
-                        Velocity.Y = 0;
-                        isGrounded = true;
-                        return;
-                    }
-                }
-            }
-            else if (Velocity.Y < 0)
-            {
-                float top = HitTop;
-
-                int fromY = (int)(prevHitTop / ts);
-                int toY = (int)(top / ts);
-
-                for (int y = fromY; y >= toY; y--)
-                {
-                    if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
-                    {
-                        float tileBottom = y * ts + ts;
-                        float newHitTop = tileBottom;
-
-                        Position.Y = newHitTop + HitH - 1;
-
-                        Velocity.Y = 0;
-                        return;
-                    }
-                }
-            }
+            Rectangle src = combat.DodgeAnimator.CurrentFrame;
+            SpriteEffects fx = playerAnimator.Effects;
+            Vector2 drawPos = playerAnimator.GetDrawPosition(Position);
+            Vector2 origin = new Vector2(16f, 32f);
+            spriteBatch.Draw(dodgeTexture, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
         }
     }
 }

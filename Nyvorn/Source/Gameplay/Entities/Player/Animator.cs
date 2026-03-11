@@ -6,6 +6,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
     public class Animator
     {
         private readonly Dictionary<AnimationState, Rectangle[]> _animations;
+        private readonly Dictionary<AnimationState, float[]> _frameTimes;
 
         private AnimationState _state = AnimationState.Idle;
         private AnimationState _prevState = AnimationState.Idle;
@@ -19,8 +20,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public int FrameIndex => _frameIndex;
 
         public Animator(Dictionary<AnimationState, Rectangle[]> animations, AnimationState startState = AnimationState.Idle)
+            : this(animations, null, startState)
+        {
+        }
+
+        public Animator(Dictionary<AnimationState, Rectangle[]> animations, Dictionary<AnimationState, float[]> frameTimes, AnimationState startState = AnimationState.Idle)
         {
             _animations = animations;
+            _frameTimes = frameTimes;
             _state = startState;
             _prevState = startState;
             _frameIndex = 0;
@@ -50,9 +57,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             _timer += dt;
 
-            while (_timer >= FrameTime)
+            while (_timer >= GetCurrentFrameTime(frames.Length))
             {
-                _timer -= FrameTime;
+                _timer -= GetCurrentFrameTime(frames.Length);
                 _frameIndex++;
 
                 // ter Loop por estado via AnimationClip para o futuro, mas por enquanto só o Walk tem loop
@@ -99,6 +106,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             _frameIndex = 0;
             _timer = 0f;
             _prevState = _state;
+        }
+
+        private float GetCurrentFrameTime(int frameCount)
+        {
+            if (_frameTimes != null &&
+                _frameTimes.TryGetValue(_state, out float[] perFrameTimes) &&
+                perFrameTimes != null &&
+                perFrameTimes.Length == frameCount)
+            {
+                int safe = _frameIndex;
+                if (safe < 0) safe = 0;
+                if (safe >= perFrameTimes.Length) safe = perFrameTimes.Length - 1;
+                return perFrameTimes[safe];
+            }
+
+            return FrameTime;
         }
     }
 }

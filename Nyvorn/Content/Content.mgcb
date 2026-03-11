@@ -157,6 +157,25 @@
 /processorParam:TextureFormat=Color
 /build:entities/player/legsTexture_base.png
 
+#begin entities/player/player_dodge.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:entities/player/player_dodge.png
+
+#begin ui/UIFont.spritefont
+/importer:FontDescriptionImporter
+/processor:FontDescriptionProcessor
+/processorParam:PremultiplyAlpha=True
+/processorParam:TextureFormat=Compressed
+/build:ui/UIFont.spritefont
+
 #begin weapons/shortStick.png
 /importer:TextureImporter
 /processor:TextureProcessor

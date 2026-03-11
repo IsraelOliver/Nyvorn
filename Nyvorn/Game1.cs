@@ -29,7 +29,7 @@ public class Game1 : Game
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _stateMachine = new StateMachine();
-        _stateMachine.ChangeState(new PlayingState(GraphicsDevice, Content));
+        _stateMachine.PushState(new PlayingState(GraphicsDevice, Content, _stateMachine));
     }
 
     protected override void Update(GameTime gameTime)

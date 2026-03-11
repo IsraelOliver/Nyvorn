@@ -21,6 +21,8 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             SetFrame(1, 1);
         }
 
+        public override bool UsesAttackHandPose => true;
+
         public override void SetAttackFrame(int frameIndex)
         {
             if (frameIndex < 0) frameIndex = 0;
