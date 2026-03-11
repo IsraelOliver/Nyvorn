@@ -12,7 +12,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private bool isGrounded;
         private bool isAttacking;
-        private float attackTimer;
         private MouseState prevMouse;
         private const float AttackDuration = 0.3f;
 
@@ -188,7 +187,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private void StartAttack()
         {
             isAttacking = true;
-            attackTimer = AttackDuration;
 
             animAttack.Reset();
             animAttack.Play(AnimationState.Attack);

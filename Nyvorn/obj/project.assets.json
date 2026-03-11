@@ -300,11 +300,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
+      "projectUniqueName": "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
       "projectName": "Nyvorn",
-      "projectPath": "C:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
+      "projectPath": "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\Nyvorn.csproj",
       "packagesPath": "C:\\Users\\Israel\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\obj\\",
+      "outputPath": "c:\\Users\\Israel\\Desktop\\Israel\\Programação\\Game Project - C#\\Projetos C#\\Ny'vorn\\Nyvorn-Reborn\\Nyvorn\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Israel\\AppData\\Roaming\\NuGet\\NuGet.Config"
