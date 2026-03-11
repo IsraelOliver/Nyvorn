@@ -6,6 +6,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         Walk = 1,
         Jump = 2,
         Fall = 3,
-        Attack = 4
+        Attack = 4,
+        Dodge = 5
     }
 }
