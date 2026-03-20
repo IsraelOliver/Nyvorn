@@ -20,6 +20,8 @@ namespace Nyvorn.Source.Engine.Input
             bool jumpPressed = keyboard.IsKeyDown(Keys.Space);
             bool attackPressed = mouse.LeftButton == ButtonState.Pressed &&
                                 _prevMouse.LeftButton == ButtonState.Released;
+            bool placePressed = mouse.RightButton == ButtonState.Pressed &&
+                               _prevMouse.RightButton == ButtonState.Released;
             bool openInventoryPressed = keyboard.IsKeyDown(Keys.E) && !_prevKeyboard.IsKeyDown(Keys.E);
             int hotbarSelectionIndex = -1;
             if ((keyboard.IsKeyDown(Keys.D1) && !_prevKeyboard.IsKeyDown(Keys.D1)) ||
@@ -49,6 +51,7 @@ namespace Nyvorn.Source.Engine.Input
                 moveDir,
                 jumpPressed,
                 attackPressed,
+                placePressed,
                 openInventoryPressed,
                 hotbarSelectionIndex,
                 dodgePressed,

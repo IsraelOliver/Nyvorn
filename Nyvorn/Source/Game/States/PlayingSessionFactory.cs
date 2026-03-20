@@ -45,6 +45,8 @@ namespace Nyvorn.Source.Game.States
             Texture2D attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
             Texture2D attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
             SpriteFont uiFont = content.Load<SpriteFont>("ui/UIFont");
+            PlayerConfig playerConfig = PlayerConfig.Default;
+            EnemyConfig enemyConfig = EnemyConfig.Default;
              
             Texture2D enemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
             Dictionary<ItemId, Texture2D> itemTextures = new();
@@ -54,7 +56,7 @@ namespace Nyvorn.Source.Game.States
             nullWeaponTexture.SetData(new[] { Color.Transparent });
             Dictionary<ItemId, Weapon> weapons = new()
             {
-                [ItemId.None] = new NullWeapon(nullWeaponTexture),
+                [ItemId.None] = new HandWeapon(nullWeaponTexture),
                 [ItemId.ShortStick] = new ShortStick(shortStickTexture)
             };
 
@@ -68,10 +70,11 @@ namespace Nyvorn.Source.Game.States
                 attackBodyTexture,
                 legsTexture,
                 handFrontWeaponRun,
-                playerDodgeTexture);
+                playerDodgeTexture,
+                playerConfig);
 
             List<Enemy> enemies = new();
-            EnemyRespawnController enemyRespawnController = new EnemyRespawnController(enemyTexture, new Vector2(118, 50));
+            EnemyRespawnController enemyRespawnController = new EnemyRespawnController(enemyTexture, new Vector2(118, 50), enemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
             List<WorldItem> worldItems = new()
             {
@@ -91,9 +94,15 @@ namespace Nyvorn.Source.Game.States
                 ItemTextures = itemTextures,
                 Weapons = weapons,
                 EnemyRespawnController = enemyRespawnController,
-                Camera = new Camera2D(),
+                Camera = new Camera2D
+                {
+                    FollowLerpX = 0f,
+                    FollowLerpY = 0.12f,
+                    FollowSnapMarginY = 28f
+                },
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
                 HudRenderer = new HudRenderer(graphicsDevice, uiFont, itemTextures),
+                TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 CombatSystem = new CombatSystem()
             };
         }

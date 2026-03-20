@@ -56,8 +56,42 @@ namespace Nyvorn.Source.World
         public Rectangle GetTileBounds(int x, int y) // retorna os limites em pixels do tile em (x, y) (útil pra desenhar e colisão)
             => new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize);
 
-        public Point WorldToTile(Vector2 worldPos) // converte uma posição em pixels para coordenadas de tile, ou seja, dado um ponto no mundo, retorna qual tile ele corresponde
+        public Point WorldToTile(Vector2 worldPos) // converte uma posicao em pixels para coordenadas de tile, ou seja, dado um ponto no mundo, retorna qual tile ele corresponde
             => new Point((int)(worldPos.X / TileSize), (int)(worldPos.Y / TileSize));
+
+        public Vector2 GetTileCenter(int x, int y)
+            => new Vector2(x * TileSize + (TileSize * 0.5f), y * TileSize + (TileSize * 0.5f));
+
+        public bool TryBreakTile(int x, int y, out TileType removedTile)
+        {
+            removedTile = TileType.Empty;
+
+            if (!InBounds(x, y))
+                return false;
+
+            TileType currentTile = _tiles[x, y];
+            if (!IsSolid(currentTile))
+                return false;
+
+            removedTile = currentTile;
+            _tiles[x, y] = TileType.Empty;
+            return true;
+        }
+
+        public bool TryPlaceTile(int x, int y, TileType tileType)
+        {
+            if (!InBounds(x, y))
+                return false;
+
+            if (tileType == TileType.Empty)
+                return false;
+
+            if (GetTile(x, y) != TileType.Empty)
+                return false;
+
+            _tiles[x, y] = tileType;
+            return true;
+        }
 
         public void GenerateTest()
         {

@@ -27,8 +27,12 @@ namespace Nyvorn.Source.Game.States
         public required Camera2D Camera { get; init; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
         public required HudRenderer HudRenderer { get; init; }
+        public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
         public required CombatSystem CombatSystem { get; init; }
         public int SelectedHotbarIndex { get; private set; }
+        private int lastBlockBreakAttackSequence = -1;
+        private Rectangle hoveredTileBounds;
+        private WorldTilePreviewState hoveredTileState = WorldTilePreviewState.Hidden;
 
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
@@ -36,7 +40,10 @@ namespace Nyvorn.Source.Game.States
                 SelectedHotbarIndex = input.HotbarSelectionIndex;
 
             SyncEquippedWeapon();
+            UpdateTilePreview(mouseWorld);
+            TryPlaceSelectedBlock(input, mouseWorld);
             Player.Update(dt, WorldMap, input, mouseWorld);
+            TryBreakTargetBlock(mouseWorld);
 
             for (int i = Enemies.Count - 1; i >= 0; i--)
                 Enemies[i].Update(dt, WorldMap);
@@ -53,6 +60,7 @@ namespace Nyvorn.Source.Game.States
         public void DrawWorld(SpriteBatch spriteBatch)
         {
             WorldMap.Draw(spriteBatch);
+            TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
 
             Player.Draw(spriteBatch);
             foreach (Enemy enemy in Enemies)
@@ -126,6 +134,104 @@ namespace Nyvorn.Source.Game.States
 
             if (Hotbar.TryAdd(worldItem.Definition) || Inventory.TryAdd(worldItem.Definition))
                 WorldItems.RemoveAt(index);
+        }
+
+        private void TryBreakTargetBlock(Vector2 mouseWorld)
+        {
+            if (!Player.HasActiveAttackHitbox)
+                return;
+
+            if (Player.AttackSequence == lastBlockBreakAttackSequence)
+                return;
+
+            Point tile = WorldMap.WorldToTile(mouseWorld);
+            TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
+            if (!Player.CanBreakTile(targetTile))
+                return;
+
+            Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
+            if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldInteractionRange)
+                return;
+
+            if (!WorldMap.TryBreakTile(tile.X, tile.Y, out TileType removedTile))
+                return;
+
+            SpawnBrokenBlockDrop(removedTile, tileCenter);
+            lastBlockBreakAttackSequence = Player.AttackSequence;
+        }
+
+        private void SpawnBrokenBlockDrop(TileType removedTile, Vector2 tileCenter)
+        {
+            if (!TileItemMapper.TryGetItemId(removedTile, out ItemId itemId))
+                return;
+
+            if (!ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
+                return;
+
+            if (!TryGetItemTexture(itemId, out Texture2D texture))
+                return;
+
+            WorldItems.Add(new WorldItem(definition, texture, tileCenter, pickupDelay: 0.15f));
+        }
+
+        private void TryPlaceSelectedBlock(InputState input, Vector2 mouseWorld)
+        {
+            if (!input.PlacePressed)
+                return;
+
+            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
+            if (selectedSlot.IsEmpty)
+                return;
+
+            if (!TileItemMapper.TryGetTileType(selectedSlot.ItemId, out TileType tileType))
+                return;
+
+            Point tile = WorldMap.WorldToTile(mouseWorld);
+            Rectangle tileBounds = WorldMap.GetTileBounds(tile.X, tile.Y);
+            if (tileBounds.Intersects(Player.Hurtbox))
+                return;
+
+            Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
+            if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldInteractionRange)
+                return;
+
+            if (!WorldMap.TryPlaceTile(tile.X, tile.Y, tileType))
+                return;
+
+            selectedSlot.RemoveOne();
+        }
+
+        private void UpdateTilePreview(Vector2 mouseWorld)
+        {
+            hoveredTileState = WorldTilePreviewState.Hidden;
+
+            Point tile = WorldMap.WorldToTile(mouseWorld);
+            if (!WorldMap.InBounds(tile.X, tile.Y))
+                return;
+
+            hoveredTileBounds = WorldMap.GetTileBounds(tile.X, tile.Y);
+            Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
+            bool inRange = Vector2.Distance(Player.Position, tileCenter) <= Player.WorldInteractionRange;
+
+            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
+            if (!selectedSlot.IsEmpty && TileItemMapper.TryGetTileType(selectedSlot.ItemId, out TileType placeTileType))
+            {
+                bool canPlace = inRange &&
+                                placeTileType != TileType.Empty &&
+                                WorldMap.GetTile(tile.X, tile.Y) == TileType.Empty &&
+                                !hoveredTileBounds.Intersects(Player.Hurtbox);
+
+                hoveredTileState = canPlace ? WorldTilePreviewState.PlaceValid : WorldTilePreviewState.PlaceInvalid;
+                return;
+            }
+
+            TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
+            if (!WorldMap.IsSolid(targetTile))
+                return;
+
+            hoveredTileState = inRange && Player.CanBreakTile(targetTile)
+                ? WorldTilePreviewState.BreakValid
+                : WorldTilePreviewState.BreakInvalid;
         }
     }
 }

@@ -9,11 +9,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public class Player : IDamageable, IHitSource
     {
+        private readonly PlayerConfig config;
         private readonly PlayerCombat combat;
         private readonly PlayerMotor motor;
         private readonly PlayerAnimator playerAnimator;
 
         public Vector2 Position => motor.Position;
+        private Vector2 VisualPosition => motor.VisualPosition;
         Vector2 IDamageable.Position => Position;
         public bool HasActiveAttackHitbox => combat.HasActiveAttackHitbox;
         public Rectangle AttackHitbox => combat.AttackHitbox;
@@ -25,15 +27,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public int MaxHealth => combat.MaxHealth;
         public bool IsAlive => combat.IsAlive;
         public bool IsInvincible => combat.IsInvincible;
-
-        private const float DodgeSpeed = 230f;
+        public float WorldInteractionRange => config.WorldInteractionRange;
 
         public const int SpriteW = 32;
         public const int SpriteH = 32;
-        public const int HitW = 10;
-        public const int HitH = 23;
-
-        private const float MoveSpeed = 90f;
 
         private int moveDir;
         private bool jumpPressed;
@@ -47,7 +44,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly Texture2D legs;
         private readonly Texture2D handFrontWeaponRun;
         private readonly Texture2D dodgeTexture;
-        private readonly Texture2D debugPixel;
         private Vector2 handWorld;
 
         public Player(
@@ -60,8 +56,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Texture2D bodyAttack,
             Texture2D legs,
             Texture2D handFrontWeaponRun,
-            Texture2D dodgeTexture)
+            Texture2D dodgeTexture,
+            PlayerConfig config = null)
         {
+            this.config = config ?? PlayerConfig.Default;
             body = sheet;
             handBack = handBackBase;
             handFront = handFrontBase;
@@ -72,13 +70,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             this.handFrontWeaponRun = handFrontWeaponRun;
             this.dodgeTexture = dodgeTexture;
 
-            motor = new PlayerMotor(startPositionPivotFoot);
+            motor = new PlayerMotor(startPositionPivotFoot, this.config);
             Texture2D emptyWeaponTexture = new Texture2D(sheet.GraphicsDevice, 1, 1);
             emptyWeaponTexture.SetData(new[] { Color.Transparent });
-            combat = new PlayerCombat(new NullWeapon(emptyWeaponTexture));
+            combat = new PlayerCombat(new HandWeapon(emptyWeaponTexture), this.config);
             playerAnimator = new PlayerAnimator();
-            debugPixel = new Texture2D(sheet.GraphicsDevice, 1, 1);
-            debugPixel.SetData(new[] { Color.Red });
         }
 
         public void Update(float dt, WorldMap worldMap, InputState input, Vector2 mouseWorld)
@@ -91,7 +87,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             combat.UpdateAttack(dt, moveDir, ref facingRight);
             playerAnimator.SetFacing(facingRight);
 
-            float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * DodgeSpeed : moveDir * MoveSpeed;
+            float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
             motor.Update(dt, worldMap, horizontalVelocity);
 
             if (motor.IsGrounded && jumpPressed)
@@ -100,7 +96,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             playerAnimator.Update(dt, motor.Velocity, moveDir, motor.IsGrounded, combat.IsAttacking, combat.IsDodging);
             bool useAttackHandPose = combat.IsAttacking && combat.UsesAttackHandPose;
             bool useWeaponWalkAnchor = combat.HasVisibleWeaponEquipped && combat.UsesAttackHandPose && moveDir != 0 && motor.IsGrounded && !combat.IsAttacking;
-            handWorld = playerAnimator.GetHandWorld(Position, useAttackHandPose, useWeaponWalkAnchor, combat.AttackAnimator);
+            handWorld = playerAnimator.GetHandWorld(VisualPosition, useAttackHandPose, useWeaponWalkAnchor, combat.AttackAnimator);
             combat.UpdateAttackHitbox(handWorld, playerAnimator.FacingRight);
         }
 
@@ -115,7 +111,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             Rectangle src = playerAnimator.BaseFrame;
             Rectangle attackSrc = combat.AttackAnimator.CurrentFrame;
             SpriteEffects fx = playerAnimator.Effects;
-            Vector2 drawPos = playerAnimator.GetDrawPosition(Position);
+            Vector2 drawPos = playerAnimator.GetDrawPosition(VisualPosition);
             bool isMoving = moveDir != 0;
             bool hasVisibleWeaponEquipped = combat.HasVisibleWeaponEquipped;
             bool useAttackHandPose = combat.IsAttacking && combat.UsesAttackHandPose;
@@ -149,8 +145,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     spriteBatch.Draw(handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
                 }
 
-                if (hasVisibleWeaponEquipped)
-                    spriteBatch.Draw(debugPixel, handWorld, Color.White);
                 return;
             }
 
@@ -159,13 +153,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimator.FrameIndex);
             combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
             spriteBatch.Draw(attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
-            if (hasVisibleWeaponEquipped)
-                spriteBatch.Draw(debugPixel, handWorld, Color.White);
         }
 
-        public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, HitW, HitH);
-        private float HitLeft => Position.X - (HitW * 0.5f);
-        private float HitTop => Position.Y - HitH + 1f;
+        public Rectangle Hurtbox => motor.Hurtbox;
 
         bool IDamageable.TryReceiveHit(Rectangle hitbox, int hitSequence, int damage)
         {
@@ -180,6 +170,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public void SetEquippedWeapon(Weapon weapon)
         {
             combat.SetEquippedWeapon(weapon);
+        }
+
+        public bool CanBreakTile(TileType tileType)
+        {
+            return combat.EquippedWeapon.CanBreakTile(tileType);
         }
 
         public void ApplyKnockback(float forceX, float forceY = -60f)
@@ -207,7 +202,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             Rectangle src = combat.DodgeAnimator.CurrentFrame;
             SpriteEffects fx = playerAnimator.Effects;
-            Vector2 drawPos = playerAnimator.GetDrawPosition(Position);
+            Vector2 drawPos = playerAnimator.GetDrawPosition(VisualPosition);
             Vector2 origin = new Vector2(16f, 32f);
             spriteBatch.Draw(dodgeTexture, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
         }

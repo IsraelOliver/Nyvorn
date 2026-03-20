@@ -26,12 +26,18 @@ namespace Nyvorn.Source.Gameplay.Items
         public Vector2 Position => position;
         public bool CanBePickedUp => pickupDelayTimer <= 0f;
 
-        private float Left => position.X - Definition.WorldPivot.X;
-        private float Right => Left + Definition.WorldSize.X - 1f;
-        private float Top => position.Y - Definition.WorldPivot.Y;
-        private float Bottom => Top + Definition.WorldSize.Y;
+        private float FrameLeft => position.X - Definition.WorldPivot.X;
+        private float FrameTop => position.Y - Definition.WorldPivot.Y;
+        private float Left => FrameLeft + Definition.WorldCollisionRect.X;
+        private float Right => Left + Definition.WorldCollisionRect.Width - 1f;
+        private float Top => FrameTop + Definition.WorldCollisionRect.Y;
+        private float Bottom => Top + Definition.WorldCollisionRect.Height;
 
-        public Rectangle WorldBounds => new Rectangle((int)Left, (int)Top, Definition.WorldSize.X, Definition.WorldSize.Y);
+        public Rectangle WorldBounds => new Rectangle(
+            (int)Left,
+            (int)Top,
+            Definition.WorldCollisionRect.Width,
+            Definition.WorldCollisionRect.Height);
 
         public void Update(float dt, WorldMap worldMap)
         {
@@ -50,8 +56,8 @@ namespace Nyvorn.Source.Gameplay.Items
         public void Draw(SpriteBatch spriteBatch)
         {
             Vector2 topLeft = new Vector2(
-                (float)System.Math.Round(position.X - Definition.WorldPivot.X),
-                (float)System.Math.Round(position.Y - Definition.WorldPivot.Y));
+                (float)System.Math.Round(FrameLeft),
+                (float)System.Math.Round(FrameTop));
 
             spriteBatch.Draw(
                 texture,
@@ -78,7 +84,7 @@ namespace Nyvorn.Source.Gameplay.Items
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
                         float tileTop = y * ts;
-                        position.Y = tileTop - Definition.WorldSize.Y + Definition.WorldPivot.Y;
+                        position.Y = tileTop - Definition.WorldCollisionRect.Bottom + Definition.WorldPivot.Y;
                         velocityY = 0f;
                         return;
                     }
@@ -94,7 +100,7 @@ namespace Nyvorn.Source.Gameplay.Items
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
                         float tileBottom = y * ts + ts;
-                        position.Y = tileBottom + Definition.WorldPivot.Y;
+                        position.Y = tileBottom - Definition.WorldCollisionRect.Y + Definition.WorldPivot.Y;
                         velocityY = 0f;
                         return;
                     }

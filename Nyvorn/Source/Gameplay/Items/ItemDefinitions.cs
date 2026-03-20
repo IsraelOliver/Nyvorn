@@ -20,7 +20,56 @@ namespace Nyvorn.Source.Gameplay.Items
                     GravityScale = 1.0f,
                     WorldSize = new Point(32, 32),
                     WorldPivot = new Point(10, 20),
-                    SpriteSheetCell = new Point(0, 1)
+                    SpriteSheetCell = new Point(0, 1),
+                    WorldCollisionRect = new Rectangle(6, 18, 20, 8)
+                }
+            },
+            {
+                ItemId.DirtBlock,
+                new ItemDefinition
+                {
+                    Id = ItemId.DirtBlock,
+                    Name = "Dirt Block",
+                    TexturePath = "blocks/dirt_block",
+                    Stackable = true,
+                    MaxStack = 999,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(8, 8),
+                    WorldPivot = new Point(4, 8),
+                    SpriteSheetCell = new Point(0, 0),
+                    WorldCollisionRect = new Rectangle(0, 0, 8, 8)
+                }
+            },
+            {
+                ItemId.StoneBlock,
+                new ItemDefinition
+                {
+                    Id = ItemId.StoneBlock,
+                    Name = "Stone Block",
+                    TexturePath = "blocks/stone_block",
+                    Stackable = true,
+                    MaxStack = 999,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(8, 8),
+                    WorldPivot = new Point(4, 8),
+                    SpriteSheetCell = new Point(0, 0),
+                    WorldCollisionRect = new Rectangle(0, 0, 8, 8)
+                }
+            },
+            {
+                ItemId.SandBlock,
+                new ItemDefinition
+                {
+                    Id = ItemId.SandBlock,
+                    Name = "Sand Block",
+                    TexturePath = "blocks/sand_block",
+                    Stackable = true,
+                    MaxStack = 999,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(8, 8),
+                    WorldPivot = new Point(4, 8),
+                    SpriteSheetCell = new Point(0, 0),
+                    WorldCollisionRect = new Rectangle(0, 0, 8, 8)
                 }
             }
         };

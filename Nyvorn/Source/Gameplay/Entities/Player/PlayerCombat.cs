@@ -5,14 +5,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public sealed class PlayerCombat
     {
-        private const float AttackDuration = 0.3f;
-        private const int DodgeFrames = 7;
-        private const float DodgeFrameTime = 0.05f;
-        private const float DodgeDuration = DodgeFrames * DodgeFrameTime;
-        private const float DodgeCooldown = 0.30f;
-        private const float HurtCooldown = 0.35f;
-        private const int MaxHealthValue = 100;
-
+        private readonly PlayerConfig config;
         private Weapon equippedWeapon;
         private readonly Animator attackAnimator;
         private readonly Animator dodgeAnimator;
@@ -28,18 +21,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private int health;
         private Rectangle attackHitbox;
 
-        public PlayerCombat(Weapon equippedWeapon)
+        public PlayerCombat(Weapon equippedWeapon, PlayerConfig config)
         {
+            this.config = config;
             this.equippedWeapon = equippedWeapon;
             attackAnimator = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
             dodgeAnimator = new Animator(PlayerAnimations.CreateDodge(), PlayerAnimations.CreateDodgeFrameTimes(), AnimationState.Dodge)
             {
-                FrameTime = DodgeFrameTime
+                FrameTime = config.DodgeFrameTime
             };
 
             attackSequence = 0;
             dodgeDir = 1;
-            health = MaxHealthValue;
+            health = config.MaxHealth;
             attackHitbox = Rectangle.Empty;
         }
 
@@ -56,7 +50,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public Rectangle AttackHitbox => attackHitbox;
         public int AttackSequence => attackSequence;
         public int Health => health;
-        public int MaxHealth => MaxHealthValue;
+        public int MaxHealth => config.MaxHealth;
         public bool IsAlive => health > 0;
 
         public void Tick(float dt)
@@ -78,7 +72,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 return false;
 
             isAttacking = true;
-            attackTimer = AttackDuration;
+            attackTimer = config.AttackDuration;
             attackSequence++;
 
             attackAnimator.Reset();
@@ -107,8 +101,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             dodgeDir = inputDodgeDir != 0 ? inputDodgeDir : (currentFacingRight ? 1 : -1);
             dodgeFacingRight = dodgeDir > 0;
             isDodging = true;
-            dodgeTimer = DodgeDuration;
-            dodgeCooldownTimer = DodgeCooldown;
+            dodgeTimer = config.DodgeDuration;
+            dodgeCooldownTimer = config.DodgeCooldown;
             dodgeAnimator.Reset();
             dodgeAnimator.Play(AnimationState.Dodge);
             return true;
@@ -179,7 +173,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 return false;
 
             health = System.Math.Max(0, health - damage);
-            hurtCooldownTimer = HurtCooldown;
+            hurtCooldownTimer = config.HurtCooldown;
             return true;
         }
     }
