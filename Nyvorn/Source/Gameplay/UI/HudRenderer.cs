@@ -30,11 +30,21 @@ namespace Nyvorn.Source.Gameplay.UI
 
         public Rectangle GetInventoryPanelBounds(int screenWidth, int screenHeight)
         {
+<<<<<<< HEAD
             const int panelWidth = 260;
             const int panelHeight = 156;
             return new Rectangle(
                 (screenWidth - panelWidth) / 2,
                 (screenHeight - panelHeight) / 2,
+=======
+            const int padding = 14;
+            const int inventoryWidth = (5 * SlotSize) + (4 * SlotGap);
+            const int panelWidth = inventoryWidth + 24;
+            const int panelHeight = SlotSize + SlotGap + (2 * SlotSize) + SlotGap + 24;
+            return new Rectangle(
+                padding - 8,
+                padding - 8,
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
                 panelWidth,
                 panelHeight);
         }
@@ -46,17 +56,31 @@ namespace Nyvorn.Source.Gameplay.UI
             spriteBatch.Draw(pixel, new Rectangle(panel.X - 2, panel.Y - 2, panel.Width + 4, panel.Height + 4), Color.Black * 0.9f);
             spriteBatch.DrawString(font, "Inventario", new Vector2(panel.X + 12, panel.Y + 8), Color.White);
 
+<<<<<<< HEAD
             DrawSlots(spriteBatch, hotbar.Slots, panel.X + 12, panel.Y + 34, hotbar.Capacity, 1, selectedHotbarIndex);
             DrawSlots(spriteBatch, inventory.Slots, panel.X + 12, panel.Y + 80, 5, 2);
+=======
+            int inventoryStartX = panel.X + 12;
+            int inventoryStartY = panel.Y + 34 + SlotSize + SlotGap;
+            DrawSlots(spriteBatch, inventory.Slots, inventoryStartX, inventoryStartY, 5, 2);
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
         }
 
         public bool TryGetSlotAtPoint(Hotbar hotbar, Inventory inventory, int screenWidth, int screenHeight, Point point, out bool isHotbar, out int slotIndex)
         {
             Rectangle panel = GetInventoryPanelBounds(screenWidth, screenHeight);
+<<<<<<< HEAD
 
             for (int i = 0; i < hotbar.Capacity; i++)
             {
                 Rectangle bounds = GetSlotBounds(panel.X + 12, panel.Y + 34, hotbar.Capacity, i);
+=======
+            const int padding = 14;
+
+            for (int i = 0; i < hotbar.Capacity; i++)
+            {
+                Rectangle bounds = GetSlotBounds(padding, padding, hotbar.Capacity, i);
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
                 if (bounds.Contains(point))
                 {
                     isHotbar = true;
@@ -67,7 +91,11 @@ namespace Nyvorn.Source.Gameplay.UI
 
             for (int i = 0; i < inventory.Capacity; i++)
             {
+<<<<<<< HEAD
                 Rectangle bounds = GetSlotBounds(panel.X + 12, panel.Y + 80, 5, i);
+=======
+                Rectangle bounds = GetSlotBounds(panel.X + 12, panel.Y + 34 + SlotSize + SlotGap, 5, i);
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
                 if (bounds.Contains(point))
                 {
                     isHotbar = false;

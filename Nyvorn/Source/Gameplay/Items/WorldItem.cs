@@ -10,18 +10,32 @@ namespace Nyvorn.Source.Gameplay.Items
         private readonly Texture2D texture;
         private Vector2 position;
         private float velocityY;
+<<<<<<< HEAD
 
         public WorldItem(ItemDefinition definition, Texture2D texture, Vector2 startPosition)
+=======
+        private float pickupDelayTimer;
+
+        public WorldItem(ItemDefinition definition, Texture2D texture, Vector2 startPosition, float pickupDelay = 0f)
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
         {
             Definition = definition;
             this.texture = texture;
             position = startPosition;
             velocityY = 0f;
+<<<<<<< HEAD
+=======
+            pickupDelayTimer = pickupDelay;
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
         }
 
         public ItemDefinition Definition { get; }
         public ItemId ItemId => Definition.Id;
         public Vector2 Position => position;
+<<<<<<< HEAD
+=======
+        public bool CanBePickedUp => pickupDelayTimer <= 0f;
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
 
         private float Left => position.X - Definition.WorldPivot.X;
         private float Right => Left + Definition.WorldSize.X - 1f;
@@ -35,6 +49,12 @@ namespace Nyvorn.Source.Gameplay.Items
             float prevBottom = Bottom;
             float prevTop = Top;
 
+<<<<<<< HEAD
+=======
+            if (pickupDelayTimer > 0f)
+                pickupDelayTimer -= dt;
+
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
             velocityY += PhysicsSettings.WorldGravity * Definition.GravityScale * dt;
             position.Y += velocityY * dt;
 

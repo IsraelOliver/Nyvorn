@@ -132,7 +132,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 {
                     combat.EquippedWeapon.SetWalk();
                     combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
+<<<<<<< HEAD
                     spriteBatch.Draw(attackHandFront, drawPos, new Rectangle(0, 0, 32, 32), Color.White, 0f, origin, 1f, fx, 0f);
+=======
+                    spriteBatch.Draw(handFrontWeaponRun, drawPos, new Rectangle(0, 0, 32, 32), Color.White, 0f, origin, 1f, fx, 0f);
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
                 }
                 else
                 {

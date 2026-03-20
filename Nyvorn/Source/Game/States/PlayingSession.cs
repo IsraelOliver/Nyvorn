@@ -90,11 +90,30 @@ namespace Nyvorn.Source.Game.States
             if (!ItemDefinitions.TryGet(itemId, out ItemDefinition definition) || !TryGetItemTexture(itemId, out Texture2D texture))
                 return false;
 
+<<<<<<< HEAD
             Vector2 spawnPosition = Player.Position + new Vector2(0f, -18f);
             WorldItems.Add(new WorldItem(definition, texture, spawnPosition));
             return true;
         }
 
+=======
+            Vector2 spawnPosition = Player.Position + new Vector2(12f, -26f);
+            WorldItems.Add(new WorldItem(definition, texture, spawnPosition, pickupDelay: 0.25f));
+            return true;
+        }
+
+        public bool TryStoreItem(ItemId itemId, int quantity, bool preferInventory)
+        {
+            if (quantity <= 0 || !ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
+                return false;
+
+            if (preferInventory)
+                return Inventory.TryAdd(definition, quantity) || Hotbar.TryAdd(definition, quantity);
+
+            return Hotbar.TryAdd(definition, quantity) || Inventory.TryAdd(definition, quantity);
+        }
+
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
         private void SyncEquippedWeapon()
         {
             InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
@@ -107,6 +126,12 @@ namespace Nyvorn.Source.Game.States
         private void TryCollectWorldItem(int index)
         {
             WorldItem worldItem = WorldItems[index];
+<<<<<<< HEAD
+=======
+            if (!worldItem.CanBePickedUp)
+                return;
+
+>>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
             if (!worldItem.WorldBounds.Intersects(Player.Hurtbox))
                 return;
 
