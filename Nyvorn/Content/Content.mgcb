@@ -49,6 +49,24 @@
 /processorParam:TextureFormat=Color
 /build:blocks/stone_block.png
 
+<<<<<<< HEAD
+#begin entities/player/bodyShortSword_attack.png
+=======
+#begin entities/enemy/enemy_test.png
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+<<<<<<< HEAD
+=======
+/build:entities/enemy/enemy_test.png
+
 #begin entities/player/bodyShortSword_attack.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -59,6 +77,7 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
 /build:entities/player/bodyShortSword_attack.png
 
 #begin entities/player/bodyTexture_base.png
@@ -97,6 +116,21 @@
 /processorParam:TextureFormat=Color
 /build:entities/player/handBackTexture_base.png
 
+<<<<<<< HEAD
+=======
+#begin entities/player/handFront_weaponRun.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:entities/player/handFront_weaponRun.png
+
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
 #begin entities/player/handFrontShortSword_attack.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -132,4 +166,38 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:entities/player/legsTexture_base.png
+<<<<<<< HEAD
+=======
+
+#begin entities/player/player_dodge.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:entities/player/player_dodge.png
+
+#begin ui/UIFont.spritefont
+/importer:FontDescriptionImporter
+/processor:FontDescriptionProcessor
+/processorParam:PremultiplyAlpha=True
+/processorParam:TextureFormat=Compressed
+/build:ui/UIFont.spritefont
+
+#begin weapons/shortStick.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:weapons/shortStick.png
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
 

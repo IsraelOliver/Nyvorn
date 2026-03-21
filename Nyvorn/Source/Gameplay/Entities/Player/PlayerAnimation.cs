@@ -1,9 +1,6 @@
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
-
-// esses arquivo será o "banco de dados" das animações do player, e o Animator.cs é a "máquina de estados" que controla qual frame desenhar baseado no estado atual do player (Idle, Walk, Jump, Fall).
-// O Animator.cs é genérico o suficiente pra ser usado por outros personagens, e o PlayerAnimations.cs é específico do player, onde definimos quais são os frames de cada animação.
-// O Animator.cs não tem conhecimento de quais são os estados ou quais frames cada estado tem, ele só recebe um dicionário de animações e o estado atual, e se vira pra desenhar o frame certo baseado nisso.
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
@@ -16,7 +13,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             return new Dictionary<AnimationState, Rectangle[]>
             {
+<<<<<<< HEAD
                 // Parado
+=======
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Idle,
                     new[]
@@ -25,7 +25,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
+<<<<<<< HEAD
                 // Correndo
+=======
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Walk,
                     new[]
@@ -39,7 +42,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
+<<<<<<< HEAD
                 // Pulo
+=======
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Jump,
                     new[]
@@ -48,7 +54,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
+<<<<<<< HEAD
                 // Queda
+=======
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Fall,
                     new[]
@@ -76,6 +85,145 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 }
             };
+        }
+
+        public static Dictionary<AnimationState, Rectangle[]> CreateDodge()
+        {
+            const int frameW = 32;
+            const int frameH = 32;
+
+            return new Dictionary<AnimationState, Rectangle[]>
+            {
+                {
+                    AnimationState.Dodge,
+                    new[]
+                    {
+                        new Rectangle(0 * frameW, 0, frameW, frameH),
+                        new Rectangle(1 * frameW, 0, frameW, frameH),
+                        new Rectangle(2 * frameW, 0, frameW, frameH),
+                        new Rectangle(3 * frameW, 0, frameW, frameH),
+                        new Rectangle(4 * frameW, 0, frameW, frameH),
+                        new Rectangle(5 * frameW, 0, frameW, frameH),
+                        new Rectangle(6 * frameW, 0, frameW, frameH)
+                    }
+                }
+            };
+        }
+
+        public static Dictionary<AnimationState, float[]> CreateDodgeFrameTimes()
+        {
+            return new Dictionary<AnimationState, float[]>
+            {
+                {
+                    AnimationState.Dodge,
+                    new[]
+                    {
+                        0.06f,
+                        0.06f,
+                        0.06f,
+                        0.05f,
+                        0.05f,
+                        0.05f,
+                        0.05f
+                    }
+                }
+            };
+        }
+
+        static readonly Vector2[] IdleHandAnchors =
+        {
+            new Vector2(9, 23)
+        };
+
+        static readonly Vector2[] WalkHandAnchors =
+        {
+            new Vector2(6, 21),
+            new Vector2(10, 23),
+            new Vector2(12, 22),
+            new Vector2(15, 20),
+            new Vector2(12, 22),
+            new Vector2(8, 23)
+        };
+
+        static readonly Vector2[] WalkWeaponHandAnchors =
+        {
+            new Vector2(7, 21),
+            new Vector2(7, 21),
+            new Vector2(7, 21),
+            new Vector2(7, 21),
+            new Vector2(7, 21),
+            new Vector2(7, 21)
+        };
+
+        static readonly Vector2[] JumpHandAnchors =
+        {
+            new Vector2(7, 22)
+        };
+
+        static readonly Vector2[] FallHandAnchors =
+        {
+            new Vector2(6, 13)
+        };
+
+        static readonly Vector2[] AttackHandAnchors =
+        {
+            new Vector2(7, 13),
+            new Vector2(17, 16),
+            new Vector2(14, 24)
+        };
+
+        public static Vector2 GetHandAnchor(AnimationState state, int frameIndex, bool useWeaponWalkAnchor)
+        {
+            switch (state)
+            {
+                case AnimationState.Attack:
+                    {
+                        int i = Math.Clamp(frameIndex, 0, AttackHandAnchors.Length - 1);
+                        return AttackHandAnchors[i];
+                    }
+
+                case AnimationState.Dodge:
+                    {
+                        int i = Math.Clamp(0, 0, IdleHandAnchors.Length - 1);
+                        return IdleHandAnchors[i];
+                    }
+
+                case AnimationState.Walk:
+                    {
+                        if (useWeaponWalkAnchor)
+                        {
+                            int weaponIndex = Math.Clamp(frameIndex, 0, WalkWeaponHandAnchors.Length - 1);
+                            return WalkWeaponHandAnchors[weaponIndex];
+                        }
+
+                        int walkIndex = Math.Clamp(frameIndex, 0, WalkHandAnchors.Length - 1);
+                        return WalkHandAnchors[walkIndex];
+                    }
+
+                case AnimationState.Jump:
+                    {
+                        int i = Math.Clamp(frameIndex, 0, JumpHandAnchors.Length - 1);
+                        return JumpHandAnchors[i];
+                    }
+
+                case AnimationState.Fall:
+                    {
+                        int i = Math.Clamp(frameIndex, 0, FallHandAnchors.Length - 1);
+                        return FallHandAnchors[i];
+                    }
+
+                case AnimationState.Idle:
+                default:
+                    {
+                        int i = Math.Clamp(frameIndex, 0, IdleHandAnchors.Length - 1);
+                        return IdleHandAnchors[i];
+                    }
+            }
+        }
+
+        public static Vector2 GetHandAnchor(Animator animator, bool useWeaponWalkAnchor)
+        {
+            return GetHandAnchor(animator.CurrentState, animator.FrameIndex, useWeaponWalkAnchor);
         }
     }
 }

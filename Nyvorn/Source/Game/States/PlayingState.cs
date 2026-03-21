@@ -1,19 +1,26 @@
-using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
-using Nyvorn.Source.Gameplay.Entities.Player;
-using Nyvorn.Source.Engine.Graphics;
-using Nyvorn.Source.World;
+using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Engine.Input;
+using Nyvorn.Source.Game;
 
 namespace Nyvorn.Source.Game.States
 {
-    public class PlayingState
+    public class PlayingState : IGameState
     {
-        GraphicsDevice graphicsDevice;
+        public bool UpdateBelow => false;
+        public bool DrawBelow => false;
+        public bool BlockInputBelow => true;
 
-        private readonly WorldMap worldMap;
+        private readonly GraphicsDevice graphicsDevice;
+        private readonly StateMachine stateMachine;
+        private readonly ContentManager content;
+        private readonly PlayingSession session;
+        private readonly InputService inputService = new();
+        private bool deathStatePushed;
 
+<<<<<<< HEAD
         private Texture2D backHandTexture;
         private Texture2D frontHandTexture;
         private Texture2D bodyTexture;
@@ -24,12 +31,17 @@ namespace Nyvorn.Source.Game.States
         private Texture2D attackBodyTexture;
 
         private Player player;
+=======
+        public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
+            : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
+        {
+        }
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
 
-        private Camera2D camera;
-
-        public PlayingState(GraphicsDevice graphicsDevice, ContentManager content)
+        public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine, PlayingSession session)
         {
             this.graphicsDevice = graphicsDevice;
+<<<<<<< HEAD
 
             var dirt  = content.Load<Texture2D>("blocks/dirt_block");
             var sand  = content.Load<Texture2D>("blocks/sand_block");
@@ -50,7 +62,17 @@ namespace Nyvorn.Source.Game.States
             
             player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture);
             camera = new Camera2D();
+=======
+            this.content = content;
+            this.stateMachine = stateMachine;
+            this.session = session;
+            deathStatePushed = false;
+>>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
         }
+
+        public void OnEnter() { }
+
+        public void OnExit() { }
 
         public void Update(GameTime gameTime)
         {
@@ -58,21 +80,46 @@ namespace Nyvorn.Source.Game.States
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
-          
-            player.Update(dt, worldMap, screenW, screenH);
-            camera.Follow(player.Position + new Vector2(8f, 12f), screenW, screenH);;
 
+            InputState input = inputService.Update();
+            if (input.OpenInventoryPressed && stateMachine.CurrentState is not InventoryState)
+                stateMachine.PushState(new InventoryState(graphicsDevice, stateMachine, session));
+
+            if (stateMachine.CurrentState is InventoryState inventoryState &&
+                inventoryState.ContainsMouse(Mouse.GetState().Position))
+            {
+                input = input.ConsumeWorldMouseInput();
+            }
+
+            Vector2 mouseWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
+            session.Update(dt, input, mouseWorld);
+
+            if (!session.Player.IsAlive && !deathStatePushed)
+            {
+                deathStatePushed = true;
+                stateMachine.PushState(new DeathState(graphicsDevice, content, RetryFromDeath));
+                return;
+            }
+
+            session.Camera.Follow(session.Player.Position + new Vector2(8f, 12f), screenW, screenH);
         }
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: camera.GetViewMatrix());
-
-            worldMap.Draw(spriteBatch);
-
-            player.Draw(spriteBatch);
-
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+            session.DrawWorld(spriteBatch);
             spriteBatch.End();
+
+            int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            session.DrawHud(spriteBatch, screenW);
+            spriteBatch.End();
+        }
+
+        private void RetryFromDeath()
+        {
+            stateMachine.Clear();
+            stateMachine.PushState(new PlayingState(graphicsDevice, content, stateMachine));
         }
     }
 }
