@@ -1,0 +1,211 @@
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+
+namespace Nyvorn.Source.World.Tissue
+{
+    public sealed class TissueMaskRenderer
+    {
+        private readonly Texture2D circle;
+        private readonly Effect compositeEffect;
+        private RenderTarget2D renderTarget;
+
+        public TissueMaskRenderer(GraphicsDevice graphicsDevice, Effect compositeEffect)
+        {
+            circle = CreateCircleTexture(graphicsDevice, 64);
+            this.compositeEffect = compositeEffect;
+        }
+
+        public Effect CompositeEffect => compositeEffect;
+        public Texture2D MaskTexture => renderTarget;
+
+        public void EnsureTarget(GraphicsDevice graphicsDevice, int width, int height)
+        {
+            if (renderTarget != null &&
+                renderTarget.Width == width &&
+                renderTarget.Height == height)
+                return;
+
+            renderTarget?.Dispose();
+            renderTarget = new RenderTarget2D(
+                graphicsDevice,
+                width,
+                height,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None,
+                0,
+                RenderTargetUsage.PreserveContents);
+        }
+
+        public void DrawMask(SpriteBatch spriteBatch, TissueNetwork tissueNetwork, float revealStrength, Vector2 focusPosition, float revealRadius)
+        {
+            if (tissueNetwork == null || revealStrength <= 0.001f)
+                return;
+
+            foreach (TissueBranch branch in tissueNetwork.Branches)
+            {
+                Vector2 midpoint = branch.Points[branch.Points.Count / 2];
+                float focusFalloff = GetFocusFalloff(midpoint, focusPosition, revealRadius);
+                float alphaScale = revealStrength * focusFalloff;
+                if (alphaScale <= 0.01f)
+                    continue;
+
+                float thickness = branch.IsPrimary
+                    ? 2.5f + branch.Thickness
+                    : 1.25f + branch.Thickness;
+
+                float auraThickness = branch.IsPrimary
+                    ? thickness * 1.85f
+                    : thickness * 1.45f;
+
+                Color auraColor = Color.White * (branch.IsPrimary
+                    ? 0.18f * alphaScale
+                    : 0.10f * alphaScale);
+
+                Color maskColor = Color.White * (branch.IsPrimary
+                    ? 0.65f * alphaScale
+                    : 0.42f * alphaScale);
+
+                for (int i = 0; i < branch.Points.Count - 1; i++)
+                {
+                    DrawLine(spriteBatch, branch.Points[i], branch.Points[i + 1], auraColor, auraThickness);
+                    DrawLine(spriteBatch, branch.Points[i], branch.Points[i + 1], maskColor, thickness);
+                }
+            }
+
+            foreach (TissueNode node in tissueNetwork.Nodes)
+            {
+                float focusFalloff = GetFocusFalloff(node.Position, focusPosition, revealRadius);
+                float alphaScale = revealStrength * focusFalloff;
+                if (alphaScale <= 0.01f)
+                    continue;
+
+                float size = node.IsPrimary ? 7f : 4f;
+                float haloSize = node.IsPrimary ? size * 3.5f : size * 2.8f;
+                float midHaloSize = node.IsPrimary ? size * 2.35f : size * 1.9f;
+                float coreSize = node.IsPrimary ? size * 0.62f : size * 0.58f;
+                Color outerHaloColor = Color.White * (node.IsPrimary
+                    ? 0.20f * alphaScale
+                    : 0.12f * alphaScale);
+                Color midHaloColor = Color.White * (node.IsPrimary
+                    ? 0.36f * alphaScale
+                    : 0.22f * alphaScale);
+                Color maskColor = Color.White * (node.IsPrimary
+                    ? 0.95f * alphaScale
+                    : 0.68f * alphaScale);
+                Color coreColor = Color.White * (node.IsPrimary
+                    ? 1.00f * alphaScale
+                    : 0.82f * alphaScale);
+
+                DrawPoint(spriteBatch, node.Position, haloSize, outerHaloColor);
+                DrawPoint(spriteBatch, node.Position, midHaloSize, midHaloColor);
+                DrawPoint(spriteBatch, node.Position, size, maskColor);
+                DrawPoint(spriteBatch, node.Position, coreSize, coreColor);
+            }
+        }
+
+        public void DrawComposite(
+            SpriteBatch spriteBatch,
+            float revealStrength,
+            float timeSeconds,
+            Vector2 focusScreenPosition,
+            float revealRadiusPixels,
+            float waveProgress,
+            float layerMode,
+            float layerOpacity)
+        {
+            if (renderTarget == null || revealStrength <= 0.001f || compositeEffect == null)
+                return;
+
+            compositeEffect.Parameters["Time"]?.SetValue(timeSeconds);
+            compositeEffect.Parameters["RevealStrength"]?.SetValue(revealStrength);
+            compositeEffect.Parameters["ScreenSize"]?.SetValue(new Vector2(renderTarget.Width, renderTarget.Height));
+            compositeEffect.Parameters["FocusScreenPosition"]?.SetValue(focusScreenPosition);
+            compositeEffect.Parameters["RevealRadiusPixels"]?.SetValue(revealRadiusPixels);
+            compositeEffect.Parameters["WaveProgress"]?.SetValue(waveProgress);
+            compositeEffect.Parameters["LayerMode"]?.SetValue(layerMode);
+            compositeEffect.Parameters["LayerOpacity"]?.SetValue(layerOpacity);
+
+            Rectangle destination = new Rectangle(0, 0, renderTarget.Width, renderTarget.Height);
+            spriteBatch.Draw(renderTarget, destination, Color.White);
+        }
+
+        public void DrawRawOverlay(SpriteBatch spriteBatch, Color color)
+        {
+            if (renderTarget == null)
+                return;
+
+            Rectangle destination = new Rectangle(0, 0, renderTarget.Width, renderTarget.Height);
+            spriteBatch.Draw(renderTarget, destination, color);
+        }
+
+        private void DrawLine(SpriteBatch spriteBatch, Vector2 start, Vector2 end, Color color, float thickness)
+        {
+            Vector2 delta = end - start;
+            float length = delta.Length();
+            if (length <= 0.001f)
+                return;
+
+            float spacing = System.MathF.Max(0.85f, thickness * 0.32f);
+            int steps = System.Math.Max(1, (int)System.MathF.Ceiling(length / spacing));
+            float diameter = System.MathF.Max(1.5f, thickness * 1.18f);
+
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = steps == 0 ? 0f : (float)i / steps;
+                Vector2 position = Vector2.Lerp(start, end, t);
+                DrawDisc(spriteBatch, position, diameter, color);
+            }
+        }
+
+        private void DrawPoint(SpriteBatch spriteBatch, Vector2 position, float size, Color color)
+        {
+            DrawDisc(spriteBatch, position, size, color);
+        }
+
+        private float GetFocusFalloff(Vector2 worldPosition, Vector2 focusPosition, float revealRadius)
+        {
+            if (revealRadius <= 0f)
+                return 1f;
+
+            float distance = Vector2.Distance(worldPosition, focusPosition);
+            float normalized = MathHelper.Clamp(distance / revealRadius, 0f, 1f);
+            float strongNear = 1f - (normalized * normalized);
+            return MathHelper.Lerp(0.18f, 1f, strongNear);
+        }
+
+        private static Texture2D CreateCircleTexture(GraphicsDevice graphicsDevice, int diameter)
+        {
+            Texture2D texture = new Texture2D(graphicsDevice, diameter, diameter);
+            Color[] data = new Color[diameter * diameter];
+            float radius = diameter * 0.5f;
+            Vector2 center = new Vector2(radius - 0.5f, radius - 0.5f);
+
+            for (int y = 0; y < diameter; y++)
+            {
+                for (int x = 0; x < diameter; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), center);
+                    float normalized = MathHelper.Clamp(1f - (distance / radius), 0f, 1f);
+                    float alpha = normalized * normalized;
+                    data[(y * diameter) + x] = Color.White * alpha;
+                }
+            }
+
+            texture.SetData(data);
+            return texture;
+        }
+
+        private void DrawDisc(SpriteBatch spriteBatch, Vector2 position, float diameter, Color color)
+        {
+            int roundedDiameter = System.Math.Max(1, (int)System.MathF.Ceiling(diameter));
+            Rectangle rectangle = new Rectangle(
+                (int)System.MathF.Round(position.X - (roundedDiameter * 0.5f)),
+                (int)System.MathF.Round(position.Y - (roundedDiameter * 0.5f)),
+                roundedDiameter,
+                roundedDiameter);
+
+            spriteBatch.Draw(circle, rectangle, color);
+        }
+    }
+}

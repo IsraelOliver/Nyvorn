@@ -13,6 +13,7 @@ namespace Nyvorn.Source.Gameplay.Items
         public required Point WorldSize { get; init; }
         public required Point WorldPivot { get; init; }
         public required Point SpriteSheetCell { get; init; }
+        public required Rectangle WorldCollisionRect { get; init; }
 
         public Rectangle SourceRectangle =>
             new Rectangle(

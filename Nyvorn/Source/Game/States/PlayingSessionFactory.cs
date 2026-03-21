@@ -9,6 +9,8 @@ using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Generation;
+using Nyvorn.Source.World.Tissue;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Game.States
@@ -26,13 +28,23 @@ namespace Nyvorn.Source.Game.States
 
         public PlayingSession Create()
         {
-            Texture2D dirt = content.Load<Texture2D>("blocks/dirt_block");
+            Texture2D dirt = content.Load<Texture2D>("blocks/dirt_spritesheet");
             Texture2D sand = content.Load<Texture2D>("blocks/sand_block");
             Texture2D stone = content.Load<Texture2D>("blocks/stone_block");
 
-            WorldMap worldMap = new WorldMap(100, 50, 8);
+            WorldMap worldMap = new WorldMap(240, 80, 8);
             worldMap.SetTextures(dirt, sand, stone);
-            worldMap.GenerateTest();
+            WorldGenSettings worldGenSettings = new WorldGenSettings
+            {
+                Seed = 1337,
+                SurfaceAmplitude = 8,
+                BaseGroundLevel = 46,
+                CaveStartDepth = 6
+            };
+            WorldGenerator worldGenerator = new WorldGenerator(worldGenSettings);
+            worldGenerator.Generate(worldMap);
+            worldGenerator.CarveStarterSubterranean(worldMap, 24);
+            TissueNetwork tissueNetwork = new TissueGenerator(worldGenSettings.Seed).Generate(worldMap);
 
             Texture2D backHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
             Texture2D bodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
@@ -44,7 +56,10 @@ namespace Nyvorn.Source.Game.States
             Texture2D attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
             Texture2D attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
             Texture2D attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
+            Effect tissueRevealEffect = content.Load<Effect>("shaders/TissueReveal");
             SpriteFont uiFont = content.Load<SpriteFont>("ui/UIFont");
+            PlayerConfig playerConfig = PlayerConfig.Default;
+            EnemyConfig enemyConfig = EnemyConfig.Default;
              
             Texture2D enemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
             Dictionary<ItemId, Texture2D> itemTextures = new();
@@ -54,12 +69,16 @@ namespace Nyvorn.Source.Game.States
             nullWeaponTexture.SetData(new[] { Color.Transparent });
             Dictionary<ItemId, Weapon> weapons = new()
             {
-                [ItemId.None] = new NullWeapon(nullWeaponTexture),
+                [ItemId.None] = new HandWeapon(nullWeaponTexture),
                 [ItemId.ShortStick] = new ShortStick(shortStickTexture)
             };
 
+            Vector2 playerSpawn = worldGenerator.GetSurfaceSpawnPosition(worldMap, 20);
+            Vector2 enemySpawn = worldGenerator.GetSurfaceSpawnPosition(worldMap, 36);
+            Vector2 shortStickSpawn = worldGenerator.GetSurfaceSpawnPosition(worldMap, 28, 2);
+
             Player player = new Player(
-                new Vector2(90, 50),
+                playerSpawn,
                 bodyTexture,
                 backHandTexture,
                 frontHandTexture,
@@ -68,14 +87,15 @@ namespace Nyvorn.Source.Game.States
                 attackBodyTexture,
                 legsTexture,
                 handFrontWeaponRun,
-                playerDodgeTexture);
+                playerDodgeTexture,
+                playerConfig);
 
             List<Enemy> enemies = new();
-            EnemyRespawnController enemyRespawnController = new EnemyRespawnController(enemyTexture, new Vector2(118, 50));
+            EnemyRespawnController enemyRespawnController = new EnemyRespawnController(enemyTexture, enemySpawn, enemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
             List<WorldItem> worldItems = new()
             {
-                new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), shortStickTexture, new Vector2(140, 30))
+                new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), shortStickTexture, shortStickSpawn)
             };
             Hotbar hotbar = new Hotbar(2);
             Inventory inventory = new Inventory(10);
@@ -91,10 +111,20 @@ namespace Nyvorn.Source.Game.States
                 ItemTextures = itemTextures,
                 Weapons = weapons,
                 EnemyRespawnController = enemyRespawnController,
-                Camera = new Camera2D(),
+                Camera = new Camera2D
+                {
+                    FollowLerpX = 0f,
+                    FollowLerpY = 0.12f,
+                    FollowSnapMarginY = 28f
+                },
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
                 HudRenderer = new HudRenderer(graphicsDevice, uiFont, itemTextures),
-                CombatSystem = new CombatSystem()
+                TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
+                CombatSystem = new CombatSystem(),
+                TissueNetwork = tissueNetwork,
+                TissueMaskRenderer = new TissueMaskRenderer(graphicsDevice, tissueRevealEffect),
+                TissueRevealController = new TissueRevealController(worldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
+                TissueDebugRenderer = new TissueDebugRenderer(graphicsDevice)
             };
         }
     }

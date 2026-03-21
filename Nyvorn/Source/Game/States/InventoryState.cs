@@ -37,10 +37,7 @@ namespace Nyvorn.Source.Game.States
 
         public void OnExit()
         {
-<<<<<<< HEAD
-=======
             ReturnHeldItem();
->>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
         }
 
         public void Update(GameTime gameTime)
@@ -52,14 +49,10 @@ namespace Nyvorn.Source.Game.States
             bool dropPressed = keyboard.IsKeyDown(Keys.T) && !previousKeyboard.IsKeyDown(Keys.T);
 
             if (closePressed)
-<<<<<<< HEAD
-                stateMachine.PopState();
-=======
             {
                 ReturnHeldItem();
                 stateMachine.PopState();
             }
->>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
 
             bool clickPressed = mouse.LeftButton == ButtonState.Pressed &&
                                previousMouse.LeftButton == ButtonState.Released;
@@ -99,16 +92,12 @@ namespace Nyvorn.Source.Game.States
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
 
             if (!session.HudRenderer.TryGetSlotAtPoint(session.Hotbar, session.Inventory, screenW, screenH, mousePosition, out bool isHotbar, out int slotIndex))
-<<<<<<< HEAD
-                return;
-=======
             {
                 if (!heldSlot.IsEmpty && !ContainsMouse(mousePosition) && session.TryDropItem(heldSlot.ItemId))
                     heldSlot.RemoveOne();
 
                 return;
             }
->>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
 
             InventorySlot clickedSlot = isHotbar ? session.Hotbar.GetSlot(slotIndex) : session.Inventory.GetSlot(slotIndex);
 
@@ -172,8 +161,6 @@ namespace Nyvorn.Source.Game.States
             if (session.TryDropItem(slot.ItemId))
                 slot.RemoveOne();
         }
-<<<<<<< HEAD
-=======
 
         private void ReturnHeldItem()
         {
@@ -183,6 +170,5 @@ namespace Nyvorn.Source.Game.States
             if (session.TryStoreItem(heldSlot.ItemId, heldSlot.Quantity, preferInventory: true))
                 heldSlot.Clear();
         }
->>>>>>> d4a2ce360884c0ff8a56fc0be660eec69460e709
     }
 }

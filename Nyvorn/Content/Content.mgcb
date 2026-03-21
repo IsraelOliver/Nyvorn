@@ -13,7 +13,7 @@
 
 #---------------------------------- Content ---------------------------------#
 
-#begin blocks/dirt_block.png
+#begin blocks/dirt_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -23,7 +23,7 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/dirt_block.png
+/build:blocks/dirt_spritesheet.png
 
 #begin blocks/sand_block.png
 /importer:TextureImporter
@@ -176,6 +176,11 @@
 /processorParam:TextureFormat=Compressed
 /build:ui/UIFont.spritefont
 
+#begin shaders/TissueReveal.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/build:shaders/TissueReveal.fx
+
 #begin weapons/shortStick.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -187,4 +192,3 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:weapons/shortStick.png
-

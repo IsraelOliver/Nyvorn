@@ -4,19 +4,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 {
     public sealed class EnemyCombat
     {
-        private const float AttackVisualDuration = 0.12f;
-        private const float HurtDuration = 0.15f;
-
+        private readonly EnemyConfig config;
         private readonly int maxHealth;
         private int health;
         private int lastDamageHitSequence = -1;
         private float attackTimer;
         private float hurtTimer;
 
-        public EnemyCombat(int maxHealth)
+        public EnemyCombat(EnemyConfig config)
         {
-            this.maxHealth = maxHealth;
-            health = maxHealth;
+            this.config = config;
+            maxHealth = config.MaxHealth;
+            health = config.MaxHealth;
             attackTimer = 0f;
             hurtTimer = 0f;
         }
@@ -48,17 +47,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
             health = System.Math.Max(0, health - damage);
             lastDamageHitSequence = hitSequence;
-            hurtTimer = HurtDuration;
+            hurtTimer = config.HurtDuration;
             return true;
         }
 
-        public void TriggerAttackVisual(float duration = AttackVisualDuration)
+        public void TriggerAttackVisual(float? duration = null)
         {
             if (!IsAlive)
                 return;
 
-            if (duration > attackTimer)
-                attackTimer = duration;
+            float visualDuration = duration ?? config.AttackVisualDuration;
+            if (visualDuration > attackTimer)
+                attackTimer = visualDuration;
         }
     }
 }

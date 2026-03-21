@@ -70,11 +70,21 @@ namespace Nyvorn.Source.Game.States
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
+            session.RenderTissueMask(graphicsDevice, spriteBatch);
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
             session.DrawWorld(spriteBatch);
             spriteBatch.End();
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
+            spriteBatch.Begin(
+                sortMode: SpriteSortMode.Deferred,
+                samplerState: SamplerState.PointClamp,
+                blendState: BlendState.Additive,
+                effect: session.TissueCompositeEffect);
+            session.DrawTissueOverlay(spriteBatch);
+            spriteBatch.End();
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW);
             spriteBatch.End();

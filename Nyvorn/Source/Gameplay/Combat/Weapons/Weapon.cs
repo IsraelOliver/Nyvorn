@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Combat.Weapons
 {
@@ -21,6 +22,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual bool IsVisibleInHand => true;
         public virtual bool UsesAttackHandPose => false;
         public virtual bool IsActiveFrame(int frameIndex) { return false; }
+        public virtual bool CanBreakTile(TileType tileType) { return false; }
 
         protected int frameX;
         protected int frameY;
