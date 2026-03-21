@@ -9,13 +9,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 {
     public class Enemy : IDamageable, IHitSource
     {
+        private readonly EnemyConfig config;
         private readonly Texture2D texture;
         private readonly EnemyAnimator animator;
         private readonly EnemyCombat combat;
         private readonly EnemyMotor motor;
-
-        private const int FrameW = 32;
-        private const int FrameH = 32;
 
         public Vector2 Position => motor.Position;
         public bool IsAlive => combat.IsAlive;
@@ -32,11 +30,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             return combat.TryReceiveHit(Hurtbox, hitbox, hitSequence, damage);
         }
 
-        public Enemy(Texture2D texture, Vector2 position, int maxHealth = 100)
+        public Enemy(Texture2D texture, Vector2 position, EnemyConfig config = null)
         {
+            this.config = config ?? EnemyConfig.Default;
             this.texture = texture;
-            motor = new EnemyMotor(position);
-            combat = new EnemyCombat(maxHealth);
+            motor = new EnemyMotor(position, this.config);
+            combat = new EnemyCombat(this.config);
 
             animator = new EnemyAnimator(EnemyTestAnimations.Create(), EnemyAnimState.Idle);
         }
@@ -56,7 +55,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             motor.ApplyKnockback(forceX, forceY);
         }
 
-        public void TriggerAttackVisual(float duration = 0.12f)
+        public void TriggerAttackVisual(float? duration = null)
         {
             combat.TriggerAttackVisual(duration);
         }
@@ -73,7 +72,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
             Rectangle src = animator.CurrentFrame;
             if (src == Rectangle.Empty)
-                src = new Rectangle(0, 1 * FrameH, FrameW, FrameH);
+                src = new Rectangle(0, config.FrameHeight, config.FrameWidth, config.FrameHeight);
 
             Vector2 origin = new Vector2(16f, 32f);
             spriteBatch.Draw(texture, Position, src, Color.White, 0f, origin, 1f, SpriteEffects.None, 0f);

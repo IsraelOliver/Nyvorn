@@ -1,16 +1,19 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies
 {
     public sealed class EnemyMotor
     {
+        private readonly EnemyConfig config;
         private Vector2 position;
         private float velocityY;
         private float knockbackVelocityX;
 
-        public EnemyMotor(Vector2 startPosition)
+        public EnemyMotor(Vector2 startPosition, EnemyConfig config)
         {
+            this.config = config;
             position = startPosition;
             velocityY = 0f;
             knockbackVelocityX = 0f;
@@ -19,12 +22,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         public Vector2 Position => position;
         public float KnockbackVelocityX => knockbackVelocityX;
 
-        private float HitLeft => position.X - 8f;
-        private float HitRight => HitLeft + 16f - 1f;
+        private float HitLeft => position.X - (config.HurtboxSize.X * 0.5f);
+        private float HitRight => HitLeft + config.HurtboxSize.X - 1f;
         private float HitBottom => position.Y;
-        private float HitTop => HitBottom - 24f + 1f;
+        private float HitTop => HitBottom - config.HurtboxSize.Y + 1f;
 
-        public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, 16, 24);
+        public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, config.HurtboxSize.X, config.HurtboxSize.Y);
 
         public void Update(float dt, WorldMap worldMap)
         {
@@ -32,9 +35,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             float prevHitTop = HitTop;
 
             position.X += knockbackVelocityX * dt;
-            knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * 10f, 0f, 1f));
+            knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * config.KnockbackRecovery, 0f, 1f));
 
-            velocityY += 800f * dt;
+            velocityY += PhysicsSettings.WorldGravity * config.GravityScale * dt;
             position.Y += velocityY * dt;
             ResolveWorldCollisionsY(worldMap, prevHitBottom, prevHitTop);
         }
@@ -80,7 +83,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                     if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
                     {
                         float tileBottom = y * ts + ts;
-                        position.Y = tileBottom + 24f - 1f;
+                        position.Y = tileBottom + config.HurtboxSize.Y - 1f;
                         velocityY = 0f;
                         return;
                     }

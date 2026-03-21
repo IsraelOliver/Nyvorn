@@ -20,54 +20,18 @@ namespace Nyvorn.Source.Game.States
         private readonly InputService inputService = new();
         private bool deathStatePushed;
 
-<<<<<<< HEAD
-        private Texture2D backHandTexture;
-        private Texture2D frontHandTexture;
-        private Texture2D bodyTexture;
-        private Texture2D legsTexture;
-
-        private Texture2D attackHandbackTexture;
-        private Texture2D attackHandfrontTexture;
-        private Texture2D attackBodyTexture;
-
-        private Player player;
-=======
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
         {
         }
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine, PlayingSession session)
         {
             this.graphicsDevice = graphicsDevice;
-<<<<<<< HEAD
-
-            var dirt  = content.Load<Texture2D>("blocks/dirt_block");
-            var sand  = content.Load<Texture2D>("blocks/sand_block");
-            var stone = content.Load<Texture2D>("blocks/stone_block");
-
-            worldMap = new WorldMap(100, 50, 8);
-            worldMap.SetTextures(dirt, sand, stone);
-            worldMap.GenerateTest();
-
-            backHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
-            bodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
-            legsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
-            frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
-
-            attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
-            attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
-            attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
-            
-            player = new Player(new Vector2(90, 50), bodyTexture, backHandTexture, frontHandTexture, attackHandbackTexture, attackHandfrontTexture, attackBodyTexture, legsTexture);
-            camera = new Camera2D();
-=======
             this.content = content;
             this.stateMachine = stateMachine;
             this.session = session;
             deathStatePushed = false;
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
         }
 
         public void OnEnter() { }
@@ -106,11 +70,21 @@ namespace Nyvorn.Source.Game.States
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
+            session.RenderTissueMask(graphicsDevice, spriteBatch);
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
             session.DrawWorld(spriteBatch);
             spriteBatch.End();
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
+            spriteBatch.Begin(
+                sortMode: SpriteSortMode.Deferred,
+                samplerState: SamplerState.PointClamp,
+                blendState: BlendState.Additive,
+                effect: session.TissueCompositeEffect);
+            session.DrawTissueOverlay(spriteBatch);
+            spriteBatch.End();
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW);
             spriteBatch.End();

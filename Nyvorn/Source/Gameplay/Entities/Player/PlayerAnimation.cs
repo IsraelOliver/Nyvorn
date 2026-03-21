@@ -13,10 +13,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             return new Dictionary<AnimationState, Rectangle[]>
             {
-<<<<<<< HEAD
-                // Parado
-=======
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Idle,
                     new[]
@@ -25,10 +21,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-<<<<<<< HEAD
-                // Correndo
-=======
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Walk,
                     new[]
@@ -42,10 +34,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-<<<<<<< HEAD
-                // Pulo
-=======
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Jump,
                     new[]
@@ -54,10 +42,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     }
                 },
 
-<<<<<<< HEAD
-                // Queda
-=======
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 {
                     AnimationState.Fall,
                     new[]

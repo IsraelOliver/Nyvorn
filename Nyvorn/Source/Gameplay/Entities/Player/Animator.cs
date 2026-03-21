@@ -95,10 +95,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 Rectangle[] frames = _animations[_state];
                 if (frames == null || frames.Length == 0) return true;
 
-<<<<<<< HEAD
-                // Walk é loop, então nunca "termina"
-=======
->>>>>>> 06a0242ea9d5e0753e26f589eb466b0d3ef40484
                 if (_state == AnimationState.Walk) return false;
 
                 return _frameIndex >= frames.Length - 1;
