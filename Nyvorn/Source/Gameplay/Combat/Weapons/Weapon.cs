@@ -7,22 +7,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
     public class Weapon
     {
         protected readonly Texture2D texture;
-
         protected readonly int frameW;
         protected readonly int frameH;
-
         protected readonly Point pivot;
-
-        public virtual void SetIdle() { }
-        public virtual void SetWalk() { }
-
-        public virtual void SetAttackFrame(int frameIndex) { }
-
-        public virtual bool CanAttack => true;
-        public virtual bool IsVisibleInHand => true;
-        public virtual bool UsesAttackHandPose => false;
-        public virtual bool IsActiveFrame(int frameIndex) { return false; }
-        public virtual bool CanBreakTile(TileType tileType) { return false; }
 
         protected int frameX;
         protected int frameY;
@@ -37,6 +24,16 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             frameX = 0;
             frameY = 0;
         }
+
+        public virtual bool CanAttack => true;
+        public virtual bool IsVisibleInHand => true;
+        public virtual bool UsesAttackHandPose => false;
+
+        public virtual void SetIdle() { }
+        public virtual void SetWalk() { }
+        public virtual void SetAttackFrame(int frameIndex) { }
+        public virtual bool IsActiveFrame(int frameIndex) => false;
+        public virtual bool CanBreakTile(TileType tileType) => false;
 
         public void SetFrame(int x, int y)
         {
