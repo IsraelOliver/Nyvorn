@@ -182,6 +182,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             motor.ApplyKnockback(forceX, forceY);
         }
 
+        public void ShiftX(float deltaX)
+        {
+            motor.Position = new Vector2(motor.Position.X + deltaX, motor.Position.Y);
+        }
+
         void IHitSource.OnHitConnected()
         {
         }

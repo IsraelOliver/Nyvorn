@@ -9,6 +9,7 @@ namespace Nyvorn.Source.World
             itemId = tileType switch
             {
                 TileType.Dirt => ItemId.DirtBlock,
+                TileType.Grass => ItemId.DirtBlock,
                 TileType.Stone => ItemId.StoneBlock,
                 TileType.Sand => ItemId.SandBlock,
                 _ => ItemId.None

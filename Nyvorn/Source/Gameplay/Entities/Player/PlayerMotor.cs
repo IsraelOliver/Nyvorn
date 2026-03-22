@@ -95,13 +95,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             int ts = worldMap.TileSize;
             float top = HitTop + 1;
             float bottom = HitBottom - 1;
-            int tileYTop = (int)(top / ts);
-            int tileYBottom = (int)(bottom / ts);
+            int tileYTop = (int)System.MathF.Floor(top / ts);
+            int tileYBottom = (int)System.MathF.Floor(bottom / ts);
 
             if (velocityX > 0)
             {
                 float right = HitRight;
-                int tileX = (int)(right / ts);
+                int tileX = (int)System.MathF.Floor(right / ts);
 
                 if (HasSolidInColumn(worldMap, tileX, tileYTop, tileYBottom))
                 {
@@ -118,7 +118,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             else if (velocityX < 0)
             {
                 float left = HitLeft;
-                int tileX = (int)(left / ts);
+                int tileX = (int)System.MathF.Floor(left / ts);
 
                 if (HasSolidInColumn(worldMap, tileX, tileYTop, tileYBottom))
                 {
@@ -185,8 +185,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             int ts = worldMap.TileSize;
             float frontX = moveDir > 0 ? HitRight + 1f : HitLeft - 1f;
-            int tileX = (int)(frontX / ts);
-            int tileYBottom = (int)((HitBottom - 1f) / ts);
+            int tileX = (int)System.MathF.Floor(frontX / ts);
+            int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
             int tileYAbove = tileYBottom - 1;
 
             // So sobe degrau de 1 tile: bloco na base, espaco livre logo acima.
@@ -209,10 +209,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool HasSolidOverlap(WorldMap worldMap)
         {
             int ts = worldMap.TileSize;
-            int tileXLeft = (int)((HitLeft + 1f) / ts);
-            int tileXRight = (int)((HitRight - 1f) / ts);
-            int tileYTop = (int)(HitTop / ts);
-            int tileYBottom = (int)((HitBottom - 1f) / ts);
+            int tileXLeft = (int)System.MathF.Floor((HitLeft + 1f) / ts);
+            int tileXRight = (int)System.MathF.Floor((HitRight - 1f) / ts);
+            int tileYTop = (int)System.MathF.Floor(HitTop / ts);
+            int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
 
             for (int y = tileYTop; y <= tileYBottom; y++)
             {

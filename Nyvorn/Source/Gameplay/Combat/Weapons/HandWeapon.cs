@@ -39,7 +39,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 
         public override bool CanBreakTile(TileType tileType)
         {
-            return tileType == TileType.Dirt || tileType == TileType.Sand;
+            return tileType == TileType.Dirt || tileType == TileType.Grass || tileType == TileType.Sand;
         }
     }
 }

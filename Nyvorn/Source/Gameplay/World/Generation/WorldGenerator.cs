@@ -1,5 +1,6 @@
 using System;
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.World.Generation.Passes;
 
 namespace Nyvorn.Source.World.Generation
 {
@@ -7,9 +8,22 @@ namespace Nyvorn.Source.World.Generation
     {
         private readonly WorldGenSettings settings;
         private readonly FastNoiseLite surfaceNoise;
+        private readonly FastNoiseLite surfaceDetailNoise;
         private readonly FastNoiseLite surfaceWarpNoise;
         private readonly FastNoiseLite caveNoise;
+        private readonly FastNoiseLite caveRoomNoise;
         private readonly FastNoiseLite biomeNoise;
+        private readonly FastNoiseLite materialNoise;
+        private readonly IWorldGenPass[] generationPasses;
+
+        public sealed class StarterRegion
+        {
+            public required int PlayerSpawnTileX { get; init; }
+            public required int ItemSpawnTileX { get; init; }
+            public required int EnemySpawnTileX { get; init; }
+            public required int EntranceTileX { get; init; }
+            public required int SurfaceTileY { get; init; }
+        }
 
         public WorldGenerator(WorldGenSettings settings)
         {
@@ -22,6 +36,13 @@ namespace Nyvorn.Source.World.Generation
             surfaceNoise.SetFractalOctaves(4);
             surfaceNoise.SetFractalGain(0.5f);
 
+            surfaceDetailNoise = new FastNoiseLite(settings.Seed + 57);
+            surfaceDetailNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
+            surfaceDetailNoise.SetFrequency(settings.SurfaceDetailFrequency);
+            surfaceDetailNoise.SetFractalType(FastNoiseLite.FractalType.FBm);
+            surfaceDetailNoise.SetFractalOctaves(2);
+            surfaceDetailNoise.SetFractalGain(0.45f);
+
             surfaceWarpNoise = new FastNoiseLite(settings.Seed + 101);
             surfaceWarpNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
             surfaceWarpNoise.SetFrequency(settings.SurfaceWarpFrequency);
@@ -33,11 +54,37 @@ namespace Nyvorn.Source.World.Generation
             caveNoise.SetFractalOctaves(3);
             caveNoise.SetFractalGain(0.55f);
 
+            caveRoomNoise = new FastNoiseLite(settings.Seed + 233);
+            caveRoomNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
+            caveRoomNoise.SetFrequency(settings.CaveRoomFrequency);
+            caveRoomNoise.SetFractalType(FastNoiseLite.FractalType.FBm);
+            caveRoomNoise.SetFractalOctaves(2);
+            caveRoomNoise.SetFractalGain(0.45f);
+
             biomeNoise = new FastNoiseLite(settings.Seed + 303);
             biomeNoise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
             biomeNoise.SetFrequency(settings.BiomeFrequency);
             biomeNoise.SetFractalType(FastNoiseLite.FractalType.FBm);
             biomeNoise.SetFractalOctaves(2);
+
+            materialNoise = new FastNoiseLite(settings.Seed + 404);
+            materialNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
+            materialNoise.SetFrequency(settings.MaterialFrequency);
+            materialNoise.SetFractalType(FastNoiseLite.FractalType.FBm);
+            materialNoise.SetFractalOctaves(2);
+            materialNoise.SetFractalGain(0.5f);
+
+            generationPasses = new IWorldGenPass[]
+            {
+                new ClearWorldPass(),
+                new BaseShapePass(),
+                new MaterialGradientPass(),
+                new CaveNetworkPass(),
+                new SubterraneanDetailPass(),
+                new NaturalEntrancePass(),
+                new SurfacePolishPass(),
+                new WorldBoundsPass()
+            };
         }
 
         public void Generate(WorldMap worldMap)
@@ -45,22 +92,21 @@ namespace Nyvorn.Source.World.Generation
             if (worldMap == null)
                 throw new ArgumentNullException(nameof(worldMap));
 
-            Clear(worldMap);
-
-            for (int x = 0; x < worldMap.Width; x++)
+            WorldGenContext context = new WorldGenContext
             {
-                int surfaceY = GetSurfaceTileY(worldMap, x);
-                bool useSand = biomeNoise.GetNoise(x, 0f) > settings.SandBiomeThreshold;
+                WorldMap = worldMap,
+                Settings = settings,
+                SurfaceNoise = surfaceNoise,
+                SurfaceDetailNoise = surfaceDetailNoise,
+                SurfaceWarpNoise = surfaceWarpNoise,
+                CaveNoise = caveNoise,
+                CaveRoomNoise = caveRoomNoise,
+                BiomeNoise = biomeNoise,
+                MaterialNoise = materialNoise
+            };
 
-                for (int y = surfaceY; y < worldMap.Height; y++)
-                {
-                    TileType tileType = ResolveBaseTileType(surfaceY, y, useSand);
-                    worldMap.SetTile(x, y, tileType);
-                }
-            }
-
-            CarveCaves(worldMap);
-            ApplyBorders(worldMap);
+            for (int i = 0; i < generationPasses.Length; i++)
+                generationPasses[i].Apply(context);
         }
 
         public int GetSurfaceTileY(WorldMap worldMap, int tileX)
@@ -69,15 +115,16 @@ namespace Nyvorn.Source.World.Generation
                 throw new ArgumentNullException(nameof(worldMap));
 
             float warpedX = tileX + (surfaceWarpNoise.GetNoise(tileX, 0f) * settings.SurfaceWarpStrength);
-            float surfaceValue = surfaceNoise.GetNoise(warpedX, 0f);
-            int surfaceY = settings.BaseGroundLevel + (int)MathF.Round(surfaceValue * settings.SurfaceAmplitude);
+            float macroValue = surfaceNoise.GetNoise(warpedX, 0f) * settings.SurfaceAmplitude;
+            float detailValue = surfaceDetailNoise.GetNoise(warpedX, 0f) * settings.SurfaceDetailAmplitude;
+            int surfaceY = settings.BaseGroundLevel + (int)MathF.Round(macroValue + detailValue);
             return Math.Clamp(surfaceY, 8, worldMap.Height - 10);
         }
 
         public Vector2 GetSurfaceSpawnPosition(WorldMap worldMap, int tileX, int tilesAboveSurface = 0)
         {
-            int clampedX = Math.Clamp(tileX, settings.BorderThickness, worldMap.Width - settings.BorderThickness - 1);
-            int surfaceY = GetSurfaceTileY(worldMap, clampedX);
+            int clampedX = Math.Clamp(tileX, 0, worldMap.Width - 1);
+            int surfaceY = FindSurfaceTileY(worldMap, clampedX);
             float x = worldMap.GetTileCenter(clampedX, surfaceY).X;
             float y = (surfaceY - tilesAboveSurface) * worldMap.TileSize;
             return new Vector2(x, y);
@@ -88,8 +135,8 @@ namespace Nyvorn.Source.World.Generation
             if (worldMap == null)
                 throw new ArgumentNullException(nameof(worldMap));
 
-            int startX = Math.Clamp(entryTileX, settings.BorderThickness + 6, worldMap.Width - settings.BorderThickness - 28);
-            int surfaceY = GetSurfaceTileY(worldMap, startX);
+            int startX = Math.Clamp(entryTileX, 6, worldMap.Width - 28);
+            int surfaceY = FindSurfaceTileY(worldMap, startX);
 
             CarveAirRect(worldMap, startX - 2, surfaceY - 6, 5, 6);
 
@@ -113,56 +160,125 @@ namespace Nyvorn.Source.World.Generation
             }
         }
 
-        private void Clear(WorldMap worldMap)
+        public StarterRegion PrepareStarterRegion(WorldMap worldMap, int approximateStartX)
+        {
+            if (worldMap == null)
+                throw new ArgumentNullException(nameof(worldMap));
+
+            int centerX = Math.Clamp(approximateStartX, 14, worldMap.Width - 30);
+            int targetSurfaceY = FindStarterSurfaceY(worldMap, centerX);
+
+            FlattenStarterPlatform(worldMap, centerX, targetSurfaceY);
+
+            int entranceTileX = centerX + 12;
+            ShapeStarterEntranceSlope(worldMap, centerX + 8, entranceTileX, targetSurfaceY);
+            CarveStarterSubterranean(worldMap, entranceTileX);
+
+            return new StarterRegion
+            {
+                PlayerSpawnTileX = centerX,
+                ItemSpawnTileX = centerX + 5,
+                EnemySpawnTileX = centerX + 16,
+                EntranceTileX = entranceTileX,
+                SurfaceTileY = targetSurfaceY
+            };
+        }
+
+        private int ClampSurfaceHeight(int surfaceY, int worldHeight)
+        {
+            return Math.Clamp(surfaceY, 8, worldHeight - 10);
+        }
+
+        private int WrapColumn(int x, int width)
+        {
+            int wrapped = x % width;
+            return wrapped < 0 ? wrapped + width : wrapped;
+        }
+
+        private int FindSurfaceTileY(WorldMap worldMap, int tileX)
         {
             for (int y = 0; y < worldMap.Height; y++)
             {
-                for (int x = 0; x < worldMap.Width; x++)
+                if (worldMap.IsSolidAt(tileX, y))
+                    return y;
+            }
+
+            return GetSurfaceTileY(worldMap, tileX);
+        }
+
+        private int FindStarterSurfaceY(WorldMap worldMap, int centerX)
+        {
+            int minY = int.MaxValue;
+            int maxY = 0;
+
+            for (int offset = -5; offset <= 5; offset++)
+            {
+                int surfaceY = FindSurfaceTileY(worldMap, centerX + offset);
+                minY = Math.Min(minY, surfaceY);
+                maxY = Math.Max(maxY, surfaceY);
+            }
+
+            return ClampSurfaceHeight((minY + maxY) / 2, worldMap.Height);
+        }
+
+        private void FlattenStarterPlatform(WorldMap worldMap, int centerX, int targetSurfaceY)
+        {
+            int halfWidth = Math.Max(6, settings.SpawnFlatHalfWidth);
+            int rampWidth = Math.Max(2, settings.SpawnRampWidth);
+
+            for (int offset = -(halfWidth + rampWidth); offset <= halfWidth + rampWidth; offset++)
+            {
+                int x = centerX + offset;
+                int surfaceY = targetSurfaceY;
+
+                if (offset < -halfWidth)
+                    surfaceY += Math.Min(2, ((-halfWidth - offset) + rampWidth - 1) / rampWidth);
+                else if (offset > halfWidth)
+                    surfaceY += Math.Min(2, ((offset - halfWidth) + rampWidth - 1) / rampWidth);
+
+                RebuildSurfaceColumn(worldMap, x, surfaceY);
+            }
+        }
+
+        private void ShapeStarterEntranceSlope(WorldMap worldMap, int fromX, int entranceX, int targetSurfaceY)
+        {
+            int width = Math.Max(1, entranceX - fromX);
+
+            for (int x = fromX; x <= entranceX; x++)
+            {
+                float t = (x - fromX) / (float)width;
+                int localSurfaceY = targetSurfaceY + (int)MathF.Round(t * 3f);
+                RebuildSurfaceColumn(worldMap, x, localSurfaceY);
+            }
+        }
+
+        private void RebuildSurfaceColumn(WorldMap worldMap, int tileX, int surfaceY)
+        {
+            int x = WrapColumn(tileX, worldMap.Width);
+            int clampedSurfaceY = ClampSurfaceHeight(surfaceY, worldMap.Height);
+
+            for (int y = 0; y < worldMap.Height; y++)
+            {
+                if (y < clampedSurfaceY)
+                {
                     worldMap.SetTile(x, y, TileType.Empty);
-            }
-        }
-
-        private TileType ResolveBaseTileType(int surfaceY, int y, bool useSand)
-        {
-            if (y == surfaceY)
-                return useSand ? TileType.Sand : TileType.Dirt;
-
-            if (y <= surfaceY + 2)
-                return useSand ? TileType.Sand : TileType.Dirt;
-
-            return y >= surfaceY + settings.StoneDepth
-                ? TileType.Stone
-                : TileType.Dirt;
-        }
-
-        private void CarveCaves(WorldMap worldMap)
-        {
-            for (int x = settings.BorderThickness; x < worldMap.Width - settings.BorderThickness; x++)
-            {
-                int surfaceY = GetSurfaceTileY(worldMap, x);
-                int caveStartY = Math.Min(worldMap.Height - 1, surfaceY + settings.CaveStartDepth);
-
-                for (int y = caveStartY; y < worldMap.Height - 1; y++)
-                {
-                    float caveValue = MathF.Abs(caveNoise.GetNoise(x, y));
-                    if (caveValue > settings.CaveThreshold)
-                        worldMap.SetTile(x, y, TileType.Empty);
+                    continue;
                 }
-            }
-        }
 
-        private void ApplyBorders(WorldMap worldMap)
-        {
-            for (int x = 0; x < worldMap.Width; x++)
-                worldMap.SetTile(x, worldMap.Height - 1, TileType.Stone);
-
-            for (int y = 0; y < worldMap.Height; y++)
-            {
-                for (int offset = 0; offset < settings.BorderThickness; offset++)
+                int depth = y - clampedSurfaceY;
+                if (depth == 0)
                 {
-                    worldMap.SetTile(offset, y, TileType.Stone);
-                    worldMap.SetTile(worldMap.Width - 1 - offset, y, TileType.Stone);
+                    worldMap.SetTile(x, y, TileType.Grass);
+                    continue;
                 }
+
+                if (depth <= settings.SurfaceTopsoilDepth + 1)
+                {
+                    worldMap.SetTile(x, y, TileType.Dirt);
+                    continue;
+                }
+
+                worldMap.SetTile(x, y, depth >= settings.StoneTransitionStartDepth + 2 ? TileType.Stone : TileType.Dirt);
             }
         }
 
@@ -175,6 +291,25 @@ namespace Nyvorn.Source.World.Generation
             {
                 for (int x = Math.Max(0, left); x < right; x++)
                     worldMap.SetTile(x, y, TileType.Empty);
+            }
+        }
+
+        private void CarveAirEllipse(WorldMap worldMap, int centerX, int centerY, int radiusX, int radiusY)
+        {
+            for (int y = centerY - radiusY; y <= centerY + radiusY; y++)
+            {
+                if (y < 0 || y >= worldMap.Height)
+                    continue;
+
+                for (int x = centerX - radiusX; x <= centerX + radiusX; x++)
+                {
+                    float normalizedX = (x - centerX) / (float)Math.Max(1, radiusX);
+                    float normalizedY = (y - centerY) / (float)Math.Max(1, radiusY);
+                    if ((normalizedX * normalizedX) + (normalizedY * normalizedY) > 1f)
+                        continue;
+
+                    worldMap.SetTile(x, y, TileType.Empty);
+                }
             }
         }
     }

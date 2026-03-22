@@ -25,6 +25,18 @@
 /processorParam:TextureFormat=Color
 /build:blocks/dirt_spritesheet.png
 
+#begin blocks/grass_spritesheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:blocks/grass_spritesheet.png
+
 #begin blocks/sand_block.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -37,7 +49,7 @@
 /processorParam:TextureFormat=Color
 /build:blocks/sand_block.png
 
-#begin blocks/stone_block.png
+#begin blocks/stone_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -47,7 +59,7 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/stone_block.png
+/build:blocks/stone_spritesheet.png
 
 #begin entities/enemy/enemy_test.png
 /importer:TextureImporter

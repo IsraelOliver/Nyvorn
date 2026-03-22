@@ -23,6 +23,7 @@ namespace Nyvorn.Source.Engine.Input
             bool placePressed = mouse.LeftButton == ButtonState.Pressed;
             bool openInventoryPressed = keyboard.IsKeyDown(Keys.E) && !_prevKeyboard.IsKeyDown(Keys.E);
             bool tissueRevealPressed = keyboard.IsKeyDown(Keys.F) && !_prevKeyboard.IsKeyDown(Keys.F);
+            bool toggleMinimapPressed = keyboard.IsKeyDown(Keys.M) && !_prevKeyboard.IsKeyDown(Keys.M);
             int hotbarSelectionIndex = -1;
             if ((keyboard.IsKeyDown(Keys.D1) && !_prevKeyboard.IsKeyDown(Keys.D1)) ||
                 (keyboard.IsKeyDown(Keys.NumPad1) && !_prevKeyboard.IsKeyDown(Keys.NumPad1)))
@@ -54,6 +55,7 @@ namespace Nyvorn.Source.Engine.Input
                 placePressed,
                 openInventoryPressed,
                 tissueRevealPressed,
+                toggleMinimapPressed,
                 hotbarSelectionIndex,
                 dodgePressed,
                 dodgeDir,

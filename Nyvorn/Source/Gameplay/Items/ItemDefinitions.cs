@@ -46,7 +46,7 @@ namespace Nyvorn.Source.Gameplay.Items
                 {
                     Id = ItemId.StoneBlock,
                     Name = "Stone Block",
-                    TexturePath = "blocks/stone_block",
+                    TexturePath = "blocks/stone_spritesheet",
                     Stackable = true,
                     MaxStack = 999,
                     GravityScale = 1.0f,

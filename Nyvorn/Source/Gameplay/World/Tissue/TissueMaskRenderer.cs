@@ -39,11 +39,25 @@ namespace Nyvorn.Source.World.Tissue
 
         public void DrawMask(SpriteBatch spriteBatch, TissueNetwork tissueNetwork, float revealStrength, Vector2 focusPosition, float revealRadius)
         {
+            DrawMask(spriteBatch, tissueNetwork, revealStrength, focusPosition, revealRadius, null);
+        }
+
+        public void DrawMask(
+            SpriteBatch spriteBatch,
+            TissueNetwork tissueNetwork,
+            float revealStrength,
+            Vector2 focusPosition,
+            float revealRadius,
+            Rectangle? worldCullBounds)
+        {
             if (tissueNetwork == null || revealStrength <= 0.001f)
                 return;
 
             foreach (TissueBranch branch in tissueNetwork.Branches)
             {
+                if (worldCullBounds.HasValue && !worldCullBounds.Value.Intersects(branch.Bounds))
+                    continue;
+
                 Vector2 midpoint = branch.Points[branch.Points.Count / 2];
                 float focusFalloff = GetFocusFalloff(midpoint, focusPosition, revealRadius);
                 float alphaScale = revealStrength * focusFalloff;
@@ -75,6 +89,9 @@ namespace Nyvorn.Source.World.Tissue
 
             foreach (TissueNode node in tissueNetwork.Nodes)
             {
+                if (worldCullBounds.HasValue && !Contains(worldCullBounds.Value, node.Position))
+                    continue;
+
                 float focusFalloff = GetFocusFalloff(node.Position, focusPosition, revealRadius);
                 float alphaScale = revealStrength * focusFalloff;
                 if (alphaScale <= 0.01f)
@@ -161,6 +178,14 @@ namespace Nyvorn.Source.World.Tissue
         private void DrawPoint(SpriteBatch spriteBatch, Vector2 position, float size, Color color)
         {
             DrawDisc(spriteBatch, position, size, color);
+        }
+
+        private static bool Contains(Rectangle rectangle, Vector2 point)
+        {
+            return point.X >= rectangle.Left &&
+                   point.X <= rectangle.Right &&
+                   point.Y >= rectangle.Top &&
+                   point.Y <= rectangle.Bottom;
         }
 
         private float GetFocusFalloff(Vector2 worldPosition, Vector2 focusPosition, float revealRadius)

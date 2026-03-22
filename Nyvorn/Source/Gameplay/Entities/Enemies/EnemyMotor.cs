@@ -49,14 +49,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                 velocityY = forceY;
         }
 
+        public void ShiftX(float deltaX)
+        {
+            position.X += deltaX;
+        }
+
         private void ResolveWorldCollisionsY(WorldMap worldMap, float prevHitBottom, float prevHitTop)
         {
             int ts = worldMap.TileSize;
 
             float left = HitLeft + 1;
             float right = HitRight - 1;
-            int tileXLeft = (int)(left / ts);
-            int tileXRight = (int)(right / ts);
+            int tileXLeft = (int)System.MathF.Floor(left / ts);
+            int tileXRight = (int)System.MathF.Floor(right / ts);
 
             if (velocityY > 0)
             {

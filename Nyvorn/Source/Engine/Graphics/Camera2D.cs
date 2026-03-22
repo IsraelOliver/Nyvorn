@@ -102,5 +102,10 @@ namespace Nyvorn.Source.Engine.Graphics
         {
             return Vector2.Transform(worldPosition, GetViewMatrix());
         }
+
+        public void ShiftX(float deltaX)
+        {
+            Position = new Vector2(Position.X + deltaX, Position.Y);
+        }
     }
 }

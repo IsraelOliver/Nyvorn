@@ -78,6 +78,11 @@ namespace Nyvorn.Source.Gameplay.Items
             velocityY += offset.Y * pullStrength * dt;
         }
 
+        public void ShiftX(float deltaX)
+        {
+            position.X += deltaX;
+        }
+
         public void Draw(SpriteBatch spriteBatch)
         {
             Vector2 topLeft = new Vector2(
@@ -96,8 +101,8 @@ namespace Nyvorn.Source.Gameplay.Items
             int ts = worldMap.TileSize;
             float left = Left + 1f;
             float right = Right - 1f;
-            int tileXLeft = (int)(left / ts);
-            int tileXRight = (int)(right / ts);
+            int tileXLeft = (int)System.MathF.Floor(left / ts);
+            int tileXRight = (int)System.MathF.Floor(right / ts);
 
             if (velocityY > 0f)
             {

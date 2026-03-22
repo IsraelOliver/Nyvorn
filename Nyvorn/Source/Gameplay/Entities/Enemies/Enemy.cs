@@ -55,6 +55,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             motor.ApplyKnockback(forceX, forceY);
         }
 
+        public void ShiftX(float deltaX)
+        {
+            motor.ShiftX(deltaX);
+        }
+
         public void TriggerAttackVisual(float? duration = null)
         {
             combat.TriggerAttackVisual(duration);
