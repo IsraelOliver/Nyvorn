@@ -1,0 +1,116 @@
+Seed: 1337
+World: 3840x1080
+Foreground tiles only. No wall/background system is generated in these passes.
+
+[ClearWorld]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[BaseShape]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[MaterialGradient]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[CaveNetwork]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[SubterraneanDetail]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[NaturalEntrances]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[SurfacePolish]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+
+[WorldBounds]
+Y=292 maxRun=3840 totalEmpty=3840
+Y=293 maxRun=3840 totalEmpty=3840
+Y=294 maxRun=3840 totalEmpty=3840
+Y=295 maxRun=3840 totalEmpty=3840
+Y=296 maxRun=3840 totalEmpty=3840
+Y=297 maxRun=3840 totalEmpty=3840
+Y=298 maxRun=3840 totalEmpty=3840
+Y=299 maxRun=3840 totalEmpty=3840
+Y=300 maxRun=3840 totalEmpty=3840
+Y=301 maxRun=3840 totalEmpty=3840
+Y=302 maxRun=3840 totalEmpty=3840
+Y=303 maxRun=3840 totalEmpty=3840
+

@@ -88,7 +88,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             playerAnimator.SetFacing(facingRight);
 
             float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
-            motor.Update(dt, worldMap, horizontalVelocity);
+            motor.Update(dt, worldMap, horizontalVelocity, combat.IsDodging);
 
             if (motor.IsGrounded && jumpPressed)
                 motor.TryJump();
@@ -180,6 +180,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public void ApplyKnockback(float forceX, float forceY = -60f)
         {
             motor.ApplyKnockback(forceX, forceY);
+        }
+
+        public void ShiftX(float deltaX)
+        {
+            motor.Position = new Vector2(motor.Position.X + deltaX, motor.Position.Y);
         }
 
         void IHitSource.OnHitConnected()

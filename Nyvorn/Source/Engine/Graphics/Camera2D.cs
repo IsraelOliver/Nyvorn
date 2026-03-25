@@ -97,5 +97,15 @@ namespace Nyvorn.Source.Engine.Graphics
             Matrix inverseView = Matrix.Invert(GetViewMatrix());
             return Vector2.Transform(screenPosition, inverseView);
         }
+
+        public Vector2 WorldToScreen(Vector2 worldPosition)
+        {
+            return Vector2.Transform(worldPosition, GetViewMatrix());
+        }
+
+        public void ShiftX(float deltaX)
+        {
+            Position = new Vector2(Position.X + deltaX, Position.Y);
+        }
     }
 }

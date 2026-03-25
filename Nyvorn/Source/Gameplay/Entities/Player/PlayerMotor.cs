@@ -12,12 +12,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private Vector2 velocity;
         private float knockbackVelocityX;
         private float stepVisualOffsetY;
+        private Point currentHurtboxSize;
 
         public PlayerMotor(Vector2 startPosition, PlayerConfig config)
         {
             this.config = config;
             position = startPosition;
             velocity = Vector2.Zero;
+            currentHurtboxSize = config.HurtboxSize;
             IsGrounded = false;
         }
 
@@ -31,17 +33,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public Vector2 VisualPosition => position + new Vector2(0f, stepVisualOffsetY);
         public bool IsGrounded { get; private set; }
 
-        private float HitLeft => position.X - (config.HurtboxSize.X * 0.5f);
-        private float HitRight => HitLeft + config.HurtboxSize.X - 1f;
+        private float HitLeft => position.X - (currentHurtboxSize.X * 0.5f);
+        private float HitRight => HitLeft + currentHurtboxSize.X - 1f;
         private float HitBottom => position.Y;
-        private float HitTop => HitBottom - config.HurtboxSize.Y + 1f;
+        private float HitTop => HitBottom - currentHurtboxSize.Y + 1f;
 
-        public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, config.HurtboxSize.X, config.HurtboxSize.Y);
+        public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, currentHurtboxSize.X, currentHurtboxSize.Y);
         public float HitBottomValue => HitBottom;
         public float HitTopValue => HitTop;
 
-        public void Update(float dt, WorldMap worldMap, float desiredVelocityX)
+        public void Update(float dt, WorldMap worldMap, float desiredVelocityX, bool useDodgeHurtbox)
         {
+            UpdateHurtboxSize(worldMap, useDodgeHurtbox);
+
             float prevHitBottom = HitBottom;
             float prevHitTop = HitTop;
 
@@ -91,22 +95,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             int ts = worldMap.TileSize;
             float top = HitTop + 1;
             float bottom = HitBottom - 1;
-            int tileYTop = (int)(top / ts);
-            int tileYBottom = (int)(bottom / ts);
+            int tileYTop = (int)System.MathF.Floor(top / ts);
+            int tileYBottom = (int)System.MathF.Floor(bottom / ts);
 
             if (velocityX > 0)
             {
                 float right = HitRight;
-                int tileX = (int)(right / ts);
+                int tileX = (int)System.MathF.Floor(right / ts);
 
-                if (worldMap.IsSolidAt(tileX, tileYTop) || worldMap.IsSolidAt(tileX, tileYBottom))
+                if (HasSolidInColumn(worldMap, tileX, tileYTop, tileYBottom))
                 {
                     if (TryStepUp(worldMap, 1))
                         return;
 
                     float tileLeft = tileX * ts;
-                    float newHitLeft = tileLeft - config.HurtboxSize.X;
-                    position.X = newHitLeft + (config.HurtboxSize.X * 0.5f);
+                    float newHitLeft = tileLeft - currentHurtboxSize.X;
+                    position.X = newHitLeft + (currentHurtboxSize.X * 0.5f);
                     velocity.X = 0f;
                     knockbackVelocityX = 0f;
                 }
@@ -114,16 +118,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             else if (velocityX < 0)
             {
                 float left = HitLeft;
-                int tileX = (int)(left / ts);
+                int tileX = (int)System.MathF.Floor(left / ts);
 
-                if (worldMap.IsSolidAt(tileX, tileYTop) || worldMap.IsSolidAt(tileX, tileYBottom))
+                if (HasSolidInColumn(worldMap, tileX, tileYTop, tileYBottom))
                 {
                     if (TryStepUp(worldMap, -1))
                         return;
 
                     float tileRight = tileX * ts + ts;
                     float newHitLeft = tileRight;
-                    position.X = newHitLeft + (config.HurtboxSize.X * 0.5f);
+                    position.X = newHitLeft + (currentHurtboxSize.X * 0.5f);
                     velocity.X = 0f;
                     knockbackVelocityX = 0f;
                 }
@@ -147,7 +151,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                 for (int y = fromY; y <= toY; y++)
                 {
-                    if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
+                    if (HasSolidInRow(worldMap, y, tileXLeft, tileXRight))
                     {
                         position.Y = y * ts;
                         velocity.Y = 0f;
@@ -163,10 +167,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                 for (int y = fromY; y >= toY; y--)
                 {
-                    if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
+                    if (HasSolidInRow(worldMap, y, tileXLeft, tileXRight))
                     {
                         float tileBottom = y * ts + ts;
-                        position.Y = tileBottom + config.HurtboxSize.Y - 1;
+                        position.Y = tileBottom + currentHurtboxSize.Y - 1;
                         velocity.Y = 0f;
                         return;
                     }
@@ -181,8 +185,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             int ts = worldMap.TileSize;
             float frontX = moveDir > 0 ? HitRight + 1f : HitLeft - 1f;
-            int tileX = (int)(frontX / ts);
-            int tileYBottom = (int)((HitBottom - 1f) / ts);
+            int tileX = (int)System.MathF.Floor(frontX / ts);
+            int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
             int tileYAbove = tileYBottom - 1;
 
             // So sobe degrau de 1 tile: bloco na base, espaco livre logo acima.
@@ -205,10 +209,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private bool HasSolidOverlap(WorldMap worldMap)
         {
             int ts = worldMap.TileSize;
-            int tileXLeft = (int)((HitLeft + 1f) / ts);
-            int tileXRight = (int)((HitRight - 1f) / ts);
-            int tileYTop = (int)(HitTop / ts);
-            int tileYBottom = (int)((HitBottom - 1f) / ts);
+            int tileXLeft = (int)System.MathF.Floor((HitLeft + 1f) / ts);
+            int tileXRight = (int)System.MathF.Floor((HitRight - 1f) / ts);
+            int tileYTop = (int)System.MathF.Floor(HitTop / ts);
+            int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
 
             for (int y = tileYTop; y <= tileYBottom; y++)
             {
@@ -220,6 +224,46 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
 
             return false;
+        }
+
+        private bool HasSolidInColumn(WorldMap worldMap, int tileX, int tileYTop, int tileYBottom)
+        {
+            for (int y = tileYTop; y <= tileYBottom; y++)
+            {
+                if (worldMap.IsSolidAt(tileX, y))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool HasSolidInRow(WorldMap worldMap, int tileY, int tileXLeft, int tileXRight)
+        {
+            for (int x = tileXLeft; x <= tileXRight; x++)
+            {
+                if (worldMap.IsSolidAt(x, tileY))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void UpdateHurtboxSize(WorldMap worldMap, bool useDodgeHurtbox)
+        {
+            Point targetSize = useDodgeHurtbox ? config.DodgeHurtboxSize : config.HurtboxSize;
+            if (currentHurtboxSize == targetSize)
+                return;
+
+            Point previousSize = currentHurtboxSize;
+            currentHurtboxSize = targetSize;
+
+            if (useDodgeHurtbox)
+                return;
+
+            if (!HasSolidOverlap(worldMap))
+                return;
+
+            currentHurtboxSize = previousSize;
         }
     }
 }

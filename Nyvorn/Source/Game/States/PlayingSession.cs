@@ -9,12 +9,16 @@ using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Persistence;
+using Nyvorn.Source.World.Tissue;
+using System;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Game.States
 {
     public sealed class PlayingSession
     {
+        public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required WorldMap WorldMap { get; init; }
         public required Player Player { get; init; }
         public required List<Enemy> Enemies { get; init; }
@@ -27,55 +31,270 @@ namespace Nyvorn.Source.Game.States
         public required Camera2D Camera { get; init; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
         public required HudRenderer HudRenderer { get; init; }
+        public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
+        public required ElyraSkyRenderer ElyraSkyRenderer { get; init; }
         public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
         public required CombatSystem CombatSystem { get; init; }
+        public required TissueNetwork TissueNetwork { get; init; }
+        public required TissueMaskRenderer TissueMaskRenderer { get; init; }
+        public required TissueRevealController TissueRevealController { get; init; }
+        public required TissueDebugRenderer TissueDebugRenderer { get; init; }
+        private const float BlockPlaceInterval = 0.08f;
+        private const float ItemPullRangeInTiles = 1f;
+        private const float ItemPullStrength = 900f;
+        private const float EntitySimulationRangeInTiles = 56f;
+        private const float EntityDrawPaddingPixels = 48f;
+        private const float TissueBackgroundOpacity = 0.34f;
+        private const float TissueForegroundOpacity = 1.00f;
+        private const float TissueMaskCullPaddingPixels = 96f;
+        private const float GrassSpreadInterval = 0.24f;
         public int SelectedHotbarIndex { get; private set; }
         private int lastBlockBreakAttackSequence = -1;
+        private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
+        private float blockPlaceCooldownTimer;
+        private float grassSpreadTimer;
+        private float tissueTime;
         private Rectangle hoveredTileBounds;
         private WorldTilePreviewState hoveredTileState = WorldTilePreviewState.Hidden;
+        public Effect TissueCompositeEffect => TissueMaskRenderer.CompositeEffect;
 
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
+            tissueTime += dt;
+
+            if (blockPlaceCooldownTimer > 0f)
+                blockPlaceCooldownTimer -= dt;
+
+            grassSpreadTimer -= dt;
+            if (grassSpreadTimer <= 0f)
+            {
+                WorldMap.UpdateGrassSpread();
+                grassSpreadTimer = GrassSpreadInterval;
+            }
+
             if (input.HotbarSelectionIndex >= 0 && input.HotbarSelectionIndex < Hotbar.Capacity)
                 SelectedHotbarIndex = input.HotbarSelectionIndex;
 
+            InputState worldInput = input;
+            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
+            if (!selectedSlot.IsEmpty && TileItemMapper.TryGetTileType(selectedSlot.ItemId, out _))
+            {
+                worldInput = new InputState(
+                    input.MoveDir,
+                    input.JumpPressed,
+                    false,
+                    input.PlacePressed,
+                    input.OpenInventoryPressed,
+                    input.TissueRevealPressed,
+                    input.ToggleMinimapPressed,
+                    input.HotbarSelectionIndex,
+                    input.DodgePressed,
+                    input.DodgeDir,
+                    input.MouseScreenPosition,
+                    input.MouseWheelDelta);
+            }
+
             SyncEquippedWeapon();
             UpdateTilePreview(mouseWorld);
-            TryPlaceSelectedBlock(input, mouseWorld);
-            Player.Update(dt, WorldMap, input, mouseWorld);
+            TryPlaceSelectedBlock(worldInput, mouseWorld);
+            Player.Update(dt, WorldMap, worldInput, mouseWorld);
+            mouseWorld = NormalizeLoopingWorld(mouseWorld);
+            TissueRevealController.Update(dt, input, Player.Position);
             TryBreakTargetBlock(mouseWorld);
 
             for (int i = Enemies.Count - 1; i >= 0; i--)
-                Enemies[i].Update(dt, WorldMap);
+            {
+                if (IsWithinSimulationRange(Enemies[i].Position))
+                    Enemies[i].Update(dt, WorldMap);
+            }
+
             for (int i = WorldItems.Count - 1; i >= 0; i--)
             {
-                WorldItems[i].Update(dt, WorldMap);
-                TryCollectWorldItem(i);
+                WorldItem worldItem = WorldItems[i];
+                bool shouldSimulate = !worldItem.CanBePickedUp || IsWithinSimulationRange(worldItem.Position);
+
+                if (shouldSimulate)
+                {
+                    PullNearbyWorldItem(worldItem, dt);
+                    worldItem.Update(dt, WorldMap);
+                    TryCollectWorldItem(i);
+                }
             }
 
             CombatSystem.Resolve(Player, Enemies);
             EnemyRespawnController.Update(dt, Enemies);
         }
 
-        public void DrawWorld(SpriteBatch spriteBatch)
+        public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            WorldMap.Draw(spriteBatch);
-            TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
+            const int tilePadding = 2;
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            float localLeft = Camera.Position.X - worldOffsetX;
+            float localTop = Camera.Position.Y;
+            float localRight = localLeft + viewWidth;
+            float localBottom = localTop + viewHeight;
 
+            int startTileX = (int)MathF.Floor(localLeft / WorldMap.TileSize) - tilePadding;
+            int endTileX = (int)MathF.Ceiling(localRight / WorldMap.TileSize) + tilePadding;
+            int startTileY = (int)MathF.Floor(localTop / WorldMap.TileSize) - tilePadding;
+            int endTileY = (int)MathF.Ceiling(localBottom / WorldMap.TileSize) + tilePadding;
+
+            WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
+            TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
+        }
+
+        public void DrawEntities(SpriteBatch spriteBatch)
+        {
             Player.Draw(spriteBatch);
+        }
+
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            float localLeft = Camera.Position.X - worldOffsetX - EntityDrawPaddingPixels;
+            float localTop = Camera.Position.Y - EntityDrawPaddingPixels;
+            float localRight = localLeft + viewWidth + (EntityDrawPaddingPixels * 2f);
+            float localBottom = localTop + viewHeight + (EntityDrawPaddingPixels * 2f);
+
             foreach (Enemy enemy in Enemies)
             {
+                if (!IntersectsVisibleArea(enemy.Hurtbox, localLeft, localTop, localRight, localBottom))
+                    continue;
+
                 enemy.Draw(spriteBatch);
                 HealthBarRenderer.Draw(spriteBatch, enemy.Position + new Vector2(0f, -30f), enemy.Health, enemy.MaxHealth, 22, 3);
             }
 
             foreach (WorldItem worldItem in WorldItems)
+            {
+                if (!IntersectsVisibleArea(worldItem.WorldBounds, localLeft, localTop, localRight, localBottom))
+                    continue;
+
                 worldItem.Draw(spriteBatch);
+            }
+        }
+
+        public void RenderTissueMask(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch)
+        {
+            if (TissueRevealController.CurrentStrength <= 0.001f)
+                return;
+
+            TissueMaskRenderer.EnsureTarget(
+                graphicsDevice,
+                graphicsDevice.PresentationParameters.BackBufferWidth,
+                graphicsDevice.PresentationParameters.BackBufferHeight);
+
+            RenderTargetBinding[] previousTargets = graphicsDevice.GetRenderTargets();
+            graphicsDevice.SetRenderTarget((RenderTarget2D)TissueMaskRenderer.MaskTexture);
+            graphicsDevice.Clear(Color.Transparent);
+
+            float worldWidthPixels = WorldMap.PixelWidth;
+            int centerLoop = (int)MathF.Floor(TissueRevealController.FocusPosition.X / worldWidthPixels);
+            int minLoopOffset = -1;
+            int maxLoopOffset = 1;
+            float leftThreshold = TissueRevealController.RevealRadius + TissueMaskCullPaddingPixels;
+            float rightThreshold = worldWidthPixels - leftThreshold;
+            float wrappedFocusX = TissueRevealController.FocusPosition.X;
+
+            while (wrappedFocusX < 0f)
+                wrappedFocusX += worldWidthPixels;
+            while (wrappedFocusX >= worldWidthPixels)
+                wrappedFocusX -= worldWidthPixels;
+
+            if (wrappedFocusX > leftThreshold && wrappedFocusX < rightThreshold)
+            {
+                minLoopOffset = 0;
+                maxLoopOffset = 0;
+            }
+
+            for (int loopOffset = minLoopOffset; loopOffset <= maxLoopOffset; loopOffset++)
+            {
+                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * Camera.GetViewMatrix();
+                Rectangle cullBounds = GetTissueWorldCullBounds(worldOffset);
+
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                TissueMaskRenderer.DrawMask(
+                    spriteBatch,
+                    TissueNetwork,
+                    TissueRevealController.CurrentStrength,
+                    TissueRevealController.FocusPosition,
+                    TissueRevealController.RevealRadius,
+                    cullBounds);
+                spriteBatch.End();
+            }
+
+            graphicsDevice.SetRenderTargets(previousTargets);
+        }
+
+        public void DrawTissueBackground(SpriteBatch spriteBatch)
+        {
+            Vector2 focusScreenPosition = Camera.WorldToScreen(TissueRevealController.FocusPosition);
+            float revealRadiusPixels = TissueRevealController.RevealRadius * Camera.Zoom;
+            TissueMaskRenderer.DrawComposite(
+                spriteBatch,
+                TissueRevealController.CurrentStrength,
+                tissueTime,
+                focusScreenPosition,
+                revealRadiusPixels,
+                TissueRevealController.WaveProgress,
+                layerMode: 0f,
+                layerOpacity: TissueBackgroundOpacity);
+        }
+
+        public void DrawTissueOverlay(SpriteBatch spriteBatch)
+        {
+            Vector2 focusScreenPosition = Camera.WorldToScreen(TissueRevealController.FocusPosition);
+            float revealRadiusPixels = TissueRevealController.RevealRadius * Camera.Zoom;
+            TissueMaskRenderer.DrawComposite(
+                spriteBatch,
+                TissueRevealController.CurrentStrength,
+                tissueTime,
+                focusScreenPosition,
+                revealRadiusPixels,
+                TissueRevealController.WaveProgress,
+                layerMode: 1f,
+                layerOpacity: TissueForegroundOpacity);
+        }
+
+        public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight);
+        }
+
+
+        public void DrawTissueDebug(SpriteBatch spriteBatch)
+        {
+            TissueDebugRenderer.Draw(
+                spriteBatch,
+                TissueNetwork,
+                TissueRevealController.CurrentStrength,
+                TissueRevealController.FocusPosition,
+                TissueRevealController.RevealRadius);
         }
 
         public void DrawHud(SpriteBatch spriteBatch, int screenWidth)
         {
             HudRenderer.Draw(spriteBatch, Hotbar, SelectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth);
+        }
+
+        public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, Camera, Player.Position, screenWidth, screenHeight);
+        }
+
+        public bool UpdateMinimapInteraction(InputState input, int screenWidth, int screenHeight)
+        {
+            return WorldMinimapRenderer.HandleInput(
+                WorldMap,
+                Player.Position,
+                screenWidth,
+                screenHeight,
+                input.MouseScreenPosition,
+                input.MouseWheelDelta,
+                input.AttackPressed);
         }
 
         public void DrawInventory(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
@@ -108,10 +327,7 @@ namespace Nyvorn.Source.Game.States
             if (quantity <= 0 || !ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
                 return false;
 
-            if (preferInventory)
-                return Inventory.TryAdd(definition, quantity) || Hotbar.TryAdd(definition, quantity);
-
-            return Hotbar.TryAdd(definition, quantity) || Inventory.TryAdd(definition, quantity);
+            return TryStoreDefinition(definition, quantity, preferInventory);
         }
 
         private void SyncEquippedWeapon()
@@ -132,7 +348,7 @@ namespace Nyvorn.Source.Game.States
             if (!worldItem.WorldBounds.Intersects(Player.Hurtbox))
                 return;
 
-            if (Hotbar.TryAdd(worldItem.Definition) || Inventory.TryAdd(worldItem.Definition))
+            if (TryStoreDefinition(worldItem.Definition, 1, preferInventory: true))
                 WorldItems.RemoveAt(index);
         }
 
@@ -141,10 +357,10 @@ namespace Nyvorn.Source.Game.States
             if (!Player.HasActiveAttackHitbox)
                 return;
 
-            if (Player.AttackSequence == lastBlockBreakAttackSequence)
+            Point tile = WorldMap.WorldToTile(mouseWorld);
+            if (Player.AttackSequence == lastBlockBreakAttackSequence && tile == lastBrokenBlockTile)
                 return;
 
-            Point tile = WorldMap.WorldToTile(mouseWorld);
             TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
             if (!Player.CanBreakTile(targetTile))
                 return;
@@ -158,6 +374,7 @@ namespace Nyvorn.Source.Game.States
 
             SpawnBrokenBlockDrop(removedTile, tileCenter);
             lastBlockBreakAttackSequence = Player.AttackSequence;
+            lastBrokenBlockTile = tile;
         }
 
         private void SpawnBrokenBlockDrop(TileType removedTile, Vector2 tileCenter)
@@ -171,12 +388,27 @@ namespace Nyvorn.Source.Game.States
             if (!TryGetItemTexture(itemId, out Texture2D texture))
                 return;
 
-            WorldItems.Add(new WorldItem(definition, texture, tileCenter, pickupDelay: 0.15f));
+            float horizontalDirection = Random.Shared.Next(2) == 0 ? -1f : 1f;
+            float horizontalVelocity = horizontalDirection * 28f;
+            const float verticalVelocity = -105f;
+            WorldItems.Add(new WorldItem(
+                definition,
+                texture,
+                tileCenter,
+                pickupDelay: 0.15f,
+                initialVelocityX: horizontalVelocity,
+                initialVelocityY: verticalVelocity));
         }
 
         private void TryPlaceSelectedBlock(InputState input, Vector2 mouseWorld)
         {
             if (!input.PlacePressed)
+            {
+                blockPlaceCooldownTimer = 0f;
+                return;
+            }
+
+            if (blockPlaceCooldownTimer > 0f)
                 return;
 
             InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
@@ -199,6 +431,7 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             selectedSlot.RemoveOne();
+            blockPlaceCooldownTimer = BlockPlaceInterval;
         }
 
         private void UpdateTilePreview(Vector2 mouseWorld)
@@ -218,7 +451,7 @@ namespace Nyvorn.Source.Game.States
             {
                 bool canPlace = inRange &&
                                 placeTileType != TileType.Empty &&
-                                WorldMap.GetTile(tile.X, tile.Y) == TileType.Empty &&
+                                WorldMap.CanPlaceTile(tile.X, tile.Y, placeTileType) &&
                                 !hoveredTileBounds.Intersects(Player.Hurtbox);
 
                 hoveredTileState = canPlace ? WorldTilePreviewState.PlaceValid : WorldTilePreviewState.PlaceInvalid;
@@ -232,6 +465,101 @@ namespace Nyvorn.Source.Game.States
             hoveredTileState = inRange && Player.CanBreakTile(targetTile)
                 ? WorldTilePreviewState.BreakValid
                 : WorldTilePreviewState.BreakInvalid;
+        }
+
+        private bool TryStoreDefinition(ItemDefinition definition, int quantity, bool preferInventory)
+        {
+            if (definition == null || quantity <= 0)
+                return false;
+
+            Inventory primary = preferInventory ? Inventory : Hotbar;
+            Inventory secondary = preferInventory ? Hotbar : Inventory;
+            int remaining = quantity;
+
+            remaining -= primary.AddToExistingStacks(definition, remaining);
+            remaining -= secondary.AddToExistingStacks(definition, remaining);
+            remaining -= primary.AddToEmptySlots(definition, remaining);
+            remaining -= secondary.AddToEmptySlots(definition, remaining);
+
+            return remaining == 0;
+        }
+
+        private void PullNearbyWorldItem(WorldItem worldItem, float dt)
+        {
+            if (!worldItem.CanBePickedUp)
+                return;
+
+            float maxDistance = WorldMap.TileSize * ItemPullRangeInTiles;
+            if (Vector2.Distance(worldItem.Position, Player.Position) > maxDistance)
+                return;
+
+            worldItem.PullToward(Player.Position, dt, ItemPullStrength);
+        }
+
+        private bool IsWithinSimulationRange(Vector2 worldPosition)
+        {
+            float maxDistance = WorldMap.TileSize * EntitySimulationRangeInTiles;
+            return GetLoopAwareDistance(worldPosition, Player.Position) <= maxDistance;
+        }
+
+        private float GetLoopAwareDistance(Vector2 a, Vector2 b)
+        {
+            float worldWidth = WorldMap.PixelWidth;
+            float deltaX = a.X - b.X;
+
+            if (deltaX > worldWidth * 0.5f)
+                deltaX -= worldWidth;
+            else if (deltaX < -worldWidth * 0.5f)
+                deltaX += worldWidth;
+
+            float deltaY = a.Y - b.Y;
+            return MathF.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+        }
+
+        private static bool IntersectsVisibleArea(Rectangle bounds, float left, float top, float right, float bottom)
+        {
+            return bounds.Right >= left &&
+                   bounds.Left <= right &&
+                   bounds.Bottom >= top &&
+                   bounds.Top <= bottom;
+        }
+
+        private Rectangle GetTissueWorldCullBounds(float worldOffsetX)
+        {
+            int screenW = TissueMaskRenderer.MaskTexture?.Width ?? 0;
+            int screenH = TissueMaskRenderer.MaskTexture?.Height ?? 0;
+            float viewWidth = screenW / Camera.Zoom;
+            float viewHeight = screenH / Camera.Zoom;
+            float extraPadding = TissueRevealController.RevealRadius + TissueMaskCullPaddingPixels;
+            float left = Camera.Position.X - worldOffsetX - extraPadding;
+            float top = Camera.Position.Y - extraPadding;
+            float right = left + viewWidth + (extraPadding * 2f);
+            float bottom = top + viewHeight + (extraPadding * 2f);
+
+            int x = (int)MathF.Floor(left);
+            int y = (int)MathF.Floor(top);
+            int width = (int)MathF.Ceiling(right - left);
+            int height = (int)MathF.Ceiling(bottom - top);
+            return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height));
+        }
+
+        private Vector2 NormalizeLoopingWorld(Vector2 mouseWorld)
+        {
+            float worldWidth = WorldMap.PixelWidth;
+            float wrapDelta = 0f;
+
+            if (Player.Position.X < 0f)
+                wrapDelta = worldWidth;
+            else if (Player.Position.X >= worldWidth)
+                wrapDelta = -worldWidth;
+
+            if (wrapDelta == 0f)
+                return mouseWorld;
+
+            Player.ShiftX(wrapDelta);
+            Camera.ShiftX(wrapDelta);
+
+            return new Vector2(mouseWorld.X + wrapDelta, mouseWorld.Y);
         }
     }
 }

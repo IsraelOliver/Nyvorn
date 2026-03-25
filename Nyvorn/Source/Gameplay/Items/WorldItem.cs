@@ -9,15 +9,23 @@ namespace Nyvorn.Source.Gameplay.Items
     {
         private readonly Texture2D texture;
         private Vector2 position;
+        private float velocityX;
         private float velocityY;
         private float pickupDelayTimer;
 
-        public WorldItem(ItemDefinition definition, Texture2D texture, Vector2 startPosition, float pickupDelay = 0f)
+        public WorldItem(
+            ItemDefinition definition,
+            Texture2D texture,
+            Vector2 startPosition,
+            float pickupDelay = 0f,
+            float initialVelocityX = 0f,
+            float initialVelocityY = 0f)
         {
             Definition = definition;
             this.texture = texture;
             position = startPosition;
-            velocityY = 0f;
+            velocityX = initialVelocityX;
+            velocityY = initialVelocityY;
             pickupDelayTimer = pickupDelay;
         }
 
@@ -47,10 +55,32 @@ namespace Nyvorn.Source.Gameplay.Items
             if (pickupDelayTimer > 0f)
                 pickupDelayTimer -= dt;
 
+            position.X += velocityX * dt;
+            velocityX *= 0.88f;
+
             velocityY += PhysicsSettings.WorldGravity * Definition.GravityScale * dt;
             position.Y += velocityY * dt;
 
             ResolveWorldCollisionsY(worldMap, prevBottom, prevTop);
+        }
+
+        public void PullToward(Vector2 targetPosition, float dt, float pullStrength)
+        {
+            if (!CanBePickedUp)
+                return;
+
+            Vector2 offset = targetPosition - position;
+            if (offset.LengthSquared() <= 0.0001f)
+                return;
+
+            offset.Normalize();
+            velocityX += offset.X * pullStrength * dt;
+            velocityY += offset.Y * pullStrength * dt;
+        }
+
+        public void ShiftX(float deltaX)
+        {
+            position.X += deltaX;
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -71,8 +101,8 @@ namespace Nyvorn.Source.Gameplay.Items
             int ts = worldMap.TileSize;
             float left = Left + 1f;
             float right = Right - 1f;
-            int tileXLeft = (int)(left / ts);
-            int tileXRight = (int)(right / ts);
+            int tileXLeft = (int)System.MathF.Floor(left / ts);
+            int tileXRight = (int)System.MathF.Floor(right / ts);
 
             if (velocityY > 0f)
             {
