@@ -90,6 +90,9 @@ namespace Nyvorn.Source.Gameplay.Items
             }
         };
 
+        private static readonly IReadOnlyCollection<ItemDefinition> allDefinitions =
+            new ReadOnlyCollection<ItemDefinition>(new List<ItemDefinition>(definitions.Values));
+
         public static ItemDefinition Get(ItemId id)
         {
             return definitions[id];
@@ -102,7 +105,7 @@ namespace Nyvorn.Source.Gameplay.Items
 
         public static IReadOnlyCollection<ItemDefinition> GetAll()
         {
-            return new ReadOnlyCollection<ItemDefinition>(new List<ItemDefinition>(definitions.Values));
+            return allDefinitions;
         }
     }
 }

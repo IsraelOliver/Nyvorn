@@ -6,14 +6,8 @@ namespace Nyvorn.Source.World.Generation
         public bool EnableSurfaceProfilePass { get; init; } = true;
         public bool EnableBaseTerrainFillPass { get; init; } = true;
         public bool EnableSandRegionPass { get; init; } = true;
-        public bool EnableCaveFieldPass { get; init; } = false;
-        public bool EnableCaveCarvingPass { get; init; } = false;
-        public bool EnableChamberCarvingPass { get; init; } = false;
-        public bool EnableCavernRegionPass { get; init; } = false;
-        public bool EnableCaveConnectionPass { get; init; } = false;
-        public bool EnableTerrainRefinementPass { get; init; } = false;
+        public bool EnableCaveMaskPass { get; init; } = true;
         public bool EnableSurfaceDecorationPass { get; init; } = true;
-        public bool EnableSpawnSelectionPass { get; init; } = false;
         public bool EnableWorldBoundsPass { get; init; } = true;
 
         public bool IsEnabled(string passName)
@@ -24,14 +18,8 @@ namespace Nyvorn.Source.World.Generation
                 "SurfaceProfile" => EnableSurfaceProfilePass,
                 "BaseTerrainFill" => EnableBaseTerrainFillPass,
                 "SandRegion" => EnableSandRegionPass,
-                "CaveField" => EnableCaveFieldPass,
-                "CaveCarving" => EnableCaveCarvingPass,
-                "ChamberCarving" => EnableChamberCarvingPass,
-                "CavernRegion" => EnableCavernRegionPass,
-                "CaveConnection" => EnableCaveConnectionPass,
-                "TerrainRefinement" => EnableTerrainRefinementPass,
+                "CaveMask" => EnableCaveMaskPass,
                 "SurfaceDecoration" => EnableSurfaceDecorationPass,
-                "SpawnSelection" => EnableSpawnSelectionPass,
                 "WorldBounds" => EnableWorldBoundsPass,
                 _ => true
             };

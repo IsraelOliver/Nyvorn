@@ -189,7 +189,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
             int tileYAbove = tileYBottom - 1;
 
-            // So sobe degrau de 1 tile: bloco na base, espaco livre logo acima.
             if (!worldMap.IsSolidAt(tileX, tileYBottom) || worldMap.IsSolidAt(tileX, tileYAbove))
                 return false;
 

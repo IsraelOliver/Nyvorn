@@ -18,6 +18,7 @@ namespace Nyvorn.Source.World.Generation
                 new SurfaceProfilePass(),
                 new BaseTerrainFillPass(),
                 new SandRegionPass(),
+                new CaveMaskPass(),
                 new SurfaceDecorationPass(),
                 new WorldBoundsPass()
             };
@@ -40,12 +41,8 @@ namespace Nyvorn.Source.World.Generation
                 SurfaceNoise = CreateSurfaceNoise(config),
                 SurfaceDetailNoise = CreateSurfaceDetailNoise(config),
                 SurfaceWarpNoise = CreateSurfaceWarpNoise(config),
-                CaveFieldNoise = CreateCaveFieldNoise(config),
-                CaveWarpXNoise = CreateCaveWarpXNoise(config),
-                CaveWarpYNoise = CreateCaveWarpYNoise(config),
                 CaveNoise = CreateCaveNoise(config),
                 CaveRoomNoise = CreateCaveRoomNoise(config),
-                BiomeNoise = CreateBiomeNoise(config),
                 MaterialNoise = CreateMaterialNoise(config)
             };
 
@@ -120,43 +117,11 @@ namespace Nyvorn.Source.World.Generation
             return noise;
         }
 
-        private FastNoiseLite CreateCaveFieldNoise(WorldGenConfig config)
-        {
-            FastNoiseLite noise = new FastNoiseLite(config.Seed + 181);
-            noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
-            noise.SetFrequency(config.CaveFieldFrequency);
-            return noise;
-        }
-
-        private FastNoiseLite CreateCaveWarpXNoise(WorldGenConfig config)
-        {
-            FastNoiseLite noise = new FastNoiseLite(config.Seed + 191);
-            noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
-            noise.SetFrequency(config.CaveFieldWarpFrequency);
-            return noise;
-        }
-
-        private FastNoiseLite CreateCaveWarpYNoise(WorldGenConfig config)
-        {
-            FastNoiseLite noise = new FastNoiseLite(config.Seed + 197);
-            noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
-            noise.SetFrequency(config.CaveFieldWarpFrequency);
-            return noise;
-        }
-
         private FastNoiseLite CreateCaveRoomNoise(WorldGenConfig config)
         {
             FastNoiseLite noise = new FastNoiseLite(config.Seed + 233);
             noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
             noise.SetFrequency(config.CaveRoomFrequency);
-            return noise;
-        }
-
-        private FastNoiseLite CreateBiomeNoise(WorldGenConfig config)
-        {
-            FastNoiseLite noise = new FastNoiseLite(config.Seed + 303);
-            noise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
-            noise.SetFrequency(config.BiomeFrequency);
             return noise;
         }
 

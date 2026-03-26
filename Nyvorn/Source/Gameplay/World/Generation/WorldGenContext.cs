@@ -12,12 +12,8 @@ namespace Nyvorn.Source.World.Generation
         public required FastNoiseLite SurfaceNoise { get; init; }
         public required FastNoiseLite SurfaceDetailNoise { get; init; }
         public required FastNoiseLite SurfaceWarpNoise { get; init; }
-        public required FastNoiseLite CaveFieldNoise { get; init; }
-        public required FastNoiseLite CaveWarpXNoise { get; init; }
-        public required FastNoiseLite CaveWarpYNoise { get; init; }
         public required FastNoiseLite CaveNoise { get; init; }
         public required FastNoiseLite CaveRoomNoise { get; init; }
-        public required FastNoiseLite BiomeNoise { get; init; }
         public required FastNoiseLite MaterialNoise { get; init; }
 
         public int[] SurfaceHeights { get; set; } = Array.Empty<int>();

@@ -165,10 +165,10 @@ namespace Nyvorn.Source.Gameplay.UI
             Rectangle sourceRect = GetSourceRect(worldMap, playerPosition);
             int maxWidth = screenWidth - 120;
             int maxHeight = screenHeight - 120;
-            float scale = System.MathF.Min(maxWidth / (float)sourceRect.Width, maxHeight / (float)sourceRect.Height);
-            scale = System.MathF.Max(scale, 1f);
-            int drawWidth = (int)System.MathF.Round(sourceRect.Width * scale);
-            int drawHeight = (int)System.MathF.Round(sourceRect.Height * scale);
+            float scale = System.MathF.Min(maxWidth / (float)worldMap.Width, maxHeight / (float)worldMap.Height);
+            scale = System.Math.Clamp(scale, 0.05f, 1f);
+            int drawWidth = System.Math.Max(1, (int)System.MathF.Round(worldMap.Width * scale));
+            int drawHeight = System.Math.Max(1, (int)System.MathF.Round(worldMap.Height * scale));
             Rectangle panel = new Rectangle(
                 (screenWidth - drawWidth) / 2,
                 (screenHeight - drawHeight) / 2,
