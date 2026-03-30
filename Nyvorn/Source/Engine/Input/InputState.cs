@@ -7,6 +7,7 @@ namespace Nyvorn.Source.Engine.Input
         public int MoveDir { get; }
         public bool JumpPressed { get; }
         public bool AttackPressed { get; }
+        public bool AttackJustPressed { get; }
         public bool PlacePressed { get; }
         public bool OpenInventoryPressed { get; }
         public bool TissueRevealPressed { get; }
@@ -15,12 +16,14 @@ namespace Nyvorn.Source.Engine.Input
         public bool DodgePressed { get; }
         public int DodgeDir { get; }
         public Vector2 MouseScreenPosition { get; }
+        public int MouseWheelDelta { get; }
 
-        public InputState(int moveDir, bool jumpPressed, bool attackPressed, bool placePressed, bool openInventoryPressed, bool tissueRevealPressed, bool toggleMinimapPressed, int hotbarSelectionIndex, bool dodgePressed, int dodgeDir, Vector2 mouseScreenPosition)
+        public InputState(int moveDir, bool jumpPressed, bool attackPressed, bool attackJustPressed, bool placePressed, bool openInventoryPressed, bool tissueRevealPressed, bool toggleMinimapPressed, int hotbarSelectionIndex, bool dodgePressed, int dodgeDir, Vector2 mouseScreenPosition, int mouseWheelDelta)
         {
             MoveDir = moveDir;
             JumpPressed = jumpPressed;
             AttackPressed = attackPressed;
+            AttackJustPressed = attackJustPressed;
             PlacePressed = placePressed;
             OpenInventoryPressed = openInventoryPressed;
             TissueRevealPressed = tissueRevealPressed;
@@ -29,11 +32,12 @@ namespace Nyvorn.Source.Engine.Input
             DodgePressed = dodgePressed;
             DodgeDir = dodgeDir;
             MouseScreenPosition = mouseScreenPosition;
+            MouseWheelDelta = mouseWheelDelta;
         }
 
         public InputState ConsumeWorldMouseInput()
         {
-            return new InputState(MoveDir, JumpPressed, false, false, OpenInventoryPressed, TissueRevealPressed, ToggleMinimapPressed, HotbarSelectionIndex, DodgePressed, DodgeDir, MouseScreenPosition);
+            return new InputState(MoveDir, JumpPressed, false, false, false, OpenInventoryPressed, TissueRevealPressed, ToggleMinimapPressed, HotbarSelectionIndex, DodgePressed, DodgeDir, MouseScreenPosition, MouseWheelDelta);
         }
     }
 }

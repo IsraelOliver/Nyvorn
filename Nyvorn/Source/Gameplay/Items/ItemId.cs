@@ -4,8 +4,9 @@ namespace Nyvorn.Source.Gameplay.Items
     {
         None = 0,
         ShortStick = 1,
-        DirtBlock = 2,
-        StoneBlock = 3,
-        SandBlock = 4
+        Pickaxe = 2,
+        DirtBlock = 3,
+        StoneBlock = 4,
+        SandBlock = 5
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Game;
+using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Persistence;
 
 namespace Nyvorn.Source.Game.States
@@ -22,6 +23,7 @@ namespace Nyvorn.Source.Game.States
         private readonly InputService inputService = new();
         private bool deathStatePushed;
         private bool minimapVisible;
+        private bool minimapTissueMode;
         private float autoSaveTimer;
         private const float AutoSaveInterval = 6f;
 
@@ -38,6 +40,7 @@ namespace Nyvorn.Source.Game.States
             this.session = session;
             deathStatePushed = false;
             minimapVisible = false;
+            minimapTissueMode = false;
             autoSaveTimer = AutoSaveInterval;
         }
 
@@ -58,6 +61,20 @@ namespace Nyvorn.Source.Game.States
             InputState input = inputService.Update();
             if (input.ToggleMinimapPressed)
                 minimapVisible = !minimapVisible;
+            if (minimapVisible)
+            {
+                WorldMinimapInteractionResult minimapInteraction = session.UpdateMinimapInteraction(
+                    input,
+                    screenW,
+                    screenH,
+                    minimapTissueMode);
+
+                if (minimapInteraction.ToggleTissueMode)
+                    minimapTissueMode = !minimapTissueMode;
+
+                if (minimapInteraction.ConsumedMouse)
+                    input = input.ConsumeWorldMouseInput();
+            }
 
             KeyboardState keyboard = Keyboard.GetState();
             if (keyboard.IsKeyDown(Keys.Escape))
@@ -139,10 +156,20 @@ namespace Nyvorn.Source.Game.States
             session.DrawTissueOverlay(spriteBatch);
             spriteBatch.End();
 
+            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            {
+                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueDebug(spriteBatch);
+                spriteBatch.End();
+            }
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW);
             if (minimapVisible)
-                session.DrawMinimap(spriteBatch, screenW, screenH);
+                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
             spriteBatch.End();
         }
 

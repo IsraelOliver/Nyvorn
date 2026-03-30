@@ -32,24 +32,14 @@ namespace Nyvorn.Source.World.Tissue
             FocusPosition = focusPosition;
 
             if (input.TissueRevealPressed)
-            {
-                revealTimer = activeDuration;
                 waveTimer = 0f;
-            }
-            else if (revealTimer > 0f)
-            {
-                revealTimer -= dt;
-                if (waveTimer < waveDuration)
-                    waveTimer += dt;
-            }
+            else if (waveTimer < waveDuration)
+                waveTimer += dt;
             else
-            {
                 waveTimer = waveDuration;
-            }
 
-            float targetStrength = revealTimer > 0f ? 1f : 0f;
-            float lerpAmount = fadeDuration <= 0f ? 1f : MathHelper.Clamp(dt / fadeDuration, 0f, 1f);
-            CurrentStrength = MathHelper.Lerp(CurrentStrength, targetStrength, lerpAmount);
+            revealTimer = activeDuration;
+            CurrentStrength = 1f;
             WaveProgress = waveDuration <= 0f
                 ? 1f
                 : MathHelper.Clamp(waveTimer / waveDuration, 0f, 1f);

@@ -37,7 +37,7 @@
 /processorParam:TextureFormat=Color
 /build:blocks/grass_spritesheet.png
 
-#begin blocks/sand_block.png
+#begin blocks/sand_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -47,7 +47,7 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/sand_block.png
+/build:blocks/sand_spritesheet.png
 
 #begin blocks/stone_spritesheet.png
 /importer:TextureImporter
@@ -181,6 +181,12 @@
 /processorParam:TextureFormat=Color
 /build:entities/player/player_dodge.png
 
+#begin shaders/TissueReveal.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:shaders/TissueReveal.fx
+
 #begin ui/UIFont.spritefont
 /importer:FontDescriptionImporter
 /processor:FontDescriptionProcessor
@@ -188,10 +194,17 @@
 /processorParam:TextureFormat=Compressed
 /build:ui/UIFont.spritefont
 
-#begin shaders/TissueReveal.fx
-/importer:EffectImporter
-/processor:EffectProcessor
-/build:shaders/TissueReveal.fx
+#begin weapons/Pickaxe-Sheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:weapons/Pickaxe-Sheet.png
 
 #begin weapons/shortStick.png
 /importer:TextureImporter
@@ -204,3 +217,4 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:weapons/shortStick.png
+

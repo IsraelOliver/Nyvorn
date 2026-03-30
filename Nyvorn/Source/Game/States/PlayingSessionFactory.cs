@@ -14,7 +14,6 @@ using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Nyvorn.Source.Game.States
 {
@@ -59,6 +58,11 @@ namespace Nyvorn.Source.Game.States
                     StatusText = "Concluido";
             }
 
+            public void SetResult(PlayingSession session)
+            {
+                Result = session;
+            }
+
             public sealed class BuildStep
             {
                 public BuildStep(string label, Action action)
@@ -69,11 +73,6 @@ namespace Nyvorn.Source.Game.States
 
                 public string Label { get; }
                 public Action Action { get; }
-            }
-
-            public void SetResult(PlayingSession session)
-            {
-                Result = session;
             }
         }
 
@@ -97,8 +96,8 @@ namespace Nyvorn.Source.Game.States
 
         public BuildOperation CreateBuildOperation(string planetName, WorldSizePreset sizePreset, int seed)
         {
-            WorldGenSettings worldGenSettings = WorldGenSettings.CreatePreset(sizePreset, seed);
-            PlanetWorldMetadata planetMetadata = PlanetWorldMetadata.Create(planetName, worldGenSettings);
+            WorldGenConfig worldGenConfig = WorldGenConfig.CreatePreset(sizePreset, seed);
+            PlanetWorldMetadata planetMetadata = PlanetWorldMetadata.Create(planetName, worldGenConfig);
             return CreateBuildOperation(planetMetadata, tileChanges: null);
         }
 
@@ -120,166 +119,200 @@ namespace Nyvorn.Source.Game.States
 
         private BuildOperation CreateBuildOperation(PlanetWorldMetadata planetMetadata, IReadOnlyCollection<WorldTileChange> tileChanges)
         {
-            Texture2D dirt = null;
-            Texture2D grass = null;
-            Texture2D sand = null;
-            Texture2D stone = null;
-            Texture2D backHandTexture = null;
-            Texture2D bodyTexture = null;
-            Texture2D legsTexture = null;
-            Texture2D frontHandTexture = null;
-            Texture2D shortStickTexture = null;
-            Texture2D handFrontWeaponRun = null;
-            Texture2D playerDodgeTexture = null;
-            Texture2D attackHandbackTexture = null;
-            Texture2D attackHandfrontTexture = null;
-            Texture2D attackBodyTexture = null;
-            Texture2D enemyTexture = null;
-            Effect tissueRevealEffect = null;
-            SpriteFont uiFont = null;
-
-            WorldGenSettings worldGenSettings = null;
-            WorldMap worldMap = null;
-            WorldGenerator worldGenerator = null;
-            int playerSpawnTileX = 0;
-            int itemSpawnTileX = 0;
-            int enemySpawnTileX = 0;
-            TissueNetwork tissueNetwork = null;
-            Dictionary<ItemId, Texture2D> itemTextures = null;
-            Dictionary<ItemId, Weapon> weapons = null;
-            PlayerConfig playerConfig = PlayerConfig.Default;
-            EnemyConfig enemyConfig = EnemyConfig.Default;
-            Hotbar hotbar = null;
-            Inventory inventory = null;
-            Player player = null;
-            List<Enemy> enemies = null;
-            List<WorldItem> worldItems = null;
-            EnemyRespawnController enemyRespawnController = null;
+            BuildContext build = new();
 
             BuildOperation operation = null;
             operation = new BuildOperation(new[]
             {
-                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () =>
-                {
-                    dirt = content.Load<Texture2D>("blocks/dirt_spritesheet");
-                    grass = content.Load<Texture2D>("blocks/grass_spritesheet");
-                    sand = content.Load<Texture2D>("blocks/sand_block");
-                    stone = content.Load<Texture2D>("blocks/stone_spritesheet");
-
-                    worldGenSettings = WorldGenSettings.CreatePreset(planetMetadata.SizePreset, planetMetadata.Seed);
-                    worldMap = new WorldMap(worldGenSettings.WorldWidth, worldGenSettings.WorldHeight, worldGenSettings.TileSize);
-                    worldMap.SetTextures(dirt, grass, sand, stone);
-                    worldGenerator = new WorldGenerator(worldGenSettings);
-                }),
-                new BuildOperation.BuildStep("Gerando terreno base", () =>
-                {
-                    worldGenerator.Generate(worldMap);
-                }),
-                new BuildOperation.BuildStep("Preparando mundo para jogo", () =>
-                {
-                    playerSpawnTileX = worldGenSettings.SpawnApproximateTileX;
-                    itemSpawnTileX = playerSpawnTileX + 5;
-                    enemySpawnTileX = playerSpawnTileX + 16;
-                    worldMap.ResetTrackedTileChanges();
-                    worldMap.ApplyPersistentTileChanges(tileChanges);
-                    worldMap.InitializeGrassSimulation();
-                    worldMap.BeginTileChangeTracking();
-                }),
-                new BuildOperation.BuildStep("Gerando tecido do planeta", () =>
-                {
-                    tissueNetwork = new TissueGenerator(worldGenSettings.Seed).Generate(worldMap);
-                }),
-                new BuildOperation.BuildStep("Carregando entidades e interface", () =>
-                {
-                    backHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
-                    bodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
-                    legsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
-                    frontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
-                    shortStickTexture = content.Load<Texture2D>("weapons/shortStick");
-                    handFrontWeaponRun = content.Load<Texture2D>("entities/player/handFront_weaponRun");
-                    playerDodgeTexture = content.Load<Texture2D>("entities/player/player_dodge");
-                    attackHandbackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
-                    attackHandfrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
-                    attackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
-                    tissueRevealEffect = content.Load<Effect>("shaders/TissueReveal");
-                    uiFont = content.Load<SpriteFont>("ui/UIFont");
-                    enemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
-
-                    itemTextures = new Dictionary<ItemId, Texture2D>();
-                    foreach (ItemDefinition definition in ItemDefinitions.GetAll())
-                        itemTextures[definition.Id] = content.Load<Texture2D>(definition.TexturePath);
-
-                    Texture2D nullWeaponTexture = new Texture2D(graphicsDevice, 1, 1);
-                    nullWeaponTexture.SetData(new[] { Color.Transparent });
-                    weapons = new Dictionary<ItemId, Weapon>
-                    {
-                        [ItemId.None] = new HandWeapon(nullWeaponTexture),
-                        [ItemId.ShortStick] = new ShortStick(shortStickTexture)
-                    };
-                }),
-                new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () =>
-                {
-                    Vector2 playerSpawn = worldGenerator.GetSurfaceSpawnPosition(worldMap, playerSpawnTileX);
-                    Vector2 enemySpawn = worldGenerator.GetSurfaceSpawnPosition(worldMap, enemySpawnTileX);
-                    Vector2 shortStickSpawn = worldGenerator.GetSurfaceSpawnPosition(worldMap, itemSpawnTileX, 2);
-
-                    player = new Player(
-                        playerSpawn,
-                        bodyTexture,
-                        backHandTexture,
-                        frontHandTexture,
-                        attackHandbackTexture,
-                        attackHandfrontTexture,
-                        attackBodyTexture,
-                        legsTexture,
-                        handFrontWeaponRun,
-                        playerDodgeTexture,
-                        playerConfig);
-
-                    enemies = new List<Enemy>();
-                    enemyRespawnController = new EnemyRespawnController(enemyTexture, enemySpawn, enemyConfig);
-                    enemyRespawnController.SpawnInitial(enemies);
-                    worldItems = new List<WorldItem>
-                    {
-                        new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), shortStickTexture, shortStickSpawn)
-                    };
-                    hotbar = new Hotbar(2);
-                    inventory = new Inventory(10);
-
-                    operation.SetResult(new PlayingSession
-                    {
-                        PlanetMetadata = planetMetadata,
-                        WorldMap = worldMap,
-                        Player = player,
-                        Enemies = enemies,
-                        WorldItems = worldItems,
-                        Hotbar = hotbar,
-                        Inventory = inventory,
-                        ItemTextures = itemTextures,
-                        Weapons = weapons,
-                        EnemyRespawnController = enemyRespawnController,
-                        Camera = new Camera2D
-                        {
-                            FollowLerpX = 0f,
-                            FollowLerpY = 0.12f,
-                            FollowSnapMarginY = 28f
-                        },
-                        HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
-                        HudRenderer = new HudRenderer(graphicsDevice, uiFont, itemTextures),
-                        WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
-                        ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
-                        TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
-                        CombatSystem = new CombatSystem(),
-                        TissueNetwork = tissueNetwork,
-                        TissueMaskRenderer = new TissueMaskRenderer(graphicsDevice, tissueRevealEffect),
-                        TissueRevealController = new TissueRevealController(worldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
-                        TissueDebugRenderer = new TissueDebugRenderer(graphicsDevice)
-                    });
-                })
+                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata)),
+                new BuildOperation.BuildStep("Gerando terreno base", () => build.WorldGenerator.Generate(build.WorldMap, build.WorldGenConfig)),
+                new BuildOperation.BuildStep("Preparando mundo para jogo", () => PrepareWorld(build, tileChanges)),
+                new BuildOperation.BuildStep("Gerando tecido do planeta", () => build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap)),
+                new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build)),
+                new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata)))
             });
 
             return operation;
         }
 
+        private void LoadWorldAssets(BuildContext build, PlanetWorldMetadata planetMetadata)
+        {
+            build.DirtTexture = content.Load<Texture2D>("blocks/dirt_spritesheet");
+            build.GrassTexture = content.Load<Texture2D>("blocks/grass_spritesheet");
+            build.SandTexture = content.Load<Texture2D>("blocks/sand_spritesheet");
+            build.StoneTexture = content.Load<Texture2D>("blocks/stone_spritesheet");
+
+            build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.Seed);
+            build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
+            build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture);
+            build.WorldGenerator = new WorldGenerator();
+        }
+
+        private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
+        {
+            int worldCenterTileX = build.WorldMap.Width / 2;
+            build.PlayerSpawnTileX = worldCenterTileX;
+            build.ItemSpawnTileX = WrapTileX(build.PlayerSpawnTileX + 5, build.WorldMap.Width);
+            build.EnemySpawnTileX = WrapTileX(build.PlayerSpawnTileX + 16, build.WorldMap.Width);
+
+            build.WorldMap.ResetTrackedTileChanges();
+            build.WorldMap.ApplyPersistentTileChanges(tileChanges);
+            build.WorldMap.InitializeGrassSimulation();
+            build.WorldMap.BeginTileChangeTracking();
+        }
+
+        private static int WrapTileX(int tileX, int worldWidth)
+        {
+            if (worldWidth <= 0)
+                return 0;
+
+            int wrapped = tileX % worldWidth;
+            return wrapped < 0 ? wrapped + worldWidth : wrapped;
+        }
+
+        private void LoadGameplayAssets(BuildContext build)
+        {
+            build.BackHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
+            build.BodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
+            build.LegsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
+            build.FrontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
+            build.ShortStickTexture = content.Load<Texture2D>("weapons/shortStick");
+            build.PickaxeTexture = content.Load<Texture2D>("weapons/Pickaxe-Sheet");
+            build.HandFrontWeaponRunTexture = content.Load<Texture2D>("entities/player/handFront_weaponRun");
+            build.PlayerDodgeTexture = content.Load<Texture2D>("entities/player/player_dodge");
+            build.AttackHandBackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
+            build.AttackHandFrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
+            build.AttackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
+            build.TissueRevealEffect = content.Load<Effect>("shaders/TissueReveal");
+            build.UiFont = content.Load<SpriteFont>("ui/UIFont");
+            build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
+
+            build.ItemTextures = LoadItemTextures();
+            build.Weapons = CreateWeapons(build.ShortStickTexture, build.PickaxeTexture);
+        }
+
+        private Dictionary<ItemId, Texture2D> LoadItemTextures()
+        {
+            Dictionary<ItemId, Texture2D> itemTextures = new();
+            foreach (ItemDefinition definition in ItemDefinitions.GetAll())
+                itemTextures[definition.Id] = content.Load<Texture2D>(definition.TexturePath);
+
+            return itemTextures;
+        }
+
+        private Dictionary<ItemId, Weapon> CreateWeapons(Texture2D shortStickTexture, Texture2D pickaxeTexture)
+        {
+            Texture2D nullWeaponTexture = new Texture2D(graphicsDevice, 1, 1);
+            nullWeaponTexture.SetData(new[] { Color.Transparent });
+
+            return new Dictionary<ItemId, Weapon>
+            {
+                [ItemId.None] = new HandWeapon(nullWeaponTexture),
+                [ItemId.ShortStick] = new ShortStick(shortStickTexture),
+                [ItemId.Pickaxe] = new Pickaxe(pickaxeTexture)
+            };
+        }
+
+        private PlayingSession CreateSession(BuildContext build, PlanetWorldMetadata planetMetadata)
+        {
+            Vector2 playerSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.PlayerSpawnTileX);
+            Vector2 enemySpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.EnemySpawnTileX);
+            Vector2 shortStickSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.ItemSpawnTileX, 2);
+            Vector2 pickaxeSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.ItemSpawnTileX + 3, 2);
+
+            Player player = new(
+                playerSpawn,
+                build.BodyTexture,
+                build.BackHandTexture,
+                build.FrontHandTexture,
+                build.AttackHandBackTexture,
+                build.AttackHandFrontTexture,
+                build.AttackBodyTexture,
+                build.LegsTexture,
+                build.HandFrontWeaponRunTexture,
+                build.PlayerDodgeTexture,
+                build.PlayerConfig);
+
+            List<Enemy> enemies = new();
+            EnemyRespawnController enemyRespawnController = new(build.EnemyTexture, enemySpawn, build.EnemyConfig);
+            enemyRespawnController.SpawnInitial(enemies);
+
+            List<WorldItem> worldItems = new()
+            {
+                new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), build.ShortStickTexture, shortStickSpawn),
+                new WorldItem(ItemDefinitions.Get(ItemId.Pickaxe), build.PickaxeTexture, pickaxeSpawn)
+            };
+
+            Hotbar hotbar = new(2);
+            Inventory inventory = new(10);
+
+            return new PlayingSession
+            {
+                PlanetMetadata = planetMetadata,
+                WorldMap = build.WorldMap,
+                Player = player,
+                Enemies = enemies,
+                WorldItems = worldItems,
+                Hotbar = hotbar,
+                Inventory = inventory,
+                ItemTextures = build.ItemTextures,
+                Weapons = build.Weapons,
+                EnemyRespawnController = enemyRespawnController,
+                Camera = CreateCamera(),
+                HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
+                HudRenderer = new HudRenderer(graphicsDevice, build.UiFont, build.ItemTextures),
+                WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
+                ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
+                TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
+                CombatSystem = new CombatSystem(),
+                TissueNetwork = build.TissueNetwork,
+                TissueMaskRenderer = new TissueMaskRenderer(graphicsDevice, build.TissueRevealEffect),
+                TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
+                TissueDebugRenderer = new TissueDebugRenderer(graphicsDevice)
+            };
+        }
+
+        private static Camera2D CreateCamera()
+        {
+            return new Camera2D
+            {
+                FollowLerpX = 0f,
+                FollowLerpY = 0.12f,
+                FollowSnapMarginY = 28f
+            };
+        }
+
+        private sealed class BuildContext
+        {
+            public Texture2D DirtTexture { get; set; }
+            public Texture2D GrassTexture { get; set; }
+            public Texture2D SandTexture { get; set; }
+            public Texture2D StoneTexture { get; set; }
+            public Texture2D BackHandTexture { get; set; }
+            public Texture2D BodyTexture { get; set; }
+            public Texture2D LegsTexture { get; set; }
+            public Texture2D FrontHandTexture { get; set; }
+            public Texture2D ShortStickTexture { get; set; }
+            public Texture2D PickaxeTexture { get; set; }
+            public Texture2D HandFrontWeaponRunTexture { get; set; }
+            public Texture2D PlayerDodgeTexture { get; set; }
+            public Texture2D AttackHandBackTexture { get; set; }
+            public Texture2D AttackHandFrontTexture { get; set; }
+            public Texture2D AttackBodyTexture { get; set; }
+            public Texture2D EnemyTexture { get; set; }
+            public Effect TissueRevealEffect { get; set; }
+            public SpriteFont UiFont { get; set; }
+            public WorldGenConfig WorldGenConfig { get; set; }
+            public WorldMap WorldMap { get; set; }
+            public WorldGenerator WorldGenerator { get; set; }
+            public int PlayerSpawnTileX { get; set; }
+            public int ItemSpawnTileX { get; set; }
+            public int EnemySpawnTileX { get; set; }
+            public TissueNetwork TissueNetwork { get; set; }
+            public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
+            public Dictionary<ItemId, Weapon> Weapons { get; set; }
+            public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;
+            public EnemyConfig EnemyConfig { get; } = EnemyConfig.Default;
+        }
     }
 }

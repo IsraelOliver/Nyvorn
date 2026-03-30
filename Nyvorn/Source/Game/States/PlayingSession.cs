@@ -50,6 +50,7 @@ namespace Nyvorn.Source.Game.States
         private const float GrassSpreadInterval = 0.24f;
         public int SelectedHotbarIndex { get; private set; }
         private int lastBlockBreakAttackSequence = -1;
+        private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
         private float blockPlaceCooldownTimer;
         private float grassSpreadTimer;
         private float tissueTime;
@@ -82,6 +83,7 @@ namespace Nyvorn.Source.Game.States
                     input.MoveDir,
                     input.JumpPressed,
                     false,
+                    false,
                     input.PlacePressed,
                     input.OpenInventoryPressed,
                     input.TissueRevealPressed,
@@ -89,7 +91,8 @@ namespace Nyvorn.Source.Game.States
                     input.HotbarSelectionIndex,
                     input.DodgePressed,
                     input.DodgeDir,
-                    input.MouseScreenPosition);
+                    input.MouseScreenPosition,
+                    input.MouseWheelDelta);
             }
 
             SyncEquippedWeapon();
@@ -278,9 +281,23 @@ namespace Nyvorn.Source.Game.States
             HudRenderer.Draw(spriteBatch, Hotbar, SelectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth);
         }
 
-        public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
         {
-            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, Camera, Player.Position, screenWidth, screenHeight);
+            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode);
+        }
+
+        public WorldMinimapInteractionResult UpdateMinimapInteraction(InputState input, int screenWidth, int screenHeight, bool tissueMode)
+        {
+            return WorldMinimapRenderer.HandleInput(
+                WorldMap,
+                Player.Position,
+                screenWidth,
+                screenHeight,
+                input.MouseScreenPosition,
+                input.MouseWheelDelta,
+                input.AttackPressed,
+                input.AttackJustPressed,
+                tissueMode);
         }
 
         public void DrawInventory(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
@@ -343,10 +360,10 @@ namespace Nyvorn.Source.Game.States
             if (!Player.HasActiveAttackHitbox)
                 return;
 
-            if (Player.AttackSequence == lastBlockBreakAttackSequence)
+            Point tile = WorldMap.WorldToTile(mouseWorld);
+            if (Player.AttackSequence == lastBlockBreakAttackSequence && tile == lastBrokenBlockTile)
                 return;
 
-            Point tile = WorldMap.WorldToTile(mouseWorld);
             TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
             if (!Player.CanBreakTile(targetTile))
                 return;
@@ -360,6 +377,7 @@ namespace Nyvorn.Source.Game.States
 
             SpawnBrokenBlockDrop(removedTile, tileCenter);
             lastBlockBreakAttackSequence = Player.AttackSequence;
+            lastBrokenBlockTile = tile;
         }
 
         private void SpawnBrokenBlockDrop(TileType removedTile, Vector2 tileCenter)

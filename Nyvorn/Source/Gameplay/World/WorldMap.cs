@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using System.Collections.Generic;
 
@@ -16,6 +17,7 @@ namespace Nyvorn.Source.World
         public int TileSize { get; }
         public int TileRevision { get; private set; }
         public int PixelWidth => Width * TileSize;
+        public TissueField TissueField { get; set; }
         public int ChunkTileSize => DefaultChunkTileSize;
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
         public int ChunkCountY => (Height + ChunkTileSize - 1) / ChunkTileSize;
@@ -295,34 +297,6 @@ namespace Nyvorn.Source.World
                 BeginTileChangeTracking();
         }
 
-        public void GenerateTest()
-        {
-            for (int y = 0; y < Height; y++)
-            {
-                for (int x = 0; x < Width; x++)
-                    _tiles[x, y] = TileType.Empty;
-            }
-
-            int groundY = Height - 3;
-            for (int x = 0; x < Width; x++)
-                _tiles[x, groundY] = TileType.Dirt;
-
-            for (int x = 10; x < 20; x++)
-                _tiles[x, groundY - 5] = TileType.Stone;
-
-            for (int x = 25; x < 40; x++)
-                _tiles[x, groundY - 10] = TileType.Sand;
-
-            for (int x = 45; x < 70; x++)
-                _tiles[x, groundY - 15] = TileType.Dirt;
-
-            for (int y = 0; y < Height; y++)
-            {
-                _tiles[0, y] = TileType.Stone;
-                _tiles[Width - 1, y] = TileType.Stone;
-            }
-        }
-
         public void SetTextures(Texture2D dirt, Texture2D sand, Texture2D stone)
         {
             SetTextures(dirt, dirt, sand, stone);
@@ -376,6 +350,7 @@ namespace Nyvorn.Source.World
                         TileType.Dirt => GetAutoTileSourceRectangle(x, y),
                         TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
                         TileType.Stone => GetAutoTileSourceRectangle(x, y),
+                        TileType.Sand => GetAutoTileSourceRectangle(x, y),
                         _ => null
                     };
 

@@ -18,12 +18,13 @@ namespace Nyvorn.Source.Engine.Input
             else if (keyboard.IsKeyDown(Keys.A)) moveDir = -1;
 
             bool jumpPressed = keyboard.IsKeyDown(Keys.Space);
-            bool attackPressed = mouse.LeftButton == ButtonState.Pressed &&
-                                _prevMouse.LeftButton == ButtonState.Released;
+            bool attackPressed = mouse.LeftButton == ButtonState.Pressed;
+            bool attackJustPressed = mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton != ButtonState.Pressed;
             bool placePressed = mouse.LeftButton == ButtonState.Pressed;
             bool openInventoryPressed = keyboard.IsKeyDown(Keys.E) && !_prevKeyboard.IsKeyDown(Keys.E);
             bool tissueRevealPressed = keyboard.IsKeyDown(Keys.F) && !_prevKeyboard.IsKeyDown(Keys.F);
             bool toggleMinimapPressed = keyboard.IsKeyDown(Keys.M) && !_prevKeyboard.IsKeyDown(Keys.M);
+            int mouseWheelDelta = mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue;
             int hotbarSelectionIndex = -1;
             if ((keyboard.IsKeyDown(Keys.D1) && !_prevKeyboard.IsKeyDown(Keys.D1)) ||
                 (keyboard.IsKeyDown(Keys.NumPad1) && !_prevKeyboard.IsKeyDown(Keys.NumPad1)))
@@ -52,6 +53,7 @@ namespace Nyvorn.Source.Engine.Input
                 moveDir,
                 jumpPressed,
                 attackPressed,
+                attackJustPressed,
                 placePressed,
                 openInventoryPressed,
                 tissueRevealPressed,
@@ -59,7 +61,8 @@ namespace Nyvorn.Source.Engine.Input
                 hotbarSelectionIndex,
                 dodgePressed,
                 dodgeDir,
-                new Vector2(mouse.X, mouse.Y));
+                new Vector2(mouse.X, mouse.Y),
+                mouseWheelDelta);
         }
     }
 }

@@ -227,7 +227,7 @@ namespace Nyvorn.Source.Game.States
 
         private void DrawPresetDescription(SpriteBatch spriteBatch)
         {
-            WorldGenSettings settings = WorldGenSettings.CreatePreset(selectedPreset, 1337);
+            WorldGenConfig settings = WorldGenConfig.CreatePreset(selectedPreset, 1337);
             Rectangle area = GetDescriptionBounds();
             spriteBatch.Draw(pixel, area, new Color(18, 34, 40, 210));
 

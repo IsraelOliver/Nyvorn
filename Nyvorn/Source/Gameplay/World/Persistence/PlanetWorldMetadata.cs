@@ -12,17 +12,17 @@ namespace Nyvorn.Source.World.Persistence
         public required int WorldHeight { get; init; }
         public required int TileSize { get; init; }
 
-        public static PlanetWorldMetadata Create(string planetName, WorldGenSettings settings, string worldId = null)
+        public static PlanetWorldMetadata Create(string planetName, WorldGenConfig config, string worldId = null)
         {
             return new PlanetWorldMetadata
             {
                 WorldId = string.IsNullOrWhiteSpace(worldId) ? System.Guid.NewGuid().ToString("N") : worldId,
                 PlanetName = planetName,
-                Seed = settings.Seed,
-                SizePreset = settings.SizePreset,
-                WorldWidth = settings.WorldWidth,
-                WorldHeight = settings.WorldHeight,
-                TileSize = settings.TileSize
+                Seed = config.Seed,
+                SizePreset = config.SizePreset,
+                WorldWidth = config.WorldWidth,
+                WorldHeight = config.WorldHeight,
+                TileSize = config.TileSize
             };
         }
     }

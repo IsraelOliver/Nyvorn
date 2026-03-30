@@ -25,6 +25,22 @@ namespace Nyvorn.Source.Gameplay.Items
                 }
             },
             {
+                ItemId.Pickaxe,
+                new ItemDefinition
+                {
+                    Id = ItemId.Pickaxe,
+                    Name = "Pickaxe",
+                    TexturePath = "weapons/Pickaxe-Sheet",
+                    Stackable = false,
+                    MaxStack = 1,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(32, 32),
+                    WorldPivot = new Point(9, 19),
+                    SpriteSheetCell = new Point(0, 1),
+                    WorldCollisionRect = new Rectangle(6, 18, 20, 8)
+                }
+            },
+            {
                 ItemId.DirtBlock,
                 new ItemDefinition
                 {
@@ -62,7 +78,7 @@ namespace Nyvorn.Source.Gameplay.Items
                 {
                     Id = ItemId.SandBlock,
                     Name = "Sand Block",
-                    TexturePath = "blocks/sand_block",
+                    TexturePath = "blocks/sand_spritesheet",
                     Stackable = true,
                     MaxStack = 999,
                     GravityScale = 1.0f,
@@ -73,6 +89,9 @@ namespace Nyvorn.Source.Gameplay.Items
                 }
             }
         };
+
+        private static readonly IReadOnlyCollection<ItemDefinition> allDefinitions =
+            new ReadOnlyCollection<ItemDefinition>(new List<ItemDefinition>(definitions.Values));
 
         public static ItemDefinition Get(ItemId id)
         {
@@ -86,7 +105,7 @@ namespace Nyvorn.Source.Gameplay.Items
 
         public static IReadOnlyCollection<ItemDefinition> GetAll()
         {
-            return new ReadOnlyCollection<ItemDefinition>(new List<ItemDefinition>(definitions.Values));
+            return allDefinitions;
         }
     }
 }

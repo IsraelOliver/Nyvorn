@@ -1,0 +1,93 @@
+Seed: 1337
+WorldId: 58207c61d7e141b795e31faba2ce6ec8
+Planet: Elyra
+SizePreset: Small
+World: 3840x1080 tiles
+
+PassOrder:
+- ClearWorld
+- LayerBoundary
+- SurfaceProfile
+- BaseTerrainFill
+- SandRegion
+- CaveCarving
+- ChamberCarving
+- SurfaceDecoration
+- WorldBounds
+
+Layers:
+- Space: Y 0-130, Air 503040/503040 (100,00%), Components 1, AvgComponentSize 503040,00
+- Surface: Y 131-238, Air 206310/414720 (49,75%), Components 1, AvgComponentSize 206310,00
+- ShallowUnderground: Y 239-454, Air 29962/829440 (3,61%), Components 39, AvgComponentSize 768,26
+- Cavern: Y 455-778, Air 313625/1244160 (25,21%), Components 71, AvgComponentSize 4417,25
+- DeepCavern: Y 779-1079, Air 156395/1155840 (13,53%), Components 54, AvgComponentSize 2896,20
+
+DebugStats:
+- BaseTerrain.AirTiles=709350
+- BaseTerrain.DirtTiles=252349
+- BaseTerrain.StoneTiles=3185501
+- Caves.Cavern.Worms=77
+- Caves.Deep.Worms=38
+- Caves.Shallow.Worms=30
+- Caves.WormCount=145
+- Chambers.Cavern=17
+- Chambers.Deep=10
+- Chambers.Large=5
+- Chambers.Shallow=2
+- Chambers.Total=29
+- Layer.Cavern.EndY=778
+- Layer.Cavern.Height=324
+- Layer.Cavern.StartY=455
+- Layer.DeepCavern.EndY=1079
+- Layer.DeepCavern.Height=301
+- Layer.DeepCavern.StartY=779
+- Layer.ShallowUnderground.EndY=454
+- Layer.ShallowUnderground.Height=216
+- Layer.ShallowUnderground.StartY=239
+- Layer.Space.EndY=130
+- Layer.Space.Height=131
+- Layer.Space.StartY=0
+- Layer.Surface.EndY=238
+- Layer.Surface.Height=108
+- Layer.Surface.StartY=131
+- SandRegion.CenterX=103
+- SandRegion.EndX=168
+- SandRegion.StartX=38
+- SandRegion.TileCount=671
+- SandRegion.Width=131
+- Surface.CenterY=176
+- Surface.MaxY=212
+- Surface.MinY=157
+
+Config:
+SizePreset=Small
+Seed=1337
+WorldWidth=3840
+WorldHeight=1080
+SurfaceBaseHeight=184
+SurfaceAmplitude=36
+DirtDepthBelowSurface=3
+StoneStartDepth=6
+StoneFullDepth=144
+CaveWormCountShallow=30
+CaveWormCountMid=77
+CaveWormCountDeep=38
+CaveWormLengthMin=29
+CaveWormLengthMax=96
+CaveWormRadiusMin=2
+CaveWormRadiusMax=5
+CaveChamberCountShallow=2
+CaveChamberCountCavern=14
+CaveChamberCountDeep=8
+CaveGuaranteedLargeChambersCavern=3
+CaveGuaranteedLargeChambersDeep=2
+CaveChamberSmallRadiusMin=4
+CaveChamberSmallRadiusMax=7
+CaveChamberMediumRadiusMin=8
+CaveChamberMediumRadiusMax=12
+CaveChamberLargeRadiusMin=18
+CaveChamberLargeRadiusMax=24
+SpaceLayerEndPercent=0,12
+SurfaceLayerEndPercent=0,22
+ShallowLayerEndPercent=0,42
+CavernLayerEndPercent=0,72
