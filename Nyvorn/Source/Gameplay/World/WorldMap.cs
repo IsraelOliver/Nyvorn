@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.World.Tissue;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using System.Collections.Generic;
@@ -17,7 +18,9 @@ namespace Nyvorn.Source.World
         public int TileSize { get; }
         public int TileRevision { get; private set; }
         public int PixelWidth => Width * TileSize;
-        public TissueField TissueField { get; set; }
+        public TissueField TissueField => _tissueField;
+        public TissueAnalysisResult TissueAnalysis => _tissueAnalysis;
+        public int TissueRevision { get; private set; }
         public int ChunkTileSize => DefaultChunkTileSize;
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
         public int ChunkCountY => (Height + ChunkTileSize - 1) / ChunkTileSize;
@@ -26,6 +29,8 @@ namespace Nyvorn.Source.World
         private Texture2D _grass;
         private Texture2D _sand;
         private Texture2D _stone;
+        private TissueField _tissueField;
+        private TissueAnalysisResult _tissueAnalysis;
 
         private readonly TileType[,] _tiles;
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
@@ -68,6 +73,116 @@ namespace Nyvorn.Source.World
             _tiles[wrappedX, y] = type;
             TileRevision++;
             EnqueueGrassCandidateArea(wrappedX, y);
+        }
+
+        public byte[] ExportTileSnapshot()
+        {
+            byte[] snapshot = new byte[Width * Height];
+            int index = 0;
+
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    snapshot[index++] = (byte)_tiles[x, y];
+            }
+
+            return snapshot;
+        }
+
+        public void ImportTileSnapshot(byte[] snapshot)
+        {
+            if (snapshot == null)
+                throw new System.ArgumentNullException(nameof(snapshot));
+
+            if (snapshot.Length != Width * Height)
+                throw new System.ArgumentException("Tile snapshot size does not match world dimensions.", nameof(snapshot));
+
+            int index = 0;
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    _tiles[x, y] = (TileType)snapshot[index++];
+            }
+
+            ResetTrackedTileChanges();
+            ClearGrassCandidates();
+            TileRevision++;
+        }
+
+        public byte[] ExportTissueSnapshot()
+        {
+            if (_tissueField == null)
+                return null;
+
+            byte[] snapshot = new byte[Width * Height];
+            int index = 0;
+
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    snapshot[index++] = _tissueField.HasTissue(x, y) ? (byte)1 : (byte)0;
+            }
+
+            return snapshot;
+        }
+
+        public void ImportTissueSnapshot(byte[] snapshot)
+        {
+            if (snapshot == null || snapshot.Length == 0)
+            {
+                SetTissueField(null);
+                return;
+            }
+
+            if (snapshot.Length != Width * Height)
+                throw new System.ArgumentException("Tissue snapshot size does not match world dimensions.", nameof(snapshot));
+
+            TissueField field = new TissueField(Width, Height);
+            int index = 0;
+
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    field.SetTissue(x, y, snapshot[index++] != 0);
+            }
+
+            SetTissueField(field);
+        }
+
+        public void SetTissueField(TissueField tissueField)
+        {
+            _tissueField = tissueField;
+            _tissueAnalysis = null;
+            TissueRevision++;
+        }
+
+        public void MarkTissueDirty()
+        {
+            _tissueAnalysis = null;
+            TissueRevision++;
+        }
+
+        public TissueAnalysisResult GetOrCreateTissueAnalysis()
+        {
+            if (_tissueField == null)
+                return null;
+
+            if (_tissueAnalysis == null)
+                _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
+
+            return _tissueAnalysis;
+        }
+
+        public TissueAnalysisResult RebuildTissueAnalysis()
+        {
+            if (_tissueField == null)
+            {
+                _tissueAnalysis = null;
+                return null;
+            }
+
+            _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
+            return _tissueAnalysis;
         }
 
         public bool InBounds(int x, int y)
@@ -480,6 +595,12 @@ namespace Nyvorn.Source.World
             long key = CreateTileKey(wrappedX, y);
             if (_grassCandidateKeys.Add(key))
                 _grassCandidateQueue.Enqueue(new Point(wrappedX, y));
+        }
+
+        private void ClearGrassCandidates()
+        {
+            _grassCandidateKeys.Clear();
+            _grassCandidateQueue.Clear();
         }
     }
 }

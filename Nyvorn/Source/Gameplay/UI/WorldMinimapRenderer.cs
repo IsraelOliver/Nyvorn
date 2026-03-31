@@ -27,7 +27,6 @@ namespace Nyvorn.Source.Gameplay.UI
         private const float MinZoom = 1f;
         private const float MaxZoom = 18f;
         private const float ZoomStep = 1.2f;
-
         public WorldMinimapRenderer(GraphicsDevice graphicsDevice)
         {
             this.graphicsDevice = graphicsDevice;
@@ -160,6 +159,7 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private void DrawTissueFieldOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueField tissueField, Rectangle panel, Rectangle sourceRect)
         {
+            TissueAnalysisResult analysis = GetTissueAnalysis(worldMap, tissueField);
             int startX = System.Math.Max(0, sourceRect.X);
             int endX = System.Math.Min(tissueField.Width - 1, sourceRect.Right - 1);
             int startY = System.Math.Max(0, sourceRect.Y);
@@ -177,12 +177,119 @@ namespace Nyvorn.Source.Gameplay.UI
                     if (!tissueField.HasTissue(x, y))
                         continue;
 
+                    TissueLocalType localType = analysis.GetLocalType(x, y);
+                    Color color = TissueDebugPalette.GetColor(localType);
+                    if (color.A == 0)
+                        continue;
+
                     int drawX = panel.X + (int)System.MathF.Floor(((x - sourceRect.X) / (float)sourceRect.Width) * panel.Width);
                     int drawY = panel.Y + (int)System.MathF.Floor(((y - sourceRect.Y) / (float)sourceRect.Height) * panel.Height);
                     Rectangle rect = new Rectangle(drawX, drawY, minPixelWidth, minPixelHeight);
-                    DrawRect(spriteBatch, rect, Color.White);
+                    DrawRect(spriteBatch, rect, color);
                 }
             }
+
+            DrawTissueLinks(spriteBatch, worldMap, analysis, panel, sourceRect);
+            DrawTissueHubMarkers(spriteBatch, analysis, panel, sourceRect, minPixelWidth, minPixelHeight);
+        }
+
+        private TissueAnalysisResult GetTissueAnalysis(WorldMap worldMap, TissueField tissueField)
+        {
+            return worldMap.GetOrCreateTissueAnalysis();
+        }
+
+        private void DrawTissueHubMarkers(SpriteBatch spriteBatch, TissueAnalysisResult analysis, Rectangle panel, Rectangle sourceRect, int minPixelWidth, int minPixelHeight)
+        {
+            for (int i = 0; i < analysis.Hubs.Count; i++)
+            {
+                TissueHub hub = analysis.Hubs[i];
+                if (hub.TilePosition.X < sourceRect.Left || hub.TilePosition.X >= sourceRect.Right ||
+                    hub.TilePosition.Y < sourceRect.Top || hub.TilePosition.Y >= sourceRect.Bottom)
+                {
+                    continue;
+                }
+
+                Color hubColor = GetHubColor(hub);
+
+                int centerX = panel.X + (int)System.MathF.Round(((hub.TilePosition.X + 0.5f - sourceRect.X) / sourceRect.Width) * panel.Width);
+                int centerY = panel.Y + (int)System.MathF.Round(((hub.TilePosition.Y + 0.5f - sourceRect.Y) / sourceRect.Height) * panel.Height);
+                int markerSize = System.Math.Max(6, System.Math.Max(minPixelWidth, minPixelHeight) * 4);
+                Rectangle markerRect = new Rectangle(
+                    centerX - (markerSize / 2),
+                    centerY - (markerSize / 2),
+                    markerSize,
+                    markerSize);
+
+                DrawRectOutline(spriteBatch, markerRect, 1, hubColor);
+                DrawRect(spriteBatch, new Rectangle(centerX - 1, markerRect.Y + 1, 3, markerRect.Height - 2), hubColor);
+                DrawRect(spriteBatch, new Rectangle(markerRect.X + 1, centerY - 1, markerRect.Width - 2, 3), hubColor);
+            }
+        }
+
+        private void DrawTissueLinks(SpriteBatch spriteBatch, WorldMap worldMap, TissueAnalysisResult analysis, Rectangle panel, Rectangle sourceRect)
+        {
+            for (int linkIndex = 0; linkIndex < analysis.Links.Count; linkIndex++)
+            {
+                TissueLink link = analysis.Links[linkIndex];
+                if (link.TilePath == null || link.TilePath.Count < 2)
+                    continue;
+
+                if (!TryGetLinkStyle(link, out Color color, out float thickness))
+                    continue;
+
+                for (int pointIndex = 0; pointIndex < link.TilePath.Count - 1; pointIndex++)
+                {
+                    Point startTile = link.TilePath[pointIndex];
+                    Point endTile = link.TilePath[pointIndex + 1];
+
+                    if (!IsTileInsideSourceRect(startTile, sourceRect) && !IsTileInsideSourceRect(endTile, sourceRect))
+                        continue;
+
+                    Vector2 start = MapWorldToMinimap(worldMap, worldMap.GetTileCenter(startTile.X, startTile.Y), panel, sourceRect);
+                    Vector2 end = MapWorldToMinimap(worldMap, worldMap.GetTileCenter(endTile.X, endTile.Y), panel, sourceRect);
+                    DrawLine(spriteBatch, start, end, color * 0.8f, thickness);
+                }
+            }
+        }
+
+        private Color GetHubColor(TissueHub hub)
+        {
+            if (hub.IsIsolated)
+                return new Color(118, 92, 255);
+
+            if (hub.IsTerminal)
+                return new Color(255, 145, 46);
+
+            return new Color(80, 255, 110);
+        }
+
+        private bool TryGetLinkStyle(TissueLink link, out Color color, out float thickness)
+        {
+            switch (link.LinkType)
+            {
+                case TissueLink.TissueLinkType.Primary:
+                    color = new Color(255, 40, 40);
+                    thickness = 2.5f;
+                    return true;
+
+                case TissueLink.TissueLinkType.Secondary:
+                    color = new Color(255, 215, 64);
+                    thickness = 1.5f;
+                    return true;
+
+                default:
+                    color = Color.Transparent;
+                    thickness = 0f;
+                    return false;
+            }
+        }
+
+        private bool IsTileInsideSourceRect(Point tile, Rectangle sourceRect)
+        {
+            return tile.X >= sourceRect.Left &&
+                   tile.X < sourceRect.Right &&
+                   tile.Y >= sourceRect.Top &&
+                   tile.Y < sourceRect.Bottom;
         }
 
         private void AdjustZoomAtPoint(WorldMap worldMap, Vector2 playerPosition, int screenWidth, int screenHeight, MinimapLayout layout, Vector2 mouseScreenPosition, int mouseWheelDelta, bool pointerOverMap)

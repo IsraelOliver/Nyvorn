@@ -98,7 +98,7 @@ namespace Nyvorn.Source.Game.States
         {
             WorldGenConfig worldGenConfig = WorldGenConfig.CreatePreset(sizePreset, seed);
             PlanetWorldMetadata planetMetadata = PlanetWorldMetadata.Create(planetName, worldGenConfig);
-            return CreateBuildOperation(planetMetadata, tileChanges: null);
+            return CreateBuildOperation(planetMetadata, saveData: null);
         }
 
         public BuildOperation CreateBuildOperation(PlanetSaveData saveData)
@@ -106,7 +106,7 @@ namespace Nyvorn.Source.Game.States
             if (saveData == null)
                 return CreateBuildOperation("Elyra", WorldSizePreset.Medium, 1337);
 
-            return CreateBuildOperation(saveData.Metadata, saveData.TileChanges);
+            return CreateBuildOperationFromSaveData(saveData);
         }
 
         private PlayingSession CompleteBuild(BuildOperation operation)
@@ -117,20 +117,47 @@ namespace Nyvorn.Source.Game.States
             return operation.Result;
         }
 
-        private BuildOperation CreateBuildOperation(PlanetWorldMetadata planetMetadata, IReadOnlyCollection<WorldTileChange> tileChanges)
+        private BuildOperation CreateBuildOperationFromSaveData(PlanetSaveData saveData)
+        {
+            return CreateBuildOperation(saveData.Metadata, saveData);
+        }
+
+        private BuildOperation CreateBuildOperation(PlanetWorldMetadata planetMetadata, PlanetSaveData saveData)
         {
             BuildContext build = new();
+            bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
+            bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
 
             BuildOperation operation = null;
-            operation = new BuildOperation(new[]
+            List<BuildOperation.BuildStep> steps = new()
             {
-                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata)),
-                new BuildOperation.BuildStep("Gerando terreno base", () => build.WorldGenerator.Generate(build.WorldMap, build.WorldGenConfig)),
-                new BuildOperation.BuildStep("Preparando mundo para jogo", () => PrepareWorld(build, tileChanges)),
-                new BuildOperation.BuildStep("Gerando tecido do planeta", () => build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap)),
-                new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build)),
-                new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata)))
-            });
+                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata))
+            };
+
+            if (hasWorldSnapshot)
+            {
+                steps.Add(new BuildOperation.BuildStep("Carregando snapshot do mundo", () => LoadWorldSnapshot(build, saveData)));
+            }
+            else
+            {
+                steps.Add(new BuildOperation.BuildStep("Gerando terreno base", () => build.WorldGenerator.Generate(build.WorldMap, build.WorldGenConfig)));
+            }
+
+            steps.Add(new BuildOperation.BuildStep("Preparando mundo para jogo", () => PrepareWorld(build, hasWorldSnapshot ? null : saveData?.TileChanges)));
+
+            if (!hasTissueSnapshot)
+            {
+                steps.Add(new BuildOperation.BuildStep("Preparando tecido do planeta", () =>
+                {
+                    if (build.WorldMap.TissueField == null)
+                        build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
+                }));
+            }
+
+            steps.Add(new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build)));
+            steps.Add(new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata))));
+
+            operation = new BuildOperation(steps);
 
             return operation;
         }
@@ -159,6 +186,15 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap.ApplyPersistentTileChanges(tileChanges);
             build.WorldMap.InitializeGrassSimulation();
             build.WorldMap.BeginTileChangeTracking();
+        }
+
+        private static void LoadWorldSnapshot(BuildContext build, PlanetSaveData saveData)
+        {
+            build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
+            build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
+
+            if (build.WorldMap.TissueField != null)
+                build.WorldMap.RebuildTissueAnalysis();
         }
 
         private static int WrapTileX(int tileX, int worldWidth)
@@ -265,10 +301,10 @@ namespace Nyvorn.Source.Game.States
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 CombatSystem = new CombatSystem(),
-                TissueNetwork = build.TissueNetwork,
+                TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
                 TissueMaskRenderer = new TissueMaskRenderer(graphicsDevice, build.TissueRevealEffect),
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
-                TissueDebugRenderer = new TissueDebugRenderer(graphicsDevice)
+                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice)
             };
         }
 
@@ -280,6 +316,15 @@ namespace Nyvorn.Source.Game.States
                 FollowLerpY = 0.12f,
                 FollowSnapMarginY = 28f
             };
+        }
+
+        private static TissueNetwork CreateEmptyTissueNetwork(WorldMap worldMap, int seed)
+        {
+            return new TissueNetwork(
+                seed,
+                new Rectangle(0, 0, worldMap.Width * worldMap.TileSize, worldMap.Height * worldMap.TileSize),
+                Array.Empty<TissueNode>(),
+                Array.Empty<TissueBranch>());
         }
 
         private sealed class BuildContext

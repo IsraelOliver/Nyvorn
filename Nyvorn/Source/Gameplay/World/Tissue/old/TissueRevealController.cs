@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.Engine.Input;
+using System;
 
 namespace Nyvorn.Source.World.Tissue
 {
@@ -32,14 +33,28 @@ namespace Nyvorn.Source.World.Tissue
             FocusPosition = focusPosition;
 
             if (input.TissueRevealPressed)
+            {
+                revealTimer = activeDuration;
                 waveTimer = 0f;
-            else if (waveTimer < waveDuration)
-                waveTimer += dt;
-            else
-                waveTimer = waveDuration;
+            }
 
-            revealTimer = activeDuration;
-            CurrentStrength = 1f;
+            if (revealTimer > 0f)
+                revealTimer = Math.Max(0f, revealTimer - dt);
+
+            if (waveTimer < waveDuration)
+                waveTimer = Math.Min(waveDuration, waveTimer + dt);
+
+            if (revealTimer <= 0f)
+            {
+                CurrentStrength = 0f;
+                WaveProgress = 1f;
+                return;
+            }
+
+            CurrentStrength = revealTimer >= fadeDuration || fadeDuration <= 0f
+                ? 1f
+                : MathHelper.Clamp(revealTimer / fadeDuration, 0f, 1f);
+
             WaveProgress = waveDuration <= 0f
                 ? 1f
                 : MathHelper.Clamp(waveTimer / waveDuration, 0f, 1f);

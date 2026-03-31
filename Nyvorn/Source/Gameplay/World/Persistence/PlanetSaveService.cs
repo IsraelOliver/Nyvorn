@@ -2,6 +2,7 @@ using Nyvorn.Source.Game.States;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 
@@ -71,7 +72,9 @@ namespace Nyvorn.Source.World.Persistence
             {
                 Metadata = session.PlanetMetadata,
                 SavedAtUtc = DateTime.UtcNow,
-                TileChanges = session.WorldMap.TrackedTileChanges.ToList()
+                TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
+                WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
+                TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot()
             });
         }
 
@@ -82,7 +85,8 @@ namespace Nyvorn.Source.World.Persistence
 
             EnsureSaveDirectory();
             string filePath = GetFilePath(saveData.Metadata.WorldId);
-            string json = JsonSerializer.Serialize(saveData, JsonOptions);
+            PlanetSaveData persisted = CreatePersistedCopy(saveData);
+            string json = JsonSerializer.Serialize(persisted, JsonOptions);
             File.WriteAllText(filePath, json);
         }
 
@@ -91,11 +95,69 @@ namespace Nyvorn.Source.World.Persistence
             try
             {
                 string json = File.ReadAllText(filePath);
-                return JsonSerializer.Deserialize<PlanetSaveData>(json, JsonOptions);
+                PlanetSaveData persisted = JsonSerializer.Deserialize<PlanetSaveData>(json, JsonOptions);
+                return persisted == null ? null : CreateRuntimeCopy(persisted);
             }
             catch
             {
                 return null;
+            }
+        }
+
+        private static PlanetSaveData CreatePersistedCopy(PlanetSaveData saveData)
+        {
+            return new PlanetSaveData
+            {
+                Version = saveData.Version,
+                Metadata = saveData.Metadata,
+                SavedAtUtc = saveData.SavedAtUtc,
+                TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
+                WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
+                TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot)
+            };
+        }
+
+        private static PlanetSaveData CreateRuntimeCopy(PlanetSaveData saveData)
+        {
+            return new PlanetSaveData
+            {
+                Version = saveData.Version,
+                Metadata = saveData.Metadata,
+                SavedAtUtc = saveData.SavedAtUtc,
+                TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
+                WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
+                TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot)
+            };
+        }
+
+        private static byte[] CompressBytes(byte[] source)
+        {
+            if (source == null || source.Length == 0)
+                return source;
+
+            using MemoryStream output = new();
+            using (GZipStream gzip = new(output, CompressionLevel.SmallestSize, leaveOpen: true))
+                gzip.Write(source, 0, source.Length);
+
+            return output.ToArray();
+        }
+
+        private static byte[] DecompressBytes(byte[] source)
+        {
+            if (source == null || source.Length == 0)
+                return source;
+
+            try
+            {
+                using MemoryStream input = new(source);
+                using GZipStream gzip = new(input, CompressionMode.Decompress);
+                using MemoryStream output = new();
+                gzip.CopyTo(output);
+                return output.ToArray();
+            }
+            catch
+            {
+                return source;
             }
         }
 

@@ -9,6 +9,7 @@ using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
 using System;
@@ -38,7 +39,7 @@ namespace Nyvorn.Source.Game.States
         public required TissueNetwork TissueNetwork { get; init; }
         public required TissueMaskRenderer TissueMaskRenderer { get; init; }
         public required TissueRevealController TissueRevealController { get; init; }
-        public required TissueDebugRenderer TissueDebugRenderer { get; init; }
+        public required TissueFieldDebugRenderer TissueDebugRenderer { get; init; }
         private const float BlockPlaceInterval = 0.08f;
         private const float ItemPullRangeInTiles = 1f;
         private const float ItemPullStrength = 900f;
@@ -48,6 +49,9 @@ namespace Nyvorn.Source.Game.States
         private const float TissueForegroundOpacity = 1.00f;
         private const float TissueMaskCullPaddingPixels = 96f;
         private const float GrassSpreadInterval = 0.24f;
+        private const float AmbientTissueRadiusInTiles = 7f;
+        private const float AmbientLinkPresence = 0.045f;
+        private const float AmbientHubPresence = 0.085f;
         public int SelectedHotbarIndex { get; private set; }
         private int lastBlockBreakAttackSequence = -1;
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
@@ -179,7 +183,8 @@ namespace Nyvorn.Source.Game.States
 
         public void RenderTissueMask(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch)
         {
-            if (TissueRevealController.CurrentStrength <= 0.001f)
+            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
+            if (revealStrength <= 0.001f)
                 return;
 
             TissueMaskRenderer.EnsureTarget(
@@ -217,13 +222,27 @@ namespace Nyvorn.Source.Game.States
                 Rectangle cullBounds = GetTissueWorldCullBounds(worldOffset);
 
                 spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                TissueMaskRenderer.DrawMask(
-                    spriteBatch,
-                    TissueNetwork,
-                    TissueRevealController.CurrentStrength,
-                    TissueRevealController.FocusPosition,
-                    TissueRevealController.RevealRadius,
-                    cullBounds);
+                if (WorldMap.TissueField != null)
+                {
+                    TissueMaskRenderer.DrawMask(
+                        spriteBatch,
+                        WorldMap,
+                        WorldMap.TissueField,
+                        revealStrength,
+                        TissueRevealController.FocusPosition,
+                        revealRadius,
+                        cullBounds);
+                }
+                else
+                {
+                    TissueMaskRenderer.DrawMask(
+                        spriteBatch,
+                        TissueNetwork,
+                        revealStrength,
+                        TissueRevealController.FocusPosition,
+                        revealRadius,
+                        cullBounds);
+                }
                 spriteBatch.End();
             }
 
@@ -232,30 +251,38 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTissueBackground(SpriteBatch spriteBatch)
         {
+            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
+            if (revealStrength <= 0.001f)
+                return;
+
             Vector2 focusScreenPosition = Camera.WorldToScreen(TissueRevealController.FocusPosition);
-            float revealRadiusPixels = TissueRevealController.RevealRadius * Camera.Zoom;
+            float revealRadiusPixels = revealRadius * Camera.Zoom;
             TissueMaskRenderer.DrawComposite(
                 spriteBatch,
-                TissueRevealController.CurrentStrength,
+                revealStrength,
                 tissueTime,
                 focusScreenPosition,
                 revealRadiusPixels,
-                TissueRevealController.WaveProgress,
+                waveProgress,
                 layerMode: 0f,
                 layerOpacity: TissueBackgroundOpacity);
         }
 
         public void DrawTissueOverlay(SpriteBatch spriteBatch)
         {
+            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
+            if (revealStrength <= 0.001f)
+                return;
+
             Vector2 focusScreenPosition = Camera.WorldToScreen(TissueRevealController.FocusPosition);
-            float revealRadiusPixels = TissueRevealController.RevealRadius * Camera.Zoom;
+            float revealRadiusPixels = revealRadius * Camera.Zoom;
             TissueMaskRenderer.DrawComposite(
                 spriteBatch,
-                TissueRevealController.CurrentStrength,
+                revealStrength,
                 tissueTime,
                 focusScreenPosition,
                 revealRadiusPixels,
-                TissueRevealController.WaveProgress,
+                waveProgress,
                 layerMode: 1f,
                 layerOpacity: TissueForegroundOpacity);
         }
@@ -268,12 +295,6 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTissueDebug(SpriteBatch spriteBatch)
         {
-            TissueDebugRenderer.Draw(
-                spriteBatch,
-                TissueNetwork,
-                TissueRevealController.CurrentStrength,
-                TissueRevealController.FocusPosition,
-                TissueRevealController.RevealRadius);
         }
 
         public void DrawHud(SpriteBatch spriteBatch, int screenWidth)
@@ -303,6 +324,70 @@ namespace Nyvorn.Source.Game.States
         public void DrawInventory(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
             HudRenderer.DrawInventoryPanel(spriteBatch, Hotbar, Inventory, SelectedHotbarIndex, screenWidth, screenHeight);
+        }
+
+        private (float Strength, float Radius, float WaveProgress) GetEffectiveTissueVisualState()
+        {
+            if (TissueRevealController.CurrentStrength > 0.001f)
+            {
+                return (
+                    TissueRevealController.CurrentStrength,
+                    TissueRevealController.RevealRadius,
+                    TissueRevealController.WaveProgress);
+            }
+
+            float ambientPresence = GetAmbientTissuePresence();
+            if (ambientPresence <= 0.001f)
+                return (0f, TissueRevealController.RevealRadius, 1f);
+
+            float ambientRadius = AmbientTissueRadiusInTiles * WorldMap.TileSize;
+            return (ambientPresence, ambientRadius, 1f);
+        }
+
+        private float GetAmbientTissuePresence()
+        {
+            TissueAnalysisResult analysis = WorldMap.GetOrCreateTissueAnalysis();
+            TissueField tissueField = WorldMap.TissueField;
+            if (analysis == null || tissueField == null)
+                return 0f;
+
+            Point centerTile = WorldMap.WorldToTile(Player.Position);
+            int radiusTiles = System.Math.Max(2, (int)System.MathF.Round(AmbientTissueRadiusInTiles));
+            float bestLinkSignal = 0f;
+            float bestHubSignal = 0f;
+
+            for (int y = centerTile.Y - radiusTiles; y <= centerTile.Y + radiusTiles; y++)
+            {
+                if (y < 0 || y >= WorldMap.Height)
+                    continue;
+
+                for (int x = centerTile.X - radiusTiles; x <= centerTile.X + radiusTiles; x++)
+                {
+                    if (!tissueField.HasTissue(x, y))
+                        continue;
+
+                    Vector2 tileCenter = WorldMap.GetTileCenter(x, y);
+                    float distance = Vector2.Distance(tileCenter, Player.Position);
+                    float normalized = 1f - MathHelper.Clamp(distance / (radiusTiles * WorldMap.TileSize), 0f, 1f);
+                    bestLinkSignal = System.MathF.Max(bestLinkSignal, normalized);
+                }
+            }
+
+            for (int i = 0; i < analysis.Hubs.Count; i++)
+            {
+                TissueHub hub = analysis.Hubs[i];
+                float distance = Vector2.Distance(hub.WorldPosition, Player.Position);
+                float normalized = 1f - MathHelper.Clamp(distance / (radiusTiles * WorldMap.TileSize), 0f, 1f);
+                if (normalized <= 0f)
+                    continue;
+
+                float hubWeight = hub.IsIsolated ? 0.55f : hub.IsTerminal ? 0.78f : 1f;
+                bestHubSignal = System.MathF.Max(bestHubSignal, normalized * hubWeight);
+            }
+
+            float linkPresence = bestLinkSignal * AmbientLinkPresence;
+            float hubPresence = bestHubSignal * AmbientHubPresence;
+            return System.MathF.Max(linkPresence, hubPresence);
         }
 
         public Rectangle GetInventoryPanelBounds(int screenWidth, int screenHeight)

@@ -38,7 +38,10 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             for (int x = 0; x < width; x++)
             {
-                for (int y = cavernLayer.StartY; y < height; y++)
+                int preCavernRise = Math.Max(8, (int)MathF.Round(cavernLayer.Height * 0.18f));
+                int tissueStartY = Math.Max(0, cavernLayer.StartY - preCavernRise);
+
+                for (int y = tissueStartY; y < height; y++)
                 {
                     attempts++;
 
@@ -78,20 +81,29 @@ namespace Nyvorn.Source.World.Generation.Passes
                         (detail * 0.22f);
 
                     // leve favorecimento por profundidade, mas bem mais controlado
-                    float depthBias = MathHelper.Lerp(-0.06f, 0.08f, worldDepth01);
+                    float depthBias = MathHelper.Lerp(-0.01f, 0.08f, worldDepth01);
 
                     // layer bias mais contido
-                    float layerBias = layerType == WorldLayerType.DeepCavern
-                        ? MathHelper.Lerp(0.02f, 0.08f, layerDepth01)
-                        : MathHelper.Lerp(-0.08f, 0.02f, layerDepth01);
+                    float layerBias;
+                    if (layerType == WorldLayerType.DeepCavern)
+                    {
+                        // começa moderada, cresce melhor no meio da deep
+                        layerBias = MathHelper.Lerp(0.01f, 0.12f, MathF.Pow(layerDepth01, 1.25f));
+                    }
+                    else
+                    {
+                        // cavern sobe, mas não rouba o protagonismo
+                        layerBias = MathHelper.Lerp(-0.01f, 0.04f, layerDepth01);
+                    }
 
                     // rarefação vertical:
                     // no deep mais fundo, começa a cortar presença em vez de só aumentar tudo
                     float deepRarefaction = 0f;
                     if (layerType == WorldLayerType.DeepCavern)
                     {
-                        float deepFade = MathHelper.Clamp((layerDepth01 - 0.58f) / 0.42f, 0f, 1f);
-                        deepRarefaction = MathHelper.Lerp(0f, 0.22f, deepFade);
+                        // rarefação começa mais tarde e mais suave
+                        float deepFade = MathHelper.Clamp((layerDepth01 - 0.78f) / 0.22f, 0f, 1f);
+                        deepRarefaction = MathHelper.Lerp(0f, 0.10f, deepFade);
                     }
 
                     value += depthBias;
@@ -105,9 +117,18 @@ namespace Nyvorn.Source.World.Generation.Passes
                     value *= presenceWindow;
 
                     // threshold mais alto no deep para evitar saturação
-                    float threshold = layerType == WorldLayerType.DeepCavern
-                        ? MathHelper.Lerp(0.68f, 0.78f, layerDepth01)
-                        : MathHelper.Lerp(0.70f, 0.64f, layerDepth01);
+                    float threshold;
+                    if (layerType == WorldLayerType.DeepCavern)
+                    {
+                        // cai um pouco no meio da deep para concentrar mais lá
+                        float deepMidBoost = 1f - MathF.Abs((layerDepth01 - 0.62f) / 0.62f);
+                        float deepThresholdOffset = MathHelper.Lerp(0.00f, -0.05f, MathHelper.Clamp(deepMidBoost, 0f, 1f));
+                        threshold = 0.72f + deepThresholdOffset;
+                    }
+                    else
+                    {
+                        threshold = MathHelper.Lerp(0.63f, 0.60f, layerDepth01);
+                    }
 
                     bool hasTissue = value >= threshold;
                     if (!hasTissue)
@@ -121,7 +142,8 @@ namespace Nyvorn.Source.World.Generation.Passes
             field = Smooth(field, passes: 1);
             field = PruneFloatingNoise(field, minNeighbors: 2);
 
-            context.WorldMap.TissueField = field;
+            context.WorldMap.SetTissueField(field);
+            context.WorldMap.RebuildTissueAnalysis();
             context.DebugStats["Tissue.Attempts"] = attempts.ToString();
             context.DebugStats["Tissue.SolidCandidates"] = solidCandidates.ToString();
             context.DebugStats["Tissue.AcceptedBeforePost"] = accepted.ToString();

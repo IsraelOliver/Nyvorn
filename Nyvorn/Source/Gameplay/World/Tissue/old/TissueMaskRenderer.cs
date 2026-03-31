@@ -1,5 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.World;
+using Nyvorn.Source.World.Generation;
 
 namespace Nyvorn.Source.World.Tissue
 {
@@ -40,6 +42,107 @@ namespace Nyvorn.Source.World.Tissue
         public void DrawMask(SpriteBatch spriteBatch, TissueNetwork tissueNetwork, float revealStrength, Vector2 focusPosition, float revealRadius)
         {
             DrawMask(spriteBatch, tissueNetwork, revealStrength, focusPosition, revealRadius, null);
+        }
+
+        public void DrawMask(SpriteBatch spriteBatch, WorldMap worldMap, TissueField tissueField, float revealStrength, Vector2 focusPosition, float revealRadius)
+        {
+            DrawMask(spriteBatch, worldMap, tissueField, revealStrength, focusPosition, revealRadius, null);
+        }
+
+        public void DrawMask(
+            SpriteBatch spriteBatch,
+            WorldMap worldMap,
+            TissueField tissueField,
+            float revealStrength,
+            Vector2 focusPosition,
+            float revealRadius,
+            Rectangle? worldCullBounds)
+        {
+            if (worldMap == null || tissueField == null || revealStrength <= 0.001f)
+                return;
+
+            TissueAnalysisResult analysis = worldMap.GetOrCreateTissueAnalysis();
+            if (analysis == null)
+                return;
+
+            Rectangle cull = worldCullBounds ?? new Rectangle(0, 0, worldMap.PixelWidth, worldMap.Height * worldMap.TileSize);
+
+            DrawAnalyzedLinks(spriteBatch, worldMap, analysis, focusPosition, revealRadius, revealStrength, cull);
+            DrawAnalyzedHubs(spriteBatch, analysis, focusPosition, revealRadius, revealStrength, cull);
+        }
+
+        private void DrawAnalyzedLinks(
+            SpriteBatch spriteBatch,
+            WorldMap worldMap,
+            TissueAnalysisResult analysis,
+            Vector2 focusPosition,
+            float revealRadius,
+            float revealStrength,
+            Rectangle worldCullBounds)
+        {
+            for (int linkIndex = 0; linkIndex < analysis.Links.Count; linkIndex++)
+            {
+                TissueLink link = analysis.Links[linkIndex];
+                if (link.TilePath == null || link.TilePath.Count < 2)
+                    continue;
+
+                float baseThickness = GetAnalyzedLinkThickness(link);
+                if (baseThickness <= 0f)
+                    continue;
+
+                for (int pointIndex = 0; pointIndex < link.TilePath.Count - 1; pointIndex++)
+                {
+                    Point startTile = link.TilePath[pointIndex];
+                    Point endTile = link.TilePath[pointIndex + 1];
+                    Vector2 start = worldMap.GetTileCenter(startTile.X, startTile.Y);
+                    Vector2 end = worldMap.GetTileCenter(endTile.X, endTile.Y);
+
+                    if (!SegmentTouchesBounds(start, end, worldCullBounds))
+                        continue;
+
+                    Vector2 midpoint = (start + end) * 0.5f;
+                    float focusFalloff = GetFocusFalloff(midpoint, focusPosition, revealRadius);
+                    float alphaScale = revealStrength * focusFalloff;
+                    if (alphaScale <= 0.01f)
+                        continue;
+
+                    float auraThickness = baseThickness * 1.9f;
+                    Color auraColor = Color.White * (0.10f * alphaScale);
+                    Color maskColor = Color.White * (0.34f * alphaScale);
+
+                    DrawLine(spriteBatch, start, end, auraColor, auraThickness);
+                    DrawLine(spriteBatch, start, end, maskColor, baseThickness);
+                }
+            }
+        }
+
+        private void DrawAnalyzedHubs(
+            SpriteBatch spriteBatch,
+            TissueAnalysisResult analysis,
+            Vector2 focusPosition,
+            float revealRadius,
+            float revealStrength,
+            Rectangle worldCullBounds)
+        {
+            for (int i = 0; i < analysis.Hubs.Count; i++)
+            {
+                TissueHub hub = analysis.Hubs[i];
+                if (!Contains(worldCullBounds, hub.WorldPosition))
+                    continue;
+
+                float focusFalloff = GetFocusFalloff(hub.WorldPosition, focusPosition, revealRadius);
+                float alphaScale = revealStrength * focusFalloff;
+                if (alphaScale <= 0.01f)
+                    continue;
+
+                float size = GetHubCoreSize(hub);
+                float outerHaloSize = size * 3.0f;
+                float midHaloSize = size * 1.9f;
+
+                DrawPoint(spriteBatch, hub.WorldPosition, outerHaloSize, Color.White * (0.12f * alphaScale));
+                DrawPoint(spriteBatch, hub.WorldPosition, midHaloSize, Color.White * (0.24f * alphaScale));
+                DrawPoint(spriteBatch, hub.WorldPosition, size, Color.White * (0.62f * alphaScale));
+            }
         }
 
         public void DrawMask(
@@ -180,12 +283,45 @@ namespace Nyvorn.Source.World.Tissue
             DrawDisc(spriteBatch, position, size, color);
         }
 
+        private static float GetAnalyzedLinkThickness(TissueLink link)
+        {
+            switch (link.LinkType)
+            {
+                case TissueLink.TissueLinkType.Primary:
+                    return 5.2f;
+
+                case TissueLink.TissueLinkType.Secondary:
+                    return 2.8f;
+
+                default:
+                    return 0f;
+            }
+        }
+
+        private static float GetHubCoreSize(TissueHub hub)
+        {
+            if (hub.IsIsolated)
+                return 8f;
+
+            if (hub.IsTerminal)
+                return 11f;
+
+            return 15f;
+        }
+
         private static bool Contains(Rectangle rectangle, Vector2 point)
         {
             return point.X >= rectangle.Left &&
                    point.X <= rectangle.Right &&
                    point.Y >= rectangle.Top &&
                    point.Y <= rectangle.Bottom;
+        }
+
+        private static bool SegmentTouchesBounds(Vector2 start, Vector2 end, Rectangle bounds)
+        {
+            return Contains(bounds, start) ||
+                   Contains(bounds, end) ||
+                   bounds.Contains(((start + end) * 0.5f).ToPoint());
         }
 
         private float GetFocusFalloff(Vector2 worldPosition, Vector2 focusPosition, float revealRadius)
