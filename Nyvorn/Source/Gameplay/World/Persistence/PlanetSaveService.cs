@@ -74,7 +74,8 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = DateTime.UtcNow,
                 TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
-                TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot()
+                TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
+                TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
             });
         }
 
@@ -113,7 +114,8 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
-                TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot)
+                TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
+                TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
             };
         }
 
@@ -126,7 +128,8 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
-                TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot)
+                TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
+                TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)
             };
         }
 

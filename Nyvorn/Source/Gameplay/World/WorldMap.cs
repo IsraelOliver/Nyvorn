@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.World.Tissue;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
+using System.IO;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.World
@@ -156,6 +157,11 @@ namespace Nyvorn.Source.World
             TissueRevision++;
         }
 
+        public void SetTissueAnalysis(TissueAnalysisResult analysis)
+        {
+            _tissueAnalysis = analysis;
+        }
+
         public void MarkTissueDirty()
         {
             _tissueAnalysis = null;
@@ -183,6 +189,141 @@ namespace Nyvorn.Source.World
 
             _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
             return _tissueAnalysis;
+        }
+
+        public byte[] ExportTissueAnalysisSnapshot()
+        {
+            if (_tissueAnalysis == null)
+                return null;
+
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+
+            writer.Write(_tissueAnalysis.Width);
+            writer.Write(_tissueAnalysis.Height);
+
+            for (int y = 0; y < _tissueAnalysis.Height; y++)
+            {
+                for (int x = 0; x < _tissueAnalysis.Width; x++)
+                {
+                    writer.Write(_tissueAnalysis.GetNeighborCount(x, y));
+                    writer.Write(_tissueAnalysis.GetOpennessScore(x, y));
+                    writer.Write((byte)_tissueAnalysis.GetLocalType(x, y));
+                }
+            }
+
+            writer.Write(_tissueAnalysis.Hubs.Count);
+            for (int i = 0; i < _tissueAnalysis.Hubs.Count; i++)
+            {
+                TissueHub hub = _tissueAnalysis.Hubs[i];
+                writer.Write(hub.TilePosition.X);
+                writer.Write(hub.TilePosition.Y);
+                writer.Write((byte)hub.LocalType);
+                writer.Write(hub.NeighborCount);
+                writer.Write(hub.Openness);
+                writer.Write(hub.ImportanceScore);
+            }
+
+            writer.Write(_tissueAnalysis.Links.Count);
+            for (int i = 0; i < _tissueAnalysis.Links.Count; i++)
+            {
+                TissueLink link = _tissueAnalysis.Links[i];
+                writer.Write(link.StartHubIndex);
+                writer.Write(link.EndHubIndex);
+                writer.Write(link.PathCost);
+                writer.Write((byte)link.LinkType);
+                writer.Write(link.TilePath.Count);
+
+                for (int pointIndex = 0; pointIndex < link.TilePath.Count; pointIndex++)
+                {
+                    Point point = link.TilePath[pointIndex];
+                    writer.Write(point.X);
+                    writer.Write(point.Y);
+                }
+            }
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        public void ImportTissueAnalysisSnapshot(byte[] snapshot)
+        {
+            if (snapshot == null || snapshot.Length == 0)
+            {
+                _tissueAnalysis = null;
+                return;
+            }
+
+            if (_tissueField == null)
+                throw new System.InvalidOperationException("TissueField precisa ser carregado antes da análise.");
+
+            using MemoryStream stream = new(snapshot);
+            using BinaryReader reader = new(stream);
+
+            int width = reader.ReadInt32();
+            int height = reader.ReadInt32();
+            if (width != Width || height != Height)
+                throw new System.ArgumentException("Tissue analysis snapshot size does not match world dimensions.", nameof(snapshot));
+
+            TissueAnalysisResult analysis = new(width, height);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    analysis.SetNeighborCount(x, y, reader.ReadByte());
+                    analysis.SetOpennessScore(x, y, reader.ReadSingle());
+                    analysis.SetLocalType(x, y, (TissueLocalType)reader.ReadByte());
+                }
+            }
+
+            int hubCount = reader.ReadInt32();
+            for (int i = 0; i < hubCount; i++)
+            {
+                int tileX = reader.ReadInt32();
+                int tileY = reader.ReadInt32();
+                TissueLocalType localType = (TissueLocalType)reader.ReadByte();
+                byte neighborCount = reader.ReadByte();
+                float openness = reader.ReadSingle();
+                float importanceScore = reader.ReadSingle();
+
+                analysis.Hubs.Add(new TissueHub(
+                    new Point(tileX, tileY),
+                    GetTileCenter(tileX, tileY),
+                    localType,
+                    neighborCount,
+                    openness,
+                    importanceScore));
+            }
+
+            int linkCount = reader.ReadInt32();
+            for (int i = 0; i < linkCount; i++)
+            {
+                int startHubIndex = reader.ReadInt32();
+                int endHubIndex = reader.ReadInt32();
+                float pathCost = reader.ReadSingle();
+                TissueLink.TissueLinkType linkType = (TissueLink.TissueLinkType)reader.ReadByte();
+                int pathCount = reader.ReadInt32();
+                List<Point> path = new(pathCount);
+
+                for (int pointIndex = 0; pointIndex < pathCount; pointIndex++)
+                    path.Add(new Point(reader.ReadInt32(), reader.ReadInt32()));
+
+                TissueLink link = new(startHubIndex, endHubIndex, path, pathCost);
+                link.SetType(linkType);
+                analysis.Links.Add(link);
+            }
+
+            for (int i = 0; i < analysis.Links.Count; i++)
+            {
+                TissueLink link = analysis.Links[i];
+                if (link.StartHubIndex >= 0 && link.StartHubIndex < analysis.Hubs.Count)
+                    analysis.Hubs[link.StartHubIndex].IncrementLinkCount();
+                if (link.EndHubIndex >= 0 && link.EndHubIndex < analysis.Hubs.Count)
+                    analysis.Hubs[link.EndHubIndex].IncrementLinkCount();
+            }
+
+            _tissueAnalysis = analysis;
         }
 
         public bool InBounds(int x, int y)

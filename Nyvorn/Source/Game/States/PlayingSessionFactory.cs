@@ -194,7 +194,12 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
 
             if (build.WorldMap.TissueField != null)
-                build.WorldMap.RebuildTissueAnalysis();
+            {
+                if (saveData.TissueAnalysisSnapshot != null && saveData.TissueAnalysisSnapshot.Length > 0)
+                    build.WorldMap.ImportTissueAnalysisSnapshot(saveData.TissueAnalysisSnapshot);
+                else
+                    build.WorldMap.RebuildTissueAnalysis();
+            }
         }
 
         private static int WrapTileX(int tileX, int worldWidth)
