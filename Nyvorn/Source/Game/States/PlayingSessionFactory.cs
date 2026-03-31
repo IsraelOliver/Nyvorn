@@ -35,15 +35,58 @@ namespace Nyvorn.Source.Game.States
             private int completedSteps;
             private Task runningTask;
             private Exception stepException;
+            private int currentStepIndex;
+            private readonly float totalWeight;
 
             public BuildOperation(IReadOnlyList<BuildStep> steps)
             {
                 this.steps = steps;
-                StatusText = steps.Count > 0 ? steps[0].Label : "Concluido";
+                totalWeight = CalculateTotalWeight(steps);
+                currentStepIndex = steps.Count > 0 ? 0 : -1;
             }
 
-            public string StatusText { get; private set; }
-            public float Progress => steps.Count == 0 ? 1f : completedSteps / (float)steps.Count;
+            public string StatusText
+            {
+                get
+                {
+                    if (IsCompleted)
+                        return "Concluido";
+                    if (currentStepIndex < 0 || currentStepIndex >= steps.Count)
+                        return steps.Count > 0 ? steps[^1].Label : "Concluido";
+
+                    BuildStep step = steps[currentStepIndex];
+                    if (step.StatusProvider != null)
+                    {
+                        string status = step.StatusProvider();
+                        if (!string.IsNullOrWhiteSpace(status))
+                            return status;
+                    }
+
+                    return step.Label;
+                }
+            }
+            public string CurrentPhaseLabel
+            {
+                get
+                {
+                    if (IsCompleted)
+                        return "Concluido";
+                    if (currentStepIndex < 0 || currentStepIndex >= steps.Count)
+                        return steps.Count > 0 ? steps[^1].Label : "Concluido";
+
+                    return steps[currentStepIndex].Label;
+                }
+            }
+            public float Progress
+            {
+                get
+                {
+                    if (steps.Count == 0 || totalWeight <= 0f)
+                        return 1f;
+
+                    return Math.Clamp((GetCompletedWeight() + GetCurrentStepWeightProgress()) / totalWeight, 0f, 1f);
+                }
+            }
             public bool IsCompleted => completedSteps >= steps.Count;
             public bool IsBusy => runningTask != null;
             public PlayingSession Result { get; private set; }
@@ -69,15 +112,13 @@ namespace Nyvorn.Source.Game.States
 
                     runningTask = null;
                     completedSteps++;
-
-                    if (IsCompleted)
-                        StatusText = "Concluido";
+                    currentStepIndex = IsCompleted ? -1 : completedSteps;
 
                     return;
                 }
 
-                BuildStep step = steps[completedSteps];
-                StatusText = step.Label;
+                currentStepIndex = completedSteps;
+                BuildStep step = steps[currentStepIndex];
 
                 if (step.RunInBackground)
                 {
@@ -87,9 +128,7 @@ namespace Nyvorn.Source.Game.States
 
                 step.Action();
                 completedSteps++;
-
-                if (IsCompleted)
-                    StatusText = "Concluido";
+                currentStepIndex = IsCompleted ? -1 : completedSteps;
             }
 
             public void SetResult(PlayingSession session)
@@ -97,18 +136,68 @@ namespace Nyvorn.Source.Game.States
                 Result = session;
             }
 
+            private float GetCompletedWeight()
+            {
+                float weight = 0f;
+                for (int i = 0; i < completedSteps && i < steps.Count; i++)
+                    weight += Math.Max(0f, steps[i].Weight);
+
+                return weight;
+            }
+
+            private float GetCurrentStepWeightProgress()
+            {
+                if (currentStepIndex < 0 || currentStepIndex >= steps.Count)
+                    return 0f;
+
+                BuildStep step = steps[currentStepIndex];
+                float weight = Math.Max(0f, step.Weight);
+                float stepProgress = 0f;
+                if (runningTask != null)
+                {
+                    stepProgress = step.ProgressProvider?.Invoke() ?? 0f;
+                }
+                else if (completedSteps > currentStepIndex)
+                {
+                    stepProgress = 1f;
+                }
+
+                return weight * Math.Clamp(stepProgress, 0f, 1f);
+            }
+
+            private static float CalculateTotalWeight(IReadOnlyList<BuildStep> steps)
+            {
+                float total = 0f;
+                for (int i = 0; i < steps.Count; i++)
+                    total += Math.Max(0f, steps[i].Weight);
+
+                return total <= 0f ? 1f : total;
+            }
+
             public sealed class BuildStep
             {
-                public BuildStep(string label, Action action, bool runInBackground = false)
+                public BuildStep(
+                    string label,
+                    Action action,
+                    float weight = 1f,
+                    bool runInBackground = false,
+                    Func<float> progressProvider = null,
+                    Func<string> statusProvider = null)
                 {
                     Label = label;
                     Action = action;
+                    Weight = weight;
                     RunInBackground = runInBackground;
+                    ProgressProvider = progressProvider;
+                    StatusProvider = statusProvider;
                 }
 
                 public string Label { get; }
                 public Action Action { get; }
+                public float Weight { get; }
                 public bool RunInBackground { get; }
+                public Func<float> ProgressProvider { get; }
+                public Func<string> StatusProvider { get; }
             }
         }
 
@@ -167,23 +256,32 @@ namespace Nyvorn.Source.Game.States
             BuildOperation operation = null;
             List<BuildOperation.BuildStep> steps = new()
             {
-                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata))
+                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata), weight: 5f)
             };
 
             if (hasWorldSnapshot)
             {
-                steps.Add(new BuildOperation.BuildStep("Carregando snapshot do mundo", () => LoadWorldSnapshot(build, saveData), runInBackground: true));
+                steps.Add(new BuildOperation.BuildStep(
+                    "Carregando snapshot do mundo",
+                    () => LoadWorldSnapshot(build, saveData),
+                    weight: 85f,
+                    runInBackground: true));
             }
             else
             {
-                IReadOnlyList<string> generationPassNames = WorldGenerator.GetOrderedPassNames();
-                for (int i = 0; i < generationPassNames.Count; i++)
+                IReadOnlyList<WorldGenPhaseDefinition> generationPasses = WorldGenerator.GetOrderedPasses();
+                for (int i = 0; i < generationPasses.Count; i++)
                 {
-                    string generationPassName = generationPassNames[i];
-                    steps.Add(new BuildOperation.BuildStep(GetGenerationStepLabel(generationPassName), () =>
+                    WorldGenPhaseDefinition generationPass = generationPasses[i];
+                    string generationPassName = generationPass.Name;
+                    steps.Add(new BuildOperation.BuildStep(generationPass.Label, () =>
                     {
                         build.WorldGenerator.ApplyPassByName(build.GenerationContext, generationPassName);
-                    }, runInBackground: true));
+                    },
+                    weight: generationPass.Weight,
+                    runInBackground: true,
+                    progressProvider: () => build.GenerationProgress?.GetPhaseProgress(generationPassName) ?? 0f,
+                    statusProvider: () => build.GenerationProgress?.GetPhaseMessage(generationPassName, generationPass.Label)));
                 }
             }
 
@@ -192,7 +290,7 @@ namespace Nyvorn.Source.Game.States
                 PrepareWorld(build, hasWorldSnapshot ? null : saveData?.TileChanges);
                 if (saveData != null)
                     build.WorldMap.MarkPersisted();
-            }, runInBackground: true));
+            }, weight: 5f, runInBackground: true));
 
             if (!hasTissueSnapshot)
             {
@@ -200,11 +298,11 @@ namespace Nyvorn.Source.Game.States
                 {
                     if (build.WorldMap.TissueField == null)
                         build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
-                }, runInBackground: true));
+                }, weight: 8f, runInBackground: true));
             }
 
-            steps.Add(new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build)));
-            steps.Add(new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata))));
+            steps.Add(new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build), weight: 4f));
+            steps.Add(new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata)), weight: 1f));
 
             operation = new BuildOperation(steps);
 
@@ -223,6 +321,7 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture);
             build.WorldGenerator = new WorldGenerator();
             build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
+            build.GenerationProgress = new WorldGenProgressReporter(WorldGenerator.GetOrderedPasses());
         }
 
         private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
@@ -289,22 +388,6 @@ namespace Nyvorn.Source.Game.States
                 itemTextures[definition.Id] = content.Load<Texture2D>(definition.TexturePath);
 
             return itemTextures;
-        }
-
-        private static string GetGenerationStepLabel(string passName)
-        {
-            return passName switch
-            {
-                "ClearWorld" => "Limpando mapa base",
-                "LayerBoundary" => "Definindo camadas do planeta",
-                "SurfaceProfile" => "Modelando superficie",
-                "BaseTerrainFill" => "Preenchendo crosta",
-                "Cave" => "Cavando cavernas",
-                "CaveEntrance" => "Abrindo entradas naturais",
-                "Tissue" => "Tecendo rede organica",
-                "WorldBounds" => "Selando limites do mundo",
-                _ => $"Executando {passName}"
-            };
         }
 
         private Dictionary<ItemId, Weapon> CreateWeapons(Texture2D shortStickTexture, Texture2D pickaxeTexture)
@@ -422,6 +505,7 @@ namespace Nyvorn.Source.Game.States
             public WorldMap WorldMap { get; set; }
             public WorldGenerator WorldGenerator { get; set; }
             public WorldGenContext GenerationContext { get; set; }
+            public WorldGenProgressReporter GenerationProgress { get; set; }
             public int PlayerSpawnTileX { get; set; }
             public int ItemSpawnTileX { get; set; }
             public int EnemySpawnTileX { get; set; }

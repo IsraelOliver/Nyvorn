@@ -15,6 +15,7 @@ namespace Nyvorn.Source.World.Generation
         public Point SpawnTile { get; set; }
         public Dictionary<string, string> DebugStats { get; } = new();
         public TissueField TissueField { get; set; }
+        public WorldGenProgressReporter ProgressReporter { get; set; }
 
         public WorldLayerType GetLayerAtY(int y)
         {

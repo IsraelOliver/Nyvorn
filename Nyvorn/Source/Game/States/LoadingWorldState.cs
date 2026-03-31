@@ -101,9 +101,15 @@ namespace Nyvorn.Source.Game.States
 
             Vector2 titlePos = new Vector2(panel.X + 28, panel.Y + 32);
             spriteBatch.DrawString(font, titleText, titlePos, new Color(255, 241, 193));
+            string phaseText = buildOperation.IsCompleted ? "Concluido" : buildOperation.CurrentPhaseLabel;
             string statusText = buildOperation.IsCompleted ? "Concluido" : buildOperation.StatusText;
-            spriteBatch.DrawString(font, statusText + dots, titlePos + new Vector2(0f, 42f), Color.White);
-            spriteBatch.DrawString(font, "Isso pode levar um pouco mais em mundos grandes.", titlePos + new Vector2(0f, 84f), new Color(168, 230, 207));
+            bool showDetail = !string.Equals(phaseText, statusText, StringComparison.Ordinal);
+            spriteBatch.DrawString(font, phaseText + dots, titlePos + new Vector2(0f, 42f), Color.White);
+            if (showDetail)
+                spriteBatch.DrawString(font, statusText, titlePos + new Vector2(0f, 68f), new Color(168, 230, 207));
+
+            float helperYOffset = showDetail ? 110f : 84f;
+            spriteBatch.DrawString(font, "Isso pode levar um pouco mais em mundos grandes.", titlePos + new Vector2(0f, helperYOffset), new Color(168, 230, 207));
 
             Rectangle barOuter = new Rectangle(panel.X + 28, panel.Bottom - 56, panel.Width - 56, 16);
             spriteBatch.Draw(pixel, barOuter, new Color(18, 34, 40, 220));

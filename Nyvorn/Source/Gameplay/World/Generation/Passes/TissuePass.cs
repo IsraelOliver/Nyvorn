@@ -24,6 +24,8 @@ namespace Nyvorn.Source.World.Generation.Passes
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
+            context.ProgressReporter?.Begin(Name, "Tecendo rede organica");
+
             int width = context.WorldMap.Width;
             int height = context.WorldMap.Height;
 
@@ -137,20 +139,28 @@ namespace Nyvorn.Source.World.Generation.Passes
                     field.SetTissue(x, y, true);
                     accepted++;
                 }
+
+                if ((x & 15) == 0 || x == width - 1)
+                {
+                    float generationProgress = ((x + 1) / (float)width) * 0.72f;
+                    context.ProgressReporter?.Report(Name, generationProgress, "Tecendo rede organica");
+                }
             }
 
-            field = Smooth(field, passes: 1);
-            field = PruneFloatingNoise(field, minNeighbors: 2);
+            field = Smooth(field, passes: 1, context);
+            field = PruneFloatingNoise(field, minNeighbors: 2, context);
 
             context.WorldMap.SetTissueField(field);
+            context.ProgressReporter?.Report(Name, 0.96f, "Consolidando a malha do tecido");
             context.WorldMap.RebuildTissueAnalysis();
             context.DebugStats["Tissue.Attempts"] = attempts.ToString();
             context.DebugStats["Tissue.SolidCandidates"] = solidCandidates.ToString();
             context.DebugStats["Tissue.AcceptedBeforePost"] = accepted.ToString();
             context.DebugStats["Tissue.ActiveTiles"] = field.CountActiveTiles().ToString();
+            context.ProgressReporter?.Complete(Name, "Rede organica consolidada");
         }
 
-        private static TissueField Smooth(TissueField source, int passes)
+        private static TissueField Smooth(TissueField source, int passes, WorldGenContext context)
         {
             TissueField current = source;
 
@@ -171,6 +181,13 @@ namespace Nyvorn.Source.World.Generation.Passes
 
                         next.SetTissue(x, y, result);
                     }
+
+                    if ((x & 15) == 0 || x == current.Width - 1)
+                    {
+                        float localProgress = (x + 1) / (float)current.Width;
+                        float progress = 0.72f + (localProgress * 0.16f);
+                        context.ProgressReporter?.Report("Tissue", progress, "Refinando filamentos");
+                    }
                 }
 
                 current = next;
@@ -179,7 +196,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             return current;
         }
 
-        private static TissueField PruneFloatingNoise(TissueField source, int minNeighbors)
+        private static TissueField PruneFloatingNoise(TissueField source, int minNeighbors, WorldGenContext context)
         {
             TissueField next = new TissueField(source.Width, source.Height);
 
@@ -193,6 +210,13 @@ namespace Nyvorn.Source.World.Generation.Passes
                     int neighbors = CountNeighbors(source, x, y);
                     if (neighbors >= minNeighbors)
                         next.SetTissue(x, y, true);
+                }
+
+                if ((x & 15) == 0 || x == source.Width - 1)
+                {
+                    float localProgress = (x + 1) / (float)source.Width;
+                    float progress = 0.88f + (localProgress * 0.08f);
+                    context.ProgressReporter?.Report("Tissue", progress, "Limpando ruido solto");
                 }
             }
 

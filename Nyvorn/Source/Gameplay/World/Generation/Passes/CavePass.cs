@@ -8,6 +8,8 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         public void Apply(WorldGenContext context)
         {
+            context.ProgressReporter?.Begin(Name, "Cavando cavernas");
+
             WorldLayerDefinition shallowLayer = context.GetLayerDefinition(WorldLayerType.ShallowUnderground);
             WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
             WorldLayerDefinition deepLayer = context.GetLayerDefinition(WorldLayerType.DeepCavern);
@@ -57,7 +59,12 @@ namespace Nyvorn.Source.World.Generation.Passes
                             context.WorldMap.SetTile(x, y, TileType.Empty);
                     }
                 }
+
+                if ((x & 15) == 0 || x == context.WorldMap.Width - 1)
+                    context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Cavando cavernas");
             }
+
+            context.ProgressReporter?.Complete(Name, "Cavernas esculpidas");
         }
 
         private static bool ShouldCarveCavern(

@@ -6,6 +6,8 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         public void Apply(WorldGenContext context)
         {
+            context.ProgressReporter?.Begin(Name, "Definindo camadas do planeta");
+
             int worldHeight = context.WorldMap.Height;
             int lastRow = worldHeight - 1;
 
@@ -30,6 +32,8 @@ namespace Nyvorn.Source.World.Generation.Passes
                 context.DebugStats[$"Layer.{layer.LayerType}.EndY"] = layer.EndY.ToString();
                 context.DebugStats[$"Layer.{layer.LayerType}.Height"] = layer.Height.ToString();
             }
+
+            context.ProgressReporter?.Complete(Name, "Camadas do planeta definidas");
         }
 
         private static int ClampBoundary(int value, int min, int max)

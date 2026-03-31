@@ -8,9 +8,14 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         public void Apply(WorldGenContext context)
         {
+            context.ProgressReporter?.Begin(Name, "Abrindo entradas naturais");
+
             int entranceCount = GetEntranceCount(context.Config.SizePreset);
             if (entranceCount <= 0)
+            {
+                context.ProgressReporter?.Complete(Name, "Sem entradas naturais necessarias");
                 return;
+            }
 
             WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
             int worldWidth = context.WorldMap.Width;
@@ -31,9 +36,12 @@ namespace Nyvorn.Source.World.Generation.Passes
 
                 OpenSimplexNoise entranceNoise = new OpenSimplexNoise(context.Config.Seed + 5000);
 
-                CarveNaturalEntrance(context, startX, startY, targetY, 2, entranceNoise, i * 1000f);
+                CarveNaturalEntrance(context, startX, startY, targetY, 2, entranceNoise, i * 1000f, i, entranceCount);
                 CarveMouth(context, startX, startY);
+                context.ProgressReporter?.Report(Name, (i + 1) / (float)entranceCount, $"Abrindo entradas naturais ({i + 1}/{entranceCount})");
             }
+
+            context.ProgressReporter?.Complete(Name, "Entradas naturais abertas");
         }
 
         private static void CarveNaturalEntrance(
@@ -43,12 +51,15 @@ namespace Nyvorn.Source.World.Generation.Passes
             int targetY,
             int baseRadius,
             OpenSimplexNoise noise,
-            float noiseOffset)
+            float noiseOffset,
+            int entranceIndex,
+            int entranceCount)
         {
             int worldWidth = context.WorldMap.Width;
             float currentX = startX;
             float currentY = startY;
             float driftX = 0f;
+            float totalDistance = MathF.Max(1f, targetY - startY);
 
             while (currentY < targetY)
             {
@@ -80,6 +91,10 @@ namespace Nyvorn.Source.World.Generation.Passes
                     int sideOffset = driftX >= 0f ? 2 : -2;
                     CarveCircle(context, WrapX(carveX + sideOffset, worldWidth), carveY, radius + 2);
                 }
+
+                float entranceProgress = Math.Clamp((currentY - startY) / totalDistance, 0f, 1f);
+                float overallProgress = (entranceIndex + entranceProgress) / Math.Max(1f, entranceCount);
+                context.ProgressReporter?.Report("CaveEntrance", overallProgress, $"Abrindo entradas naturais ({entranceIndex + 1}/{entranceCount})");
             }
         }
 

@@ -8,6 +8,8 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         public void Apply(WorldGenContext context)
         {
+            context.ProgressReporter?.Begin(Name, "Modelando superficie");
+
             int[] heights = new int[context.WorldMap.Width];
             WorldLayerDefinition surfaceLayer = context.GetLayerDefinition(WorldLayerType.Surface);
             int flatY = ClampSurfaceHeight(context.Config.SurfaceBaseHeight, surfaceLayer, context.WorldMap.Height);
@@ -38,12 +40,16 @@ namespace Nyvorn.Source.World.Generation.Passes
 
                 if (surfaceY > maxY)
                     maxY = surfaceY;
+
+                if ((x & 63) == 0 || x == context.WorldMap.Width - 1)
+                    context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Modelando superficie");
             }
 
             context.SurfaceHeights = heights;
             context.DebugStats["Surface.MinY"] = minY.ToString();
             context.DebugStats["Surface.MaxY"] = maxY.ToString();
             context.DebugStats["Surface.CenterY"] = heights[context.WorldMap.Width / 2].ToString();
+            context.ProgressReporter?.Complete(Name, "Superficie pronta");
         }
 
         private static float GetMacroShape(WorldGenContext context, OpenSimplexNoise noise, int x)

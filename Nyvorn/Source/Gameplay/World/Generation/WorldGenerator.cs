@@ -7,16 +7,16 @@ namespace Nyvorn.Source.World.Generation
 {
     public sealed class WorldGenerator
     {
-        private static readonly string[] OrderedPassNames =
+        private static readonly WorldGenPhaseDefinition[] OrderedPasses =
         {
-            "ClearWorld",
-            "LayerBoundary",
-            "SurfaceProfile",
-            "BaseTerrainFill",
-            "Cave",
-            "CaveEntrance",
-            "Tissue",
-            "WorldBounds"
+            new WorldGenPhaseDefinition("ClearWorld", "Limpando mapa base", 3f),
+            new WorldGenPhaseDefinition("LayerBoundary", "Definindo camadas do planeta", 2f),
+            new WorldGenPhaseDefinition("SurfaceProfile", "Modelando superficie", 8f),
+            new WorldGenPhaseDefinition("BaseTerrainFill", "Preenchendo crosta", 12f),
+            new WorldGenPhaseDefinition("Cave", "Cavando cavernas", 25f),
+            new WorldGenPhaseDefinition("CaveEntrance", "Abrindo entradas naturais", 14f),
+            new WorldGenPhaseDefinition("Tissue", "Tecendo rede organica", 20f),
+            new WorldGenPhaseDefinition("WorldBounds", "Selando limites do mundo", 2f)
         };
 
         private readonly IWorldGenPass[] generationPasses;
@@ -55,9 +55,9 @@ namespace Nyvorn.Source.World.Generation
             }
         }
 
-        public static IReadOnlyList<string> GetOrderedPassNames()
+        public static IReadOnlyList<WorldGenPhaseDefinition> GetOrderedPasses()
         {
-            return OrderedPassNames;
+            return OrderedPasses;
         }
 
         public WorldGenContext CreateGenerationContext(WorldMap worldMap, WorldGenConfig config)
@@ -75,6 +75,17 @@ namespace Nyvorn.Source.World.Generation
                 Config = config,
                 Random = new Random(config.Seed)
             };
+        }
+
+        public static WorldGenPhaseDefinition GetPhaseDefinition(string passName)
+        {
+            for (int i = 0; i < OrderedPasses.Length; i++)
+            {
+                if (OrderedPasses[i].Name == passName)
+                    return OrderedPasses[i];
+            }
+
+            return new WorldGenPhaseDefinition(passName, passName, 1f);
         }
 
         public void ApplyPassByName(WorldGenContext context, string passName)
