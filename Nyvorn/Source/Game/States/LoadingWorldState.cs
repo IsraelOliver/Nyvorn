@@ -22,6 +22,8 @@ namespace Nyvorn.Source.Game.States
         private bool hasDrawnFirstFrame;
         private bool completionHandled;
         private readonly string titleText;
+        private float displayedProgress;
+        private float busyPulse;
 
         public LoadingWorldState(
             GraphicsDevice graphicsDevice,
@@ -47,6 +49,8 @@ namespace Nyvorn.Source.Game.States
         {
             hasDrawnFirstFrame = false;
             completionHandled = false;
+            displayedProgress = 0f;
+            busyPulse = 0f;
         }
 
         public void OnExit()
@@ -57,6 +61,12 @@ namespace Nyvorn.Source.Game.States
         {
             if (!hasDrawnFirstFrame || completionHandled)
                 return;
+
+            float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            float targetProgress = MathHelper.Clamp(buildOperation.Progress, 0f, 1f);
+            displayedProgress = MathHelper.Lerp(displayedProgress, targetProgress, 1f - MathF.Exp(-dt * 8f));
+            if (buildOperation.IsBusy)
+                busyPulse += dt * 1.75f;
 
             if (!buildOperation.IsCompleted)
                 buildOperation.Advance();
@@ -97,11 +107,19 @@ namespace Nyvorn.Source.Game.States
 
             Rectangle barOuter = new Rectangle(panel.X + 28, panel.Bottom - 56, panel.Width - 56, 16);
             spriteBatch.Draw(pixel, barOuter, new Color(18, 34, 40, 220));
-            int progressWidth = (int)MathF.Round(barOuter.Width * MathHelper.Clamp(buildOperation.Progress, 0f, 1f));
+            float targetProgress = MathHelper.Clamp(buildOperation.Progress, 0f, 1f);
+            float visibleProgress = MathHelper.Clamp(displayedProgress, 0f, 1f);
+            if (buildOperation.IsBusy)
+            {
+                float pulse = (MathF.Sin(busyPulse * MathF.PI * 2f) * 0.5f) + 0.5f;
+                visibleProgress = Math.Max(visibleProgress, Math.Min(1f, targetProgress + (pulse * 0.015f)));
+            }
+
+            int progressWidth = (int)MathF.Round(barOuter.Width * visibleProgress);
             if (progressWidth > 0)
                 spriteBatch.Draw(pixel, new Rectangle(barOuter.X, barOuter.Y, progressWidth, barOuter.Height), new Color(143, 211, 255));
 
-            string percentText = $"{(int)MathF.Round(buildOperation.Progress * 100f)}%";
+            string percentText = $"{(int)MathF.Round(visibleProgress * 100f)}%";
             Vector2 percentSize = font.MeasureString(percentText);
             spriteBatch.DrawString(
                 font,

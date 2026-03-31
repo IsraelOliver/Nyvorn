@@ -1,11 +1,24 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.World.Generation.Passes;
 using System;
+using System.Collections.Generic;
 
 namespace Nyvorn.Source.World.Generation
 {
     public sealed class WorldGenerator
     {
+        private static readonly string[] OrderedPassNames =
+        {
+            "ClearWorld",
+            "LayerBoundary",
+            "SurfaceProfile",
+            "BaseTerrainFill",
+            "Cave",
+            "CaveEntrance",
+            "Tissue",
+            "WorldBounds"
+        };
+
         private readonly IWorldGenPass[] generationPasses;
         private WorldGenConfig lastConfig;
 
@@ -31,14 +44,7 @@ namespace Nyvorn.Source.World.Generation
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
 
-            lastConfig = config;
-
-            WorldGenContext context = new WorldGenContext
-            {
-                WorldMap = worldMap,
-                Config = config,
-                Random = new Random(config.Seed)
-            };
+            WorldGenContext context = CreateGenerationContext(worldMap, config);
 
             for (int i = 0; i < generationPasses.Length; i++)
             {
@@ -47,6 +53,53 @@ namespace Nyvorn.Source.World.Generation
 
                 generationPasses[i].Apply(context);
             }
+        }
+
+        public static IReadOnlyList<string> GetOrderedPassNames()
+        {
+            return OrderedPassNames;
+        }
+
+        public WorldGenContext CreateGenerationContext(WorldMap worldMap, WorldGenConfig config)
+        {
+            if (worldMap == null)
+                throw new ArgumentNullException(nameof(worldMap));
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+
+            lastConfig = config;
+
+            return new WorldGenContext
+            {
+                WorldMap = worldMap,
+                Config = config,
+                Random = new Random(config.Seed)
+            };
+        }
+
+        public void ApplyPassByName(WorldGenContext context, string passName)
+        {
+            if (string.IsNullOrWhiteSpace(passName))
+                throw new ArgumentException("Pass name is required.", nameof(passName));
+            if (context == null)
+                throw new ArgumentNullException(nameof(context));
+            if (context.WorldMap == null)
+                throw new ArgumentException("Generation context is missing WorldMap.", nameof(context));
+            if (context.Config == null)
+                throw new ArgumentException("Generation context is missing Config.", nameof(context));
+
+            for (int i = 0; i < generationPasses.Length; i++)
+            {
+                if (generationPasses[i].Name != passName)
+                    continue;
+                if (!context.Config.Debug.IsEnabled(generationPasses[i].Name))
+                    return;
+
+                generationPasses[i].Apply(context);
+                return;
+            }
+
+            throw new InvalidOperationException($"Pass de geracao desconhecida: {passName}");
         }
 
         public int GetSurfaceTileY(WorldMap worldMap, int tileX)

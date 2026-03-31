@@ -14,6 +14,7 @@ using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Nyvorn.Source.Game.States
 {
@@ -32,6 +33,8 @@ namespace Nyvorn.Source.Game.States
         {
             private readonly IReadOnlyList<BuildStep> steps;
             private int completedSteps;
+            private Task runningTask;
+            private Exception stepException;
 
             public BuildOperation(IReadOnlyList<BuildStep> steps)
             {
@@ -42,15 +45,46 @@ namespace Nyvorn.Source.Game.States
             public string StatusText { get; private set; }
             public float Progress => steps.Count == 0 ? 1f : completedSteps / (float)steps.Count;
             public bool IsCompleted => completedSteps >= steps.Count;
+            public bool IsBusy => runningTask != null;
             public PlayingSession Result { get; private set; }
 
             public void Advance()
             {
                 if (IsCompleted)
                     return;
+                if (stepException != null)
+                    throw new InvalidOperationException($"Falha durante a etapa '{StatusText}'.", stepException);
+
+                if (runningTask != null)
+                {
+                    if (!runningTask.IsCompleted)
+                        return;
+
+                    if (runningTask.IsFaulted)
+                    {
+                        stepException = runningTask.Exception?.GetBaseException() ?? runningTask.Exception;
+                        runningTask = null;
+                        throw new InvalidOperationException($"Falha durante a etapa '{StatusText}'.", stepException);
+                    }
+
+                    runningTask = null;
+                    completedSteps++;
+
+                    if (IsCompleted)
+                        StatusText = "Concluido";
+
+                    return;
+                }
 
                 BuildStep step = steps[completedSteps];
                 StatusText = step.Label;
+
+                if (step.RunInBackground)
+                {
+                    runningTask = Task.Run(step.Action);
+                    return;
+                }
+
                 step.Action();
                 completedSteps++;
 
@@ -65,14 +99,16 @@ namespace Nyvorn.Source.Game.States
 
             public sealed class BuildStep
             {
-                public BuildStep(string label, Action action)
+                public BuildStep(string label, Action action, bool runInBackground = false)
                 {
                     Label = label;
                     Action = action;
+                    RunInBackground = runInBackground;
                 }
 
                 public string Label { get; }
                 public Action Action { get; }
+                public bool RunInBackground { get; }
             }
         }
 
@@ -136,14 +172,27 @@ namespace Nyvorn.Source.Game.States
 
             if (hasWorldSnapshot)
             {
-                steps.Add(new BuildOperation.BuildStep("Carregando snapshot do mundo", () => LoadWorldSnapshot(build, saveData)));
+                steps.Add(new BuildOperation.BuildStep("Carregando snapshot do mundo", () => LoadWorldSnapshot(build, saveData), runInBackground: true));
             }
             else
             {
-                steps.Add(new BuildOperation.BuildStep("Gerando terreno base", () => build.WorldGenerator.Generate(build.WorldMap, build.WorldGenConfig)));
+                IReadOnlyList<string> generationPassNames = WorldGenerator.GetOrderedPassNames();
+                for (int i = 0; i < generationPassNames.Count; i++)
+                {
+                    string generationPassName = generationPassNames[i];
+                    steps.Add(new BuildOperation.BuildStep(GetGenerationStepLabel(generationPassName), () =>
+                    {
+                        build.WorldGenerator.ApplyPassByName(build.GenerationContext, generationPassName);
+                    }, runInBackground: true));
+                }
             }
 
-            steps.Add(new BuildOperation.BuildStep("Preparando mundo para jogo", () => PrepareWorld(build, hasWorldSnapshot ? null : saveData?.TileChanges)));
+            steps.Add(new BuildOperation.BuildStep("Preparando mundo para jogo", () =>
+            {
+                PrepareWorld(build, hasWorldSnapshot ? null : saveData?.TileChanges);
+                if (saveData != null)
+                    build.WorldMap.MarkPersisted();
+            }, runInBackground: true));
 
             if (!hasTissueSnapshot)
             {
@@ -151,7 +200,7 @@ namespace Nyvorn.Source.Game.States
                 {
                     if (build.WorldMap.TissueField == null)
                         build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
-                }));
+                }, runInBackground: true));
             }
 
             steps.Add(new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build)));
@@ -173,6 +222,7 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
             build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture);
             build.WorldGenerator = new WorldGenerator();
+            build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
         }
 
         private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
@@ -239,6 +289,22 @@ namespace Nyvorn.Source.Game.States
                 itemTextures[definition.Id] = content.Load<Texture2D>(definition.TexturePath);
 
             return itemTextures;
+        }
+
+        private static string GetGenerationStepLabel(string passName)
+        {
+            return passName switch
+            {
+                "ClearWorld" => "Limpando mapa base",
+                "LayerBoundary" => "Definindo camadas do planeta",
+                "SurfaceProfile" => "Modelando superficie",
+                "BaseTerrainFill" => "Preenchendo crosta",
+                "Cave" => "Cavando cavernas",
+                "CaveEntrance" => "Abrindo entradas naturais",
+                "Tissue" => "Tecendo rede organica",
+                "WorldBounds" => "Selando limites do mundo",
+                _ => $"Executando {passName}"
+            };
         }
 
         private Dictionary<ItemId, Weapon> CreateWeapons(Texture2D shortStickTexture, Texture2D pickaxeTexture)
@@ -355,6 +421,7 @@ namespace Nyvorn.Source.Game.States
             public WorldGenConfig WorldGenConfig { get; set; }
             public WorldMap WorldMap { get; set; }
             public WorldGenerator WorldGenerator { get; set; }
+            public WorldGenContext GenerationContext { get; set; }
             public int PlayerSpawnTileX { get; set; }
             public int ItemSpawnTileX { get; set; }
             public int EnemySpawnTileX { get; set; }

@@ -77,6 +77,8 @@ namespace Nyvorn.Source.World.Persistence
                 TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
                 TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
             });
+
+            session.WorldMap.MarkPersisted();
         }
 
         public void Save(PlanetSaveData saveData)

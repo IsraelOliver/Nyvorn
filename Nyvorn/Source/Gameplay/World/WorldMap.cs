@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.World.Tissue;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
+using System;
 using System.IO;
 using System.Collections.Generic;
 
@@ -18,6 +19,7 @@ namespace Nyvorn.Source.World
         public int Height { get; }
         public int TileSize { get; }
         public int TileRevision { get; private set; }
+        public bool HasUnsavedChanges => TileRevision != _persistedTileRevision;
         public int PixelWidth => Width * TileSize;
         public TissueField TissueField => _tissueField;
         public TissueAnalysisResult TissueAnalysis => _tissueAnalysis;
@@ -32,13 +34,15 @@ namespace Nyvorn.Source.World
         private Texture2D _stone;
         private TissueField _tissueField;
         private TissueAnalysisResult _tissueAnalysis;
+        private int _persistedTileRevision;
 
         private readonly TileType[,] _tiles;
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
         private readonly Dictionary<long, WorldTileChange> _trackedTileChanges = new();
         private readonly HashSet<long> _grassCandidateKeys = new();
         private readonly Queue<Point> _grassCandidateQueue = new();
-        private const int GrassSpreadBatchSize = 4096;
+        private const int GrassSpreadBatchSize = 512;
+        private const float GrassSpreadChance = 0.28f;
 
         public WorldMap(int width, int height, int tileSize)
         {
@@ -160,6 +164,11 @@ namespace Nyvorn.Source.World
         public void SetTissueAnalysis(TissueAnalysisResult analysis)
         {
             _tissueAnalysis = analysis;
+        }
+
+        public void MarkPersisted()
+        {
+            _persistedTileRevision = TileRevision;
         }
 
         public void MarkTissueDirty()
@@ -454,6 +463,7 @@ namespace Nyvorn.Source.World
         public int UpdateGrassSpread()
         {
             List<(int X, int Y, TileType TileType)> changes = new();
+            List<Point> retryCandidates = new();
             int processed = 0;
 
             while (_grassCandidateQueue.Count > 0 && processed < GrassSpreadBatchSize)
@@ -469,12 +479,16 @@ namespace Nyvorn.Source.World
                 if (tile == TileType.Dirt)
                 {
                     if (HasExposedSide(point.X, point.Y) && HasAdjacentGrass(point.X, point.Y))
-                        changes.Add((WrapTileX(point.X), point.Y, TileType.Grass));
+                    {
+                        if (Random.Shared.NextSingle() <= GrassSpreadChance)
+                            changes.Add((WrapTileX(point.X), point.Y, TileType.Grass));
+                        else
+                            retryCandidates.Add(new Point(WrapTileX(point.X), point.Y));
+                    }
                 }
                 else if (tile == TileType.Grass)
                 {
-                    if (!HasExposedSide(point.X, point.Y))
-                        changes.Add((WrapTileX(point.X), point.Y, TileType.Dirt));
+                    continue;
                 }
 
                 processed++;
@@ -484,6 +498,12 @@ namespace Nyvorn.Source.World
             {
                 (int x, int y, TileType tileType) = changes[i];
                 SetTile(x, y, tileType);
+            }
+
+            for (int i = 0; i < retryCandidates.Count; i++)
+            {
+                Point point = retryCandidates[i];
+                EnqueueGrassCandidate(point.X, point.Y);
             }
 
             return changes.Count;

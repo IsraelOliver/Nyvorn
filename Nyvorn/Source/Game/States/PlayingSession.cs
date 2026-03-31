@@ -48,16 +48,20 @@ namespace Nyvorn.Source.Game.States
         private const float TissueBackgroundOpacity = 0.34f;
         private const float TissueForegroundOpacity = 1.00f;
         private const float TissueMaskCullPaddingPixels = 96f;
-        private const float GrassSpreadInterval = 0.24f;
+        private const float GrassSpreadIntervalMin = 0.9f;
+        private const float GrassSpreadIntervalMax = 3.2f;
         private const float AmbientTissueRadiusInTiles = 7f;
         private const float AmbientLinkPresence = 0.045f;
         private const float AmbientHubPresence = 0.085f;
+        private const float AmbientTissueSampleInterval = 0.15f;
         public int SelectedHotbarIndex { get; private set; }
         private int lastBlockBreakAttackSequence = -1;
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
         private float blockPlaceCooldownTimer;
         private float grassSpreadTimer;
         private float tissueTime;
+        private float ambientTissuePresenceTimer;
+        private float ambientTissuePresenceCache;
         private Rectangle hoveredTileBounds;
         private WorldTilePreviewState hoveredTileState = WorldTilePreviewState.Hidden;
         public Effect TissueCompositeEffect => TissueMaskRenderer.CompositeEffect;
@@ -65,6 +69,7 @@ namespace Nyvorn.Source.Game.States
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
             tissueTime += dt;
+            ambientTissuePresenceTimer -= dt;
 
             if (blockPlaceCooldownTimer > 0f)
                 blockPlaceCooldownTimer -= dt;
@@ -73,7 +78,7 @@ namespace Nyvorn.Source.Game.States
             if (grassSpreadTimer <= 0f)
             {
                 WorldMap.UpdateGrassSpread();
-                grassSpreadTimer = GrassSpreadInterval;
+                ScheduleNextGrassSpread();
             }
 
             if (input.HotbarSelectionIndex >= 0 && input.HotbarSelectionIndex < Hotbar.Capacity)
@@ -346,10 +351,17 @@ namespace Nyvorn.Source.Game.States
 
         private float GetAmbientTissuePresence()
         {
+            if (ambientTissuePresenceTimer > 0f)
+                return ambientTissuePresenceCache;
+
             TissueAnalysisResult analysis = WorldMap.GetOrCreateTissueAnalysis();
             TissueField tissueField = WorldMap.TissueField;
             if (analysis == null || tissueField == null)
+            {
+                ambientTissuePresenceCache = 0f;
+                ambientTissuePresenceTimer = AmbientTissueSampleInterval;
                 return 0f;
+            }
 
             Point centerTile = WorldMap.WorldToTile(Player.Position);
             int radiusTiles = System.Math.Max(2, (int)System.MathF.Round(AmbientTissueRadiusInTiles));
@@ -387,7 +399,18 @@ namespace Nyvorn.Source.Game.States
 
             float linkPresence = bestLinkSignal * AmbientLinkPresence;
             float hubPresence = bestHubSignal * AmbientHubPresence;
-            return System.MathF.Max(linkPresence, hubPresence);
+            ambientTissuePresenceCache = System.MathF.Max(linkPresence, hubPresence);
+            ambientTissuePresenceTimer = AmbientTissueSampleInterval;
+            return ambientTissuePresenceCache;
+        }
+
+        private void ScheduleNextGrassSpread()
+        {
+            grassSpreadTimer = Random.Shared.NextSingle() switch
+            {
+                float roll when roll < 0.18f => MathHelper.Lerp(0.18f, 0.55f, Random.Shared.NextSingle()),
+                _ => MathHelper.Lerp(GrassSpreadIntervalMin, GrassSpreadIntervalMax, Random.Shared.NextSingle())
+            };
         }
 
         public Rectangle GetInventoryPanelBounds(int screenWidth, int screenHeight)

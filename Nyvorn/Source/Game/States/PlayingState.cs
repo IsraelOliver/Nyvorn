@@ -25,7 +25,7 @@ namespace Nyvorn.Source.Game.States
         private bool minimapVisible;
         private bool minimapTissueMode;
         private float autoSaveTimer;
-        private const float AutoSaveInterval = 6f;
+        private const float AutoSaveInterval = 60f;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -97,7 +97,9 @@ namespace Nyvorn.Source.Game.States
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
-                saveService.Save(session);
+                if (session.WorldMap.HasUnsavedChanges)
+                    saveService.Save(session);
+
                 autoSaveTimer = AutoSaveInterval;
             }
 
