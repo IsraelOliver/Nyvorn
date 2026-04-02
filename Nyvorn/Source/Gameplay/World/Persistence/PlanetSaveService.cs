@@ -87,10 +87,18 @@ namespace Nyvorn.Source.World.Persistence
                 throw new ArgumentNullException(nameof(saveData));
 
             EnsureSaveDirectory();
-            string filePath = GetFilePath(saveData.Metadata.WorldId);
+            string existingFilePath = FindExistingFilePathByWorldId(saveData.Metadata.WorldId);
+            string filePath = ResolveFilePath(saveData, existingFilePath);
             PlanetSaveData persisted = CreatePersistedCopy(saveData);
             string json = JsonSerializer.Serialize(persisted, JsonOptions);
             File.WriteAllText(filePath, json);
+
+            if (!string.IsNullOrWhiteSpace(existingFilePath) &&
+                !string.Equals(existingFilePath, filePath, StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(existingFilePath))
+            {
+                File.Delete(existingFilePath);
+            }
         }
 
         private PlanetSaveData TryLoadFromPath(string filePath)
@@ -166,9 +174,63 @@ namespace Nyvorn.Source.World.Persistence
             }
         }
 
-        private string GetFilePath(string worldId)
+        private string ResolveFilePath(PlanetSaveData saveData, string existingFilePath)
         {
-            return Path.Combine(SaveDirectoryPath, $"{worldId}.plt");
+            string baseFileName = GetSafeFileName(saveData.Metadata.PlanetName);
+            string desiredFilePath = Path.Combine(SaveDirectoryPath, $"{baseFileName}.plt");
+
+            if (IsPathAvailableForWorld(desiredFilePath, saveData.Metadata.WorldId))
+                return desiredFilePath;
+
+            for (int suffix = 2; suffix < 10_000; suffix++)
+            {
+                string candidatePath = Path.Combine(SaveDirectoryPath, $"{baseFileName} ({suffix}).plt");
+                if (IsPathAvailableForWorld(candidatePath, saveData.Metadata.WorldId))
+                    return candidatePath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(existingFilePath))
+                return existingFilePath;
+
+            return Path.Combine(SaveDirectoryPath, $"{saveData.Metadata.WorldId}.plt");
+        }
+
+        private string FindExistingFilePathByWorldId(string worldId)
+        {
+            if (string.IsNullOrWhiteSpace(worldId) || !Directory.Exists(SaveDirectoryPath))
+                return null;
+
+            foreach (string filePath in Directory.EnumerateFiles(SaveDirectoryPath, "*.plt"))
+            {
+                PlanetSaveData saveData = TryLoadFromPath(filePath);
+                if (saveData?.Metadata == null)
+                    continue;
+
+                if (string.Equals(saveData.Metadata.WorldId, worldId, StringComparison.Ordinal))
+                    return filePath;
+            }
+
+            return null;
+        }
+
+        private bool IsPathAvailableForWorld(string filePath, string worldId)
+        {
+            if (!File.Exists(filePath))
+                return true;
+
+            PlanetSaveData saveData = TryLoadFromPath(filePath);
+            return string.Equals(saveData?.Metadata?.WorldId, worldId, StringComparison.Ordinal);
+        }
+
+        private static string GetSafeFileName(string worldName)
+        {
+            string candidate = string.IsNullOrWhiteSpace(worldName) ? "Mundo" : worldName.Trim();
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            foreach (char invalidChar in invalidChars)
+                candidate = candidate.Replace(invalidChar, '_');
+
+            candidate = candidate.Trim().TrimEnd('.');
+            return string.IsNullOrWhiteSpace(candidate) ? "Mundo" : candidate;
         }
 
         private void EnsureSaveDirectory()

@@ -21,27 +21,7 @@ namespace Nyvorn.Source.World.Tissue
                 return;
 
             TissueAnalysisResult analysis = GetAnalysis(worldMap);
-            TissueField field = worldMap.TissueField;
             float revealRadiusSq = revealRadius * revealRadius;
-            int minTileX = worldMap.WrapTileX((int)System.MathF.Floor((focusPosition.X - revealRadius) / worldMap.TileSize));
-            int maxTileX = worldMap.WrapTileX((int)System.MathF.Ceiling((focusPosition.X + revealRadius) / worldMap.TileSize));
-            int minTileY = System.Math.Max(0, (int)System.MathF.Floor((focusPosition.Y - revealRadius) / worldMap.TileSize));
-            int maxTileY = System.Math.Min(worldMap.Height - 1, (int)System.MathF.Ceiling((focusPosition.Y + revealRadius) / worldMap.TileSize));
-
-            bool wrapped = minTileX > maxTileX;
-            for (int y = minTileY; y <= maxTileY; y++)
-            {
-                if (wrapped)
-                {
-                    DrawTileSpan(spriteBatch, worldMap, field, analysis, focusPosition, revealRadiusSq, 0, maxTileX, y, revealStrength);
-                    DrawTileSpan(spriteBatch, worldMap, field, analysis, focusPosition, revealRadiusSq, minTileX, worldMap.Width - 1, y, revealStrength);
-                }
-                else
-                {
-                    DrawTileSpan(spriteBatch, worldMap, field, analysis, focusPosition, revealRadiusSq, minTileX, maxTileX, y, revealStrength);
-                }
-            }
-
             DrawLinkPaths(spriteBatch, worldMap, analysis, focusPosition, revealRadiusSq, revealStrength);
             DrawHubMarkers(spriteBatch, worldMap, analysis, focusPosition, revealRadiusSq, revealStrength);
         }
@@ -49,43 +29,6 @@ namespace Nyvorn.Source.World.Tissue
         private TissueAnalysisResult GetAnalysis(WorldMap worldMap)
         {
             return worldMap.GetOrCreateTissueAnalysis();
-        }
-
-        private void DrawTileSpan(
-            SpriteBatch spriteBatch,
-            WorldMap worldMap,
-            Generation.TissueField field,
-            TissueAnalysisResult analysis,
-            Vector2 focusPosition,
-            float revealRadiusSq,
-            int startX,
-            int endX,
-            int y,
-            float revealStrength)
-        {
-            for (int x = startX; x <= endX; x++)
-            {
-                if (!field.HasTissue(x, y))
-                    continue;
-
-                Vector2 tileCenter = worldMap.GetTileCenter(x, y);
-                float distanceSq = Vector2.DistanceSquared(tileCenter, focusPosition);
-                if (distanceSq > revealRadiusSq)
-                    continue;
-
-                TissueLocalType localType = analysis.GetLocalType(x, y);
-                Color baseColor = TissueDebugPalette.GetColor(localType);
-                if (baseColor.A == 0)
-                    continue;
-
-                float normalized = revealRadiusSq <= 0f ? 1f : MathHelper.Clamp(distanceSq / revealRadiusSq, 0f, 1f);
-                float falloff = 1f - (normalized * normalized);
-                Color color = baseColor * (revealStrength * MathHelper.Lerp(0.22f, 0.88f, falloff));
-
-                Rectangle tileRect = worldMap.GetTileBounds(x, y);
-                tileRect.Inflate(-1, -1);
-                spriteBatch.Draw(pixel, tileRect, color);
-            }
         }
 
         private void DrawHubMarkers(SpriteBatch spriteBatch, WorldMap worldMap, TissueAnalysisResult analysis, Vector2 focusPosition, float revealRadiusSq, float revealStrength)
@@ -168,6 +111,11 @@ namespace Nyvorn.Source.World.Tissue
                 case TissueLink.TissueLinkType.Secondary:
                     color = new Color(255, 215, 64);
                     thickness = 2.5f;
+                    return true;
+
+                case TissueLink.TissueLinkType.Weak:
+                    color = new Color(255, 105, 180);
+                    thickness = 1.5f;
                     return true;
 
                 default:

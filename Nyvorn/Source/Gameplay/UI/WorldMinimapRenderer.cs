@@ -160,34 +160,8 @@ namespace Nyvorn.Source.Gameplay.UI
         private void DrawTissueFieldOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueField tissueField, Rectangle panel, Rectangle sourceRect)
         {
             TissueAnalysisResult analysis = GetTissueAnalysis(worldMap, tissueField);
-            int startX = System.Math.Max(0, sourceRect.X);
-            int endX = System.Math.Min(tissueField.Width - 1, sourceRect.Right - 1);
-            int startY = System.Math.Max(0, sourceRect.Y);
-            int endY = System.Math.Min(tissueField.Height - 1, sourceRect.Bottom - 1);
-
-            float tileDrawWidth = panel.Width / (float)sourceRect.Width;
-            float tileDrawHeight = panel.Height / (float)sourceRect.Height;
-            int minPixelWidth = System.Math.Max(1, (int)System.MathF.Ceiling(tileDrawWidth));
-            int minPixelHeight = System.Math.Max(1, (int)System.MathF.Ceiling(tileDrawHeight));
-
-            for (int y = startY; y <= endY; y++)
-            {
-                for (int x = startX; x <= endX; x++)
-                {
-                    if (!tissueField.HasTissue(x, y))
-                        continue;
-
-                    TissueLocalType localType = analysis.GetLocalType(x, y);
-                    Color color = TissueDebugPalette.GetColor(localType);
-                    if (color.A == 0)
-                        continue;
-
-                    int drawX = panel.X + (int)System.MathF.Floor(((x - sourceRect.X) / (float)sourceRect.Width) * panel.Width);
-                    int drawY = panel.Y + (int)System.MathF.Floor(((y - sourceRect.Y) / (float)sourceRect.Height) * panel.Height);
-                    Rectangle rect = new Rectangle(drawX, drawY, minPixelWidth, minPixelHeight);
-                    DrawRect(spriteBatch, rect, color);
-                }
-            }
+            int minPixelWidth = System.Math.Max(1, (int)System.MathF.Ceiling(panel.Width / (float)sourceRect.Width));
+            int minPixelHeight = System.Math.Max(1, (int)System.MathF.Ceiling(panel.Height / (float)sourceRect.Height));
 
             DrawTissueLinks(spriteBatch, worldMap, analysis, panel, sourceRect);
             DrawTissueHubMarkers(spriteBatch, analysis, panel, sourceRect, minPixelWidth, minPixelHeight);
@@ -275,6 +249,11 @@ namespace Nyvorn.Source.Gameplay.UI
                 case TissueLink.TissueLinkType.Secondary:
                     color = new Color(255, 215, 64);
                     thickness = 1.5f;
+                    return true;
+
+                case TissueLink.TissueLinkType.Weak:
+                    color = new Color(255, 105, 180);
+                    thickness = 1f;
                     return true;
 
                 default:

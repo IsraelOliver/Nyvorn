@@ -120,8 +120,6 @@ namespace Nyvorn.Source.Game.States
             float worldWidthPixels = session.WorldMap.PixelWidth;
             int centerLoop = (int)System.MathF.Floor(session.Camera.Position.X / worldWidthPixels);
 
-            session.RenderTissueMask(graphicsDevice, spriteBatch);
-
             spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
             session.DrawSky(spriteBatch, screenW, screenH);
             spriteBatch.End();
@@ -148,14 +146,6 @@ namespace Nyvorn.Source.Game.States
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
             session.DrawEntities(spriteBatch);
-            spriteBatch.End();
-
-            spriteBatch.Begin(
-                sortMode: SpriteSortMode.Deferred,
-                samplerState: SamplerState.PointClamp,
-                blendState: BlendState.Additive,
-                effect: session.TissueCompositeEffect);
-            session.DrawTissueOverlay(spriteBatch);
             spriteBatch.End();
 
             for (int loopOffset = -1; loopOffset <= 1; loopOffset++)

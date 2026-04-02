@@ -37,7 +37,6 @@ namespace Nyvorn.Source.Game.States
         public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
         public required CombatSystem CombatSystem { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
-        public required TissueMaskRenderer TissueMaskRenderer { get; init; }
         public required TissueRevealController TissueRevealController { get; init; }
         public required TissueFieldDebugRenderer TissueDebugRenderer { get; init; }
         private const float BlockPlaceInterval = 0.08f;
@@ -45,9 +44,6 @@ namespace Nyvorn.Source.Game.States
         private const float ItemPullStrength = 900f;
         private const float EntitySimulationRangeInTiles = 56f;
         private const float EntityDrawPaddingPixels = 48f;
-        private const float TissueBackgroundOpacity = 0.34f;
-        private const float TissueForegroundOpacity = 1.00f;
-        private const float TissueMaskCullPaddingPixels = 96f;
         private const float GrassSpreadIntervalMin = 0.9f;
         private const float GrassSpreadIntervalMax = 3.2f;
         private const float AmbientTissueRadiusInTiles = 7f;
@@ -59,16 +55,13 @@ namespace Nyvorn.Source.Game.States
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
         private float blockPlaceCooldownTimer;
         private float grassSpreadTimer;
-        private float tissueTime;
         private float ambientTissuePresenceTimer;
         private float ambientTissuePresenceCache;
         private Rectangle hoveredTileBounds;
         private WorldTilePreviewState hoveredTileState = WorldTilePreviewState.Hidden;
-        public Effect TissueCompositeEffect => TissueMaskRenderer.CompositeEffect;
 
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
-            tissueTime += dt;
             ambientTissuePresenceTimer -= dt;
 
             if (blockPlaceCooldownTimer > 0f)
@@ -186,112 +179,6 @@ namespace Nyvorn.Source.Game.States
             }
         }
 
-        public void RenderTissueMask(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch)
-        {
-            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
-            if (revealStrength <= 0.001f)
-                return;
-
-            TissueMaskRenderer.EnsureTarget(
-                graphicsDevice,
-                graphicsDevice.PresentationParameters.BackBufferWidth,
-                graphicsDevice.PresentationParameters.BackBufferHeight);
-
-            RenderTargetBinding[] previousTargets = graphicsDevice.GetRenderTargets();
-            graphicsDevice.SetRenderTarget((RenderTarget2D)TissueMaskRenderer.MaskTexture);
-            graphicsDevice.Clear(Color.Transparent);
-
-            float worldWidthPixels = WorldMap.PixelWidth;
-            int centerLoop = (int)MathF.Floor(TissueRevealController.FocusPosition.X / worldWidthPixels);
-            int minLoopOffset = -1;
-            int maxLoopOffset = 1;
-            float leftThreshold = TissueRevealController.RevealRadius + TissueMaskCullPaddingPixels;
-            float rightThreshold = worldWidthPixels - leftThreshold;
-            float wrappedFocusX = TissueRevealController.FocusPosition.X;
-
-            while (wrappedFocusX < 0f)
-                wrappedFocusX += worldWidthPixels;
-            while (wrappedFocusX >= worldWidthPixels)
-                wrappedFocusX -= worldWidthPixels;
-
-            if (wrappedFocusX > leftThreshold && wrappedFocusX < rightThreshold)
-            {
-                minLoopOffset = 0;
-                maxLoopOffset = 0;
-            }
-
-            for (int loopOffset = minLoopOffset; loopOffset <= maxLoopOffset; loopOffset++)
-            {
-                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * Camera.GetViewMatrix();
-                Rectangle cullBounds = GetTissueWorldCullBounds(worldOffset);
-
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                if (WorldMap.TissueField != null)
-                {
-                    TissueMaskRenderer.DrawMask(
-                        spriteBatch,
-                        WorldMap,
-                        WorldMap.TissueField,
-                        revealStrength,
-                        TissueRevealController.FocusPosition,
-                        revealRadius,
-                        cullBounds);
-                }
-                else
-                {
-                    TissueMaskRenderer.DrawMask(
-                        spriteBatch,
-                        TissueNetwork,
-                        revealStrength,
-                        TissueRevealController.FocusPosition,
-                        revealRadius,
-                        cullBounds);
-                }
-                spriteBatch.End();
-            }
-
-            graphicsDevice.SetRenderTargets(previousTargets);
-        }
-
-        public void DrawTissueBackground(SpriteBatch spriteBatch)
-        {
-            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
-            if (revealStrength <= 0.001f)
-                return;
-
-            Vector2 focusScreenPosition = Camera.WorldToScreen(TissueRevealController.FocusPosition);
-            float revealRadiusPixels = revealRadius * Camera.Zoom;
-            TissueMaskRenderer.DrawComposite(
-                spriteBatch,
-                revealStrength,
-                tissueTime,
-                focusScreenPosition,
-                revealRadiusPixels,
-                waveProgress,
-                layerMode: 0f,
-                layerOpacity: TissueBackgroundOpacity);
-        }
-
-        public void DrawTissueOverlay(SpriteBatch spriteBatch)
-        {
-            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
-            if (revealStrength <= 0.001f)
-                return;
-
-            Vector2 focusScreenPosition = Camera.WorldToScreen(TissueRevealController.FocusPosition);
-            float revealRadiusPixels = revealRadius * Camera.Zoom;
-            TissueMaskRenderer.DrawComposite(
-                spriteBatch,
-                revealStrength,
-                tissueTime,
-                focusScreenPosition,
-                revealRadiusPixels,
-                waveProgress,
-                layerMode: 1f,
-                layerOpacity: TissueForegroundOpacity);
-        }
-
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
             ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight);
@@ -300,6 +187,16 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTissueDebug(SpriteBatch spriteBatch)
         {
+            (float revealStrength, float revealRadius, float waveProgress) = GetEffectiveTissueVisualState();
+            if (revealStrength <= 0.001f)
+                return;
+
+            TissueDebugRenderer.Draw(
+                spriteBatch,
+                WorldMap,
+                revealStrength,
+                TissueRevealController.FocusPosition,
+                revealRadius);
         }
 
         public void DrawHud(SpriteBatch spriteBatch, int screenWidth)
@@ -633,25 +530,6 @@ namespace Nyvorn.Source.Game.States
                    bounds.Left <= right &&
                    bounds.Bottom >= top &&
                    bounds.Top <= bottom;
-        }
-
-        private Rectangle GetTissueWorldCullBounds(float worldOffsetX)
-        {
-            int screenW = TissueMaskRenderer.MaskTexture?.Width ?? 0;
-            int screenH = TissueMaskRenderer.MaskTexture?.Height ?? 0;
-            float viewWidth = screenW / Camera.Zoom;
-            float viewHeight = screenH / Camera.Zoom;
-            float extraPadding = TissueRevealController.RevealRadius + TissueMaskCullPaddingPixels;
-            float left = Camera.Position.X - worldOffsetX - extraPadding;
-            float top = Camera.Position.Y - extraPadding;
-            float right = left + viewWidth + (extraPadding * 2f);
-            float bottom = top + viewHeight + (extraPadding * 2f);
-
-            int x = (int)MathF.Floor(left);
-            int y = (int)MathF.Floor(top);
-            int width = (int)MathF.Ceiling(right - left);
-            int height = (int)MathF.Ceiling(bottom - top);
-            return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height));
         }
 
         private Vector2 NormalizeLoopingWorld(Vector2 mouseWorld)

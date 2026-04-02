@@ -373,7 +373,6 @@ namespace Nyvorn.Source.Game.States
             build.AttackHandBackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
             build.AttackHandFrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
             build.AttackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
-            build.TissueRevealEffect = content.Load<Effect>("shaders/TissueReveal");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
 
@@ -405,10 +404,28 @@ namespace Nyvorn.Source.Game.States
 
         private PlayingSession CreateSession(BuildContext build, PlanetWorldMetadata planetMetadata)
         {
-            Vector2 playerSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.PlayerSpawnTileX);
-            Vector2 enemySpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.EnemySpawnTileX);
-            Vector2 shortStickSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.ItemSpawnTileX, 2);
-            Vector2 pickaxeSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(build.WorldMap, build.ItemSpawnTileX + 3, 2);
+            Vector2 playerSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+                build.WorldMap,
+                build.WorldGenConfig,
+                WorldLayerType.DeepCavern,
+                build.PlayerSpawnTileX);
+            Vector2 enemySpawn = build.WorldGenerator.GetLayerSpawnPosition(
+                build.WorldMap,
+                build.WorldGenConfig,
+                WorldLayerType.DeepCavern,
+                build.EnemySpawnTileX);
+            Vector2 shortStickSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+                build.WorldMap,
+                build.WorldGenConfig,
+                WorldLayerType.DeepCavern,
+                build.ItemSpawnTileX,
+                tilesAboveGround: 2);
+            Vector2 pickaxeSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+                build.WorldMap,
+                build.WorldGenConfig,
+                WorldLayerType.DeepCavern,
+                build.ItemSpawnTileX + 3,
+                tilesAboveGround: 2);
 
             Player player = new(
                 playerSpawn,
@@ -456,7 +473,6 @@ namespace Nyvorn.Source.Game.States
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 CombatSystem = new CombatSystem(),
                 TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
-                TissueMaskRenderer = new TissueMaskRenderer(graphicsDevice, build.TissueRevealEffect),
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice)
             };
@@ -499,7 +515,6 @@ namespace Nyvorn.Source.Game.States
             public Texture2D AttackHandFrontTexture { get; set; }
             public Texture2D AttackBodyTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
-            public Effect TissueRevealEffect { get; set; }
             public SpriteFont UiFont { get; set; }
             public WorldGenConfig WorldGenConfig { get; set; }
             public WorldMap WorldMap { get; set; }

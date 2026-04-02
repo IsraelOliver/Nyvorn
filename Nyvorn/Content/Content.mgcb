@@ -181,12 +181,6 @@
 /processorParam:TextureFormat=Color
 /build:entities/player/player_dodge.png
 
-#begin shaders/TissueReveal.fx
-/importer:EffectImporter
-/processor:EffectProcessor
-/processorParam:DebugMode=Auto
-/build:shaders/TissueReveal.fx
-
 #begin ui/UIFont.spritefont
 /importer:FontDescriptionImporter
 /processor:FontDescriptionProcessor
@@ -217,4 +211,3 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:weapons/shortStick.png
-
