@@ -23,6 +23,7 @@ namespace Nyvorn.Source.World
         public int PixelWidth => Width * TileSize;
         public TissueField TissueField => _tissueField;
         public TissueAnalysisResult TissueAnalysis => _tissueAnalysis;
+        public TissueBiomeField TissueBiomeField => _tissueBiomeField;
         public int TissueRevision { get; private set; }
         public int ChunkTileSize => DefaultChunkTileSize;
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
@@ -34,6 +35,7 @@ namespace Nyvorn.Source.World
         private Texture2D _stone;
         private TissueField _tissueField;
         private TissueAnalysisResult _tissueAnalysis;
+        private TissueBiomeField _tissueBiomeField;
         private int _persistedTileRevision;
 
         private readonly TileType[,] _tiles;
@@ -158,12 +160,19 @@ namespace Nyvorn.Source.World
         {
             _tissueField = tissueField;
             _tissueAnalysis = null;
+            _tissueBiomeField = null;
             TissueRevision++;
         }
 
         public void SetTissueAnalysis(TissueAnalysisResult analysis)
         {
             _tissueAnalysis = analysis;
+        }
+
+        public void SetTissueBiomeField(TissueBiomeField tissueBiomeField)
+        {
+            _tissueBiomeField = tissueBiomeField;
+            TissueRevision++;
         }
 
         public void MarkPersisted()
@@ -198,6 +207,100 @@ namespace Nyvorn.Source.World
 
             _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
             return _tissueAnalysis;
+        }
+
+        public bool HasTissueBiomeAt(int x, int y)
+        {
+            return _tissueBiomeField?.HasBiome(x, y) ?? false;
+        }
+
+        public TissueBiomeType GetTissueBiomeType(int x, int y)
+        {
+            return _tissueBiomeField?.GetBiomeType(x, y) ?? TissueBiomeType.None;
+        }
+
+        public byte[] ExportTissueBiomeSnapshot()
+        {
+            if (_tissueBiomeField == null)
+                return null;
+
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+
+            writer.Write(_tissueBiomeField.Width);
+            writer.Write(_tissueBiomeField.Height);
+
+            for (int y = 0; y < _tissueBiomeField.Height; y++)
+            {
+                for (int x = 0; x < _tissueBiomeField.Width; x++)
+                    writer.Write((byte)_tissueBiomeField.GetBiomeType(x, y));
+            }
+
+            writer.Write(_tissueBiomeField.Regions.Count);
+            for (int i = 0; i < _tissueBiomeField.Regions.Count; i++)
+            {
+                TissueBiomeRegion region = _tissueBiomeField.Regions[i];
+                writer.Write(region.RegionId);
+                writer.Write((byte)region.BiomeType);
+                writer.Write(region.TileBounds.X);
+                writer.Write(region.TileBounds.Y);
+                writer.Write(region.TileBounds.Width);
+                writer.Write(region.TileBounds.Height);
+                writer.Write(region.CenterTile.X);
+                writer.Write(region.CenterTile.Y);
+                writer.Write((byte)region.AnchorLayer);
+            }
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        public void ImportTissueBiomeSnapshot(byte[] snapshot)
+        {
+            if (snapshot == null || snapshot.Length == 0)
+            {
+                _tissueBiomeField = null;
+                return;
+            }
+
+            using MemoryStream stream = new(snapshot);
+            using BinaryReader reader = new(stream);
+
+            int width = reader.ReadInt32();
+            int height = reader.ReadInt32();
+            if (width != Width || height != Height)
+                throw new ArgumentException("Tissue biome snapshot size does not match world dimensions.", nameof(snapshot));
+
+            TissueBiomeField biomeField = new(width, height);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                    biomeField.SetBiomeType(x, y, (TissueBiomeType)reader.ReadByte());
+            }
+
+            int regionCount = reader.ReadInt32();
+            for (int i = 0; i < regionCount; i++)
+            {
+                int regionId = reader.ReadInt32();
+                TissueBiomeType biomeType = (TissueBiomeType)reader.ReadByte();
+                Rectangle tileBounds = new Rectangle(
+                    reader.ReadInt32(),
+                    reader.ReadInt32(),
+                    reader.ReadInt32(),
+                    reader.ReadInt32());
+                Point centerTile = new Point(reader.ReadInt32(), reader.ReadInt32());
+                WorldLayerType anchorLayer = (WorldLayerType)reader.ReadByte();
+
+                biomeField.Regions.Add(new TissueBiomeRegion(
+                    regionId,
+                    biomeType,
+                    tileBounds,
+                    centerTile,
+                    anchorLayer));
+            }
+
+            _tissueBiomeField = biomeField;
+            TissueRevision++;
         }
 
         public byte[] ExportTissueAnalysisSnapshot()

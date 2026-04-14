@@ -22,6 +22,7 @@ namespace Nyvorn.Source.Game.States
     {
         private readonly GraphicsDevice graphicsDevice;
         private readonly ContentManager content;
+        private readonly PlayerSaveService playerSaveService = new();
 
         public PlayingSessionFactory(GraphicsDevice graphicsDevice, ContentManager content)
         {
@@ -252,11 +253,15 @@ namespace Nyvorn.Source.Game.States
             BuildContext build = new();
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
+            build.SavedWorldItems = saveData != null && saveData.Version >= 5 && saveData.WorldItems != null
+                ? new List<WorldItemSaveData>(saveData.WorldItems)
+                : null;
 
             BuildOperation operation = null;
             List<BuildOperation.BuildStep> steps = new()
             {
-                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata), weight: 5f)
+                new BuildOperation.BuildStep("Carregando blocos e configuracoes", () => LoadWorldAssets(build, planetMetadata), weight: 5f),
+                new BuildOperation.BuildStep("Carregando dados do jogador", () => LoadPlayerProgress(build, planetMetadata), weight: 1f)
             };
 
             if (hasWorldSnapshot)
@@ -337,10 +342,16 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap.BeginTileChangeTracking();
         }
 
+        private void LoadPlayerProgress(BuildContext build, PlanetWorldMetadata planetMetadata)
+        {
+            build.PlayerSaveData = playerSaveService.Load(planetMetadata.WorldId);
+        }
+
         private static void LoadWorldSnapshot(BuildContext build, PlanetSaveData saveData)
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
+            build.WorldMap.ImportTissueBiomeSnapshot(saveData.TissueBiomeSnapshot);
 
             if (build.WorldMap.TissueField != null)
             {
@@ -404,11 +415,12 @@ namespace Nyvorn.Source.Game.States
 
         private PlayingSession CreateSession(BuildContext build, PlanetWorldMetadata planetMetadata)
         {
-            Vector2 playerSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+            Vector2 defaultPlayerSpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,
                 build.WorldGenConfig,
                 WorldLayerType.DeepCavern,
                 build.PlayerSpawnTileX);
+            Vector2 playerSpawn = ResolvePlayerSpawn(build, defaultPlayerSpawn);
             Vector2 enemySpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,
                 build.WorldGenConfig,
@@ -444,16 +456,13 @@ namespace Nyvorn.Source.Game.States
             EnemyRespawnController enemyRespawnController = new(build.EnemyTexture, enemySpawn, build.EnemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
 
-            List<WorldItem> worldItems = new()
-            {
-                new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), build.ShortStickTexture, shortStickSpawn),
-                new WorldItem(ItemDefinitions.Get(ItemId.Pickaxe), build.PickaxeTexture, pickaxeSpawn)
-            };
-
             Hotbar hotbar = new(2);
             Inventory inventory = new(10);
+            int selectedHotbarIndex = 0;
+            ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
+            List<WorldItem> worldItems = CreateWorldItems(build, shortStickSpawn, pickaxeSpawn);
 
-            return new PlayingSession
+            PlayingSession session = new PlayingSession
             {
                 PlanetMetadata = planetMetadata,
                 WorldMap = build.WorldMap,
@@ -475,6 +484,99 @@ namespace Nyvorn.Source.Game.States
                 TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice)
+            };
+
+            session.SetSelectedHotbarIndex(selectedHotbarIndex);
+            return session;
+        }
+
+        private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
+        {
+            PlayerSaveData playerSaveData = build.PlayerSaveData;
+            if (playerSaveData == null)
+                return fallbackPosition;
+
+            float x = playerSaveData.PositionX;
+            float y = playerSaveData.PositionY;
+            if (float.IsNaN(x) || float.IsInfinity(x) || float.IsNaN(y) || float.IsInfinity(y))
+                return fallbackPosition;
+
+            float worldWidth = build.WorldMap.PixelWidth;
+            if (worldWidth > 0f)
+            {
+                x %= worldWidth;
+                if (x < 0f)
+                    x += worldWidth;
+            }
+
+            float maxY = build.WorldMap.Height * build.WorldMap.TileSize;
+            y = Math.Clamp(y, build.WorldMap.TileSize, Math.Max(build.WorldMap.TileSize, maxY));
+            return new Vector2(x, y);
+        }
+
+        private static void ApplyPlayerInventory(PlayerSaveData playerSaveData, Hotbar hotbar, Inventory inventory, ref int selectedHotbarIndex)
+        {
+            if (playerSaveData == null)
+                return;
+
+            RestoreInventory(hotbar, playerSaveData.HotbarSlots);
+            RestoreInventory(inventory, playerSaveData.InventorySlots);
+            selectedHotbarIndex = Math.Clamp(playerSaveData.SelectedHotbarIndex, 0, hotbar.Capacity - 1);
+        }
+
+        private static void RestoreInventory(Inventory inventory, IReadOnlyList<PlayerInventorySlotSaveData> slotData)
+        {
+            if (inventory == null || slotData == null)
+                return;
+
+            for (int i = 0; i < slotData.Count; i++)
+            {
+                PlayerInventorySlotSaveData entry = slotData[i];
+                if (entry == null || entry.SlotIndex < 0 || entry.SlotIndex >= inventory.Capacity)
+                    continue;
+                if (!ItemDefinitions.TryGet(entry.ItemId, out ItemDefinition definition))
+                    continue;
+
+                int quantity = definition.Stackable
+                    ? Math.Clamp(entry.Quantity, 1, definition.MaxStack)
+                    : 1;
+
+                inventory.GetSlot(entry.SlotIndex).Set(entry.ItemId, quantity);
+            }
+        }
+
+        private List<WorldItem> CreateWorldItems(BuildContext build, Vector2 shortStickSpawn, Vector2 pickaxeSpawn)
+        {
+            if (build.SavedWorldItems != null)
+            {
+                List<WorldItem> restoredItems = new();
+                for (int i = 0; i < build.SavedWorldItems.Count; i++)
+                {
+                    WorldItemSaveData itemSave = build.SavedWorldItems[i];
+                    if (!ItemDefinitions.TryGet(itemSave.ItemId, out ItemDefinition definition))
+                        continue;
+                    if (!build.ItemTextures.TryGetValue(itemSave.ItemId, out Texture2D texture))
+                        continue;
+
+                    restoredItems.Add(new WorldItem(
+                        definition,
+                        texture,
+                        new Vector2(itemSave.PositionX, itemSave.PositionY),
+                        itemSave.PickupDelayRemaining,
+                        itemSave.VelocityX,
+                        itemSave.VelocityY));
+                }
+
+                return restoredItems;
+            }
+
+            if (build.PlayerSaveData != null)
+                return new List<WorldItem>();
+
+            return new List<WorldItem>
+            {
+                new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), build.ShortStickTexture, shortStickSpawn),
+                new WorldItem(ItemDefinitions.Get(ItemId.Pickaxe), build.PickaxeTexture, pickaxeSpawn)
             };
         }
 
@@ -525,6 +627,8 @@ namespace Nyvorn.Source.Game.States
             public int ItemSpawnTileX { get; set; }
             public int EnemySpawnTileX { get; set; }
             public TissueNetwork TissueNetwork { get; set; }
+            public PlayerSaveData PlayerSaveData { get; set; }
+            public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
             public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;

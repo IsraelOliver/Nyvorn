@@ -32,6 +32,9 @@ namespace Nyvorn.Source.Gameplay.Items
         public ItemDefinition Definition { get; }
         public ItemId ItemId => Definition.Id;
         public Vector2 Position => position;
+        public float VelocityX => velocityX;
+        public float VelocityY => velocityY;
+        public float PickupDelayRemaining => pickupDelayTimer > 0f ? pickupDelayTimer : 0f;
         public bool CanBePickedUp => pickupDelayTimer <= 0f;
 
         private float FrameLeft => position.X - Definition.WorldPivot.X;

@@ -204,6 +204,11 @@ namespace Nyvorn.Source.Game.States
             HudRenderer.Draw(spriteBatch, Hotbar, SelectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth);
         }
 
+        public void SetSelectedHotbarIndex(int index)
+        {
+            SelectedHotbarIndex = Math.Clamp(index, 0, Hotbar.Capacity - 1);
+        }
+
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
         {
             WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode);

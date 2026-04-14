@@ -97,9 +97,7 @@ namespace Nyvorn.Source.Game.States
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
-                if (session.WorldMap.HasUnsavedChanges)
-                    saveService.Save(session);
-
+                saveService.Save(session);
                 autoSaveTimer = AutoSaveInterval;
             }
 

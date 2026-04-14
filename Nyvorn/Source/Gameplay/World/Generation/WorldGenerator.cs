@@ -16,6 +16,7 @@ namespace Nyvorn.Source.World.Generation
             new WorldGenPhaseDefinition("Cave", "Cavando cavernas", 25f),
             new WorldGenPhaseDefinition("CaveEntrance", "Abrindo entradas naturais", 14f),
             new WorldGenPhaseDefinition("Tissue", "Tecendo rede organica", 20f),
+            new WorldGenPhaseDefinition("TissueBiome", "Concentrando bioma do tecido", 10f),
             new WorldGenPhaseDefinition("WorldBounds", "Selando limites do mundo", 2f)
         };
 
@@ -33,6 +34,7 @@ namespace Nyvorn.Source.World.Generation
                 new CavePass(),
                 new CaveEntrancePass(),
                 new TissuePass(),
+                new TissueBiomePass(),
                 new WorldBoundsPass()
             };
         }

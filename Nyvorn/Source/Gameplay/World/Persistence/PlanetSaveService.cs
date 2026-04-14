@@ -1,4 +1,5 @@
 using Nyvorn.Source.Game.States;
+using Nyvorn.Source.Gameplay.Items;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,6 +15,7 @@ namespace Nyvorn.Source.World.Persistence
         {
             WriteIndented = true
         };
+        private readonly PlayerSaveService playerSaveService = new();
 
         public string SaveDirectoryPath { get; }
 
@@ -60,7 +62,9 @@ namespace Nyvorn.Source.World.Persistence
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
                 return;
 
+            string worldId = TryLoadFromPath(filePath)?.Metadata?.WorldId;
             File.Delete(filePath);
+            playerSaveService.Delete(worldId);
         }
 
         public void Save(PlayingSession session)
@@ -73,11 +77,24 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = session.PlanetMetadata,
                 SavedAtUtc = DateTime.UtcNow,
                 TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
+                WorldItems = session.WorldItems
+                    .Select(item => new WorldItemSaveData
+                    {
+                        ItemId = item.ItemId,
+                        PositionX = item.Position.X,
+                        PositionY = item.Position.Y,
+                        VelocityX = item.VelocityX,
+                        VelocityY = item.VelocityY,
+                        PickupDelayRemaining = item.PickupDelayRemaining
+                    })
+                    .ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
-                TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
+                TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot(),
+                TissueBiomeSnapshot = session.WorldMap.ExportTissueBiomeSnapshot()
             });
 
+            playerSaveService.Save(session);
             session.WorldMap.MarkPersisted();
         }
 
@@ -123,9 +140,11 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = saveData.Metadata,
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
+                WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
-                TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
+                TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot),
+                TissueBiomeSnapshot = CompressBytes(saveData.TissueBiomeSnapshot)
             };
         }
 
@@ -137,9 +156,11 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = saveData.Metadata,
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
+                WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
-                TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)
+                TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot),
+                TissueBiomeSnapshot = DecompressBytes(saveData.TissueBiomeSnapshot)
             };
         }
 
