@@ -62,15 +62,15 @@ namespace Nyvorn.Source.World.Generation.Passes
                     float worldDepth01 = GetNormalized(y, surfaceLayer.StartY, height - 1);
                     float layerDepth01 = context.GetNormalizedDepthInLayer(y);
 
-                    double warpX = warpNoise.Evaluate(x * 0.018, y * 0.018) * 9.0;
-                    double warpY = warpNoise.Evaluate((x * 0.018) + 81.17, (y * 0.018) - 27.41) * 9.0;
+                    double warpX = context.SampleTerrain2D(warpNoise, x, y, 0.018f, 0.018f, 0f, 0f) * 9.0;
+                    double warpY = context.SampleTerrain2D(warpNoise, x, y, 0.018f, 0.018f, 81.17f, -27.41f) * 9.0;
 
                     double sx = x + warpX;
                     double sy = y + warpY;
 
-                    float macro = Normalize01(macroNoise.Evaluate(sx * 0.0105, sy * 0.0105));
-                    float filament = 1f - MathF.Abs((float)filamentNoise.Evaluate(sx * 0.050, sy * 0.050));
-                    float detail = 1f - MathF.Abs((float)filamentNoise.Evaluate((sx * 0.095) + 173.2, (sy * 0.095) - 94.6));
+                    float macro = Normalize01(context.SampleTerrain2D(macroNoise, (float)sx, (float)sy, 0.0105f, 0.0105f, 0f, 0f));
+                    float filament = 1f - MathF.Abs(context.SampleTerrain2D(filamentNoise, (float)sx, (float)sy, 0.050f, 0.050f, 0f, 0f));
+                    float detail = 1f - MathF.Abs(context.SampleTerrain2D(filamentNoise, (float)sx, (float)sy, 0.095f, 0.095f, 173.2f, -94.6f));
 
                     filament = MathF.Pow(MathHelper.Clamp(filament, 0f, 1f), 2.15f);
                     detail = MathF.Pow(MathHelper.Clamp(detail, 0f, 1f), 1.70f);
@@ -256,12 +256,22 @@ namespace Nyvorn.Source.World.Generation.Passes
                     if (x == centerX && y == centerY)
                         continue;
 
-                    if (field.HasTissue(x, y))
+                    int wrappedX = WrapX(x, field.Width);
+                    if (field.HasTissue(wrappedX, y))
                         count++;
                 }
             }
 
             return count;
+        }
+
+        private static int WrapX(int x, int width)
+        {
+            if (width <= 0)
+                return x;
+
+            int wrapped = x % width;
+            return wrapped < 0 ? wrapped + width : wrapped;
         }
 
         private static float Normalize01(double value)

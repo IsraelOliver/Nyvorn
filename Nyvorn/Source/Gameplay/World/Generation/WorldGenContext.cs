@@ -63,5 +63,26 @@ namespace Nyvorn.Source.World.Generation
                 seedOffset,
                 Config.WrapHorizontally);
         }
+
+        public float SampleTerrain2D(
+            OpenSimplexNoise noise,
+            float x,
+            float y,
+            float xFrequency,
+            float yFrequency,
+            float seedOffsetA = 0f,
+            float seedOffsetB = 0f)
+        {
+            return WorldNoiseSampler.Sample2DHorizontalLoop(
+                noise,
+                x,
+                y,
+                WorldMap.Width,
+                xFrequency,
+                yFrequency,
+                seedOffsetA,
+                seedOffsetB,
+                Config.WrapHorizontally);
+        }
     }
 }
