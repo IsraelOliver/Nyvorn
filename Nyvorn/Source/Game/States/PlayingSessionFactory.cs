@@ -331,8 +331,8 @@ namespace Nyvorn.Source.Game.States
 
         private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
         {
-            int edgeSpawnTileX = System.Math.Max(6, build.WorldGenConfig.BorderThickness + 2);
-            build.PlayerSpawnTileX = edgeSpawnTileX;
+            int worldCenterTileX = build.WorldMap.Width / 2;
+            build.PlayerSpawnTileX = worldCenterTileX;
             build.ItemSpawnTileX = WrapTileX(build.PlayerSpawnTileX + 5, build.WorldMap.Width);
             build.EnemySpawnTileX = WrapTileX(build.PlayerSpawnTileX + 16, build.WorldMap.Width);
 
