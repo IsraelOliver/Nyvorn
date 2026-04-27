@@ -6,6 +6,7 @@ using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Game;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Persistence;
+using System.Collections.Generic;
 
 namespace Nyvorn.Source.Game.States
 {
@@ -133,11 +134,12 @@ namespace Nyvorn.Source.Game.States
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
             float worldWidthPixels = session.WorldMap.PixelWidth;
-            int centerLoop = (int)System.MathF.Floor(session.Camera.Position.X / worldWidthPixels);
+            IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
 
-            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
-                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
                 session.PrepareTerrainRender(graphicsDevice, screenW, screenH, worldOffset);
             }
 
@@ -145,9 +147,10 @@ namespace Nyvorn.Source.Game.States
             session.DrawSky(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
-            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
-                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
@@ -159,9 +162,10 @@ namespace Nyvorn.Source.Game.States
             session.DrawEntities(spriteBatch);
             spriteBatch.End();
 
-            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
-                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
@@ -169,9 +173,10 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
-            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
-                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
@@ -184,6 +189,25 @@ namespace Nyvorn.Source.Game.States
             if (minimapVisible)
                 session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
             spriteBatch.End();
+        }
+
+        private IReadOnlyList<int> GetVisibleLoopOffsets(int screenWidth, float worldWidthPixels)
+        {
+            if (worldWidthPixels <= 0f)
+                return new[] { 0 };
+
+            float viewWidth = screenWidth / session.Camera.Zoom;
+            float left = session.Camera.Position.X;
+            float right = left + viewWidth;
+            int minLoop = (int)System.MathF.Floor(left / worldWidthPixels);
+            int maxLoop = (int)System.MathF.Floor((right - 0.001f) / worldWidthPixels);
+            int count = System.Math.Max(1, maxLoop - minLoop + 1);
+            int[] offsets = new int[count];
+
+            for (int i = 0; i < count; i++)
+                offsets[i] = minLoop + i;
+
+            return offsets;
         }
 
         private void RetryFromDeath()
