@@ -4,3 +4,4 @@ obj/
 *.suo
 *.cache
 project.assets.json
+_codex_build_check/
