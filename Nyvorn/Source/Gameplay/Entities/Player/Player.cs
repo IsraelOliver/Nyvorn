@@ -23,11 +23,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         bool IHitSource.HasActiveHitbox => HasActiveAttackHitbox;
         Rectangle IHitSource.ActiveHitbox => AttackHitbox;
         int IHitSource.HitSequence => AttackSequence;
+        int IHitSource.HitDamage => combat.HitDamage;
+        float IHitSource.HitKnockbackX => combat.HitKnockbackX;
+        float IHitSource.HitKnockbackY => combat.HitKnockbackY;
         public int Health => combat.Health;
         public int MaxHealth => combat.MaxHealth;
         public bool IsAlive => combat.IsAlive;
         public bool IsInvincible => combat.IsInvincible;
         public float WorldInteractionRange => config.WorldInteractionRange;
+        public float WorldBreakRange => combat.WorldBreakRangeOverride ?? config.WorldInteractionRange;
 
         public const int SpriteW = 32;
         public const int SpriteH = 32;
@@ -35,43 +39,22 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private int moveDir;
         private bool jumpPressed;
 
-        private readonly Texture2D body;
-        private readonly Texture2D handBack;
-        private readonly Texture2D handFront;
-        private readonly Texture2D attackHandBack;
-        private readonly Texture2D attackHandFront;
-        private readonly Texture2D attackBody;
-        private readonly Texture2D legs;
-        private readonly Texture2D handFrontWeaponRun;
-        private readonly Texture2D dodgeTexture;
+        private readonly Texture2D lowerBody;
+        private readonly Texture2D upperBody;
         private Vector2 handWorld;
 
         public Player(
             Vector2 startPositionPivotFoot,
-            Texture2D sheet,
-            Texture2D handBackBase,
-            Texture2D handFrontBase,
-            Texture2D handBackAttack,
-            Texture2D handFrontAttack,
-            Texture2D bodyAttack,
-            Texture2D legs,
-            Texture2D handFrontWeaponRun,
-            Texture2D dodgeTexture,
+            Texture2D playerDown,
+            Texture2D playerUp,
             PlayerConfig config = null)
         {
             this.config = config ?? PlayerConfig.Default;
-            body = sheet;
-            handBack = handBackBase;
-            handFront = handFrontBase;
-            this.legs = legs;
-            attackHandBack = handBackAttack;
-            attackHandFront = handFrontAttack;
-            attackBody = bodyAttack;
-            this.handFrontWeaponRun = handFrontWeaponRun;
-            this.dodgeTexture = dodgeTexture;
+            lowerBody = playerDown;
+            upperBody = playerUp;
 
             motor = new PlayerMotor(startPositionPivotFoot, this.config);
-            Texture2D emptyWeaponTexture = new Texture2D(sheet.GraphicsDevice, 1, 1);
+            Texture2D emptyWeaponTexture = new Texture2D(playerUp.GraphicsDevice, 1, 1);
             emptyWeaponTexture.SetData(new[] { Color.Transparent });
             combat = new PlayerCombat(new HandWeapon(emptyWeaponTexture), this.config);
             playerAnimator = new PlayerAnimator();
@@ -93,10 +76,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (motor.IsGrounded && jumpPressed)
                 motor.TryJump();
 
-            playerAnimator.Update(dt, motor.Velocity, moveDir, motor.IsGrounded, combat.IsAttacking, combat.IsDodging);
-            bool useAttackHandPose = combat.IsAttacking && combat.UsesAttackHandPose;
+            bool useUpperAttackPose = combat.IsAttacking && combat.UsesPlayerAttackUpperPose;
+            playerAnimator.Update(dt, motor.Velocity, moveDir, motor.IsGrounded, useUpperAttackPose);
             bool useWeaponWalkAnchor = combat.HasVisibleWeaponEquipped && combat.UsesAttackHandPose && moveDir != 0 && motor.IsGrounded && !combat.IsAttacking;
-            handWorld = playerAnimator.GetHandWorld(VisualPosition, useAttackHandPose, useWeaponWalkAnchor, combat.AttackAnimator);
+            handWorld = playerAnimator.GetHandWorld(VisualPosition, useWeaponWalkAnchor);
+            combat.EquippedWeapon.UpdateAim(handWorld, mouseWorld);
             combat.UpdateAttackHitbox(handWorld, playerAnimator.FacingRight);
         }
 
@@ -108,51 +92,44 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 return;
             }
 
-            Rectangle src = playerAnimator.BaseFrame;
-            Rectangle attackSrc = combat.AttackAnimator.CurrentFrame;
-            SpriteEffects fx = playerAnimator.Effects;
             Vector2 drawPos = playerAnimator.GetDrawPosition(VisualPosition);
             bool isMoving = moveDir != 0;
-            bool hasVisibleWeaponEquipped = combat.HasVisibleWeaponEquipped;
-            bool useAttackHandPose = combat.IsAttacking && combat.UsesAttackHandPose;
-            bool weaponRunPose = hasVisibleWeaponEquipped && combat.UsesAttackHandPose && isMoving && motor.IsGrounded && !combat.IsAttacking;
-            Vector2 origin = new Vector2(16f, 32f);
 
-            spriteBatch.Draw(legs, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            playerAnimator.DrawLowerBody(spriteBatch, lowerBody, drawPos);
 
-            if (!useAttackHandPose)
+            if (combat.IsAttacking)
+                combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimation.CurrentFrameIndex);
+            else if (!motor.IsGrounded && motor.Velocity.Y > 0)
+                combat.EquippedWeapon.SetAttackFrame(0);
+            else if (isMoving)
+                combat.EquippedWeapon.SetWalk();
+            else
+                combat.EquippedWeapon.SetIdle();
+
+            if (combat.EquippedWeapon.ReplacesPlayerUpperBody)
             {
-                spriteBatch.Draw(handBack, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-                spriteBatch.Draw(body, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-                if (weaponRunPose)
-                {
-                    combat.EquippedWeapon.SetWalk();
-                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
-                    spriteBatch.Draw(handFrontWeaponRun, drawPos, new Rectangle(0, 0, 32, 32), Color.White, 0f, origin, 1f, fx, 0f);
-                }
-                else
-                {
-                    if (combat.IsAttacking)
-                        combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimator.FrameIndex);
-                    else if (!motor.IsGrounded && motor.Velocity.Y > 0)
-                        combat.EquippedWeapon.SetAttackFrame(0);
-                    else if (moveDir != 0)
-                        combat.EquippedWeapon.SetWalk();
-                    else
-                        combat.EquippedWeapon.SetIdle();
+                AnimFrame weaponUpperFrame = combat.EquippedWeapon.GetPlayerUpperBodyFrame(
+                    playerAnimator.CurrentState,
+                    playerAnimator.MovementFrameIndex,
+                    combat.AttackAnimation.CurrentFrameIndex,
+                    combat.IsAttacking);
 
-                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
-                    spriteBatch.Draw(handFront, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
-                }
-
-                return;
+                playerAnimator.DrawLayer(
+                    spriteBatch,
+                    combat.EquippedWeapon.PlayerUpperBodyTexture,
+                    weaponUpperFrame,
+                    playerAnimator.MovementFrame,
+                    drawPos,
+                    playerAnimator.Effects);
             }
-
-            spriteBatch.Draw(attackHandBack, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
-            spriteBatch.Draw(attackBody, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
-            combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimator.FrameIndex);
-            combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
-            spriteBatch.Draw(attackHandFront, drawPos, attackSrc, Color.White, 0f, origin, 1f, fx, 0f);
+            else
+            {
+                playerAnimator.DrawUpperBody(spriteBatch, upperBody, drawPos);
+                if (combat.EquippedWeapon.DrawsWithPlayerRoot)
+                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, drawPos, playerAnimator.MovementFrame, playerAnimator.FacingRight);
+                else
+                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
+            }
         }
 
         public Rectangle Hurtbox => motor.Hurtbox;
@@ -187,6 +164,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             motor.Position = new Vector2(motor.Position.X + deltaX, motor.Position.Y);
         }
 
+        public void TeleportTo(Vector2 targetPosition)
+        {
+            motor.TeleportTo(targetPosition);
+        }
+
         void IHitSource.OnHitConnected()
         {
         }
@@ -205,11 +187,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private void DrawDodge(SpriteBatch spriteBatch)
         {
-            Rectangle src = combat.DodgeAnimator.CurrentFrame;
-            SpriteEffects fx = playerAnimator.Effects;
             Vector2 drawPos = playerAnimator.GetDrawPosition(VisualPosition);
-            Vector2 origin = new Vector2(16f, 32f);
-            spriteBatch.Draw(dodgeTexture, drawPos, src, Color.White, 0f, origin, 1f, fx, 0f);
+            playerAnimator.DrawLowerBody(spriteBatch, lowerBody, drawPos);
+            playerAnimator.DrawUpperBody(spriteBatch, upperBody, drawPos);
         }
     }
 }

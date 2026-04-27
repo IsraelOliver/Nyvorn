@@ -85,6 +85,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 velocity.Y = forceY;
         }
 
+        public void TeleportTo(Vector2 targetPosition)
+        {
+            position = targetPosition;
+            velocity = Vector2.Zero;
+            knockbackVelocityX = 0f;
+            stepVisualOffsetY = 0f;
+            IsGrounded = false;
+        }
+
         private void ApplyGravity(float dt)
         {
             velocity.Y += PhysicsSettings.WorldGravity * config.GravityScale * dt;

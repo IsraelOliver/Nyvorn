@@ -76,6 +76,27 @@ namespace Nyvorn.Source.Engine.Graphics
             }
         }
 
+        public void CenterOn(Vector2 target, int screenW, int screenH)
+        {
+            float viewW = screenW / Zoom;
+            float viewH = screenH / Zoom;
+            Vector2 desired = target - new Vector2(viewW * 0.5f, viewH * 0.5f);
+
+            if (UseBounds && WorldBounds != Rectangle.Empty)
+            {
+                float minX = WorldBounds.Left;
+                float minY = WorldBounds.Top;
+                float maxX = WorldBounds.Right - viewW;
+                float maxY = WorldBounds.Bottom - viewH;
+
+                desired = new Vector2(
+                    Math.Clamp(desired.X, minX, maxX),
+                    Math.Clamp(desired.Y, minY, maxY));
+            }
+
+            Position = desired;
+        }
+
         public Matrix GetViewMatrix()
         {
             Vector2 p = Position;

@@ -21,6 +21,20 @@ namespace Nyvorn.Source.Gameplay.Items
             return slots[index];
         }
 
+        public bool ContainsItem(ItemId itemId)
+        {
+            if (itemId == ItemId.None)
+                return false;
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (!slots[i].IsEmpty && slots[i].ItemId == itemId)
+                    return true;
+            }
+
+            return false;
+        }
+
         public int AddToExistingStacks(ItemDefinition definition, int amount)
         {
             if (definition == null || amount <= 0 || !definition.Stackable)

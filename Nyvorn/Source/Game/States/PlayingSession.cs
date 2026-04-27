@@ -39,6 +39,7 @@ namespace Nyvorn.Source.Game.States
         public required TissueNetwork TissueNetwork { get; init; }
         public required TissueRevealController TissueRevealController { get; init; }
         public required TissueFieldDebugRenderer TissueDebugRenderer { get; init; }
+        public required HashSet<int> ActivatedTissueHubKeys { get; init; }
         private const float BlockPlaceInterval = 0.08f;
         private const float ItemPullRangeInTiles = 1f;
         private const float ItemPullStrength = 900f;
@@ -47,6 +48,7 @@ namespace Nyvorn.Source.Game.States
         private const float GrassSpreadIntervalMin = 0.9f;
         private const float GrassSpreadIntervalMax = 3.2f;
         private const float AmbientTissueRadiusInTiles = 7f;
+        private const float TissueHubActivationRadiusInTiles = 1.35f;
         private const float AmbientLinkPresence = 0.045f;
         private const float AmbientHubPresence = 0.085f;
         private const float AmbientTissueSampleInterval = 0.15f;
@@ -59,6 +61,13 @@ namespace Nyvorn.Source.Game.States
         private float ambientTissuePresenceCache;
         private Rectangle hoveredTileBounds;
         private WorldTilePreviewState hoveredTileState = WorldTilePreviewState.Hidden;
+
+        public void InitializeRuntimeState()
+        {
+            ScheduleNextGrassSpread();
+            ambientTissuePresenceTimer = AmbientTissueSampleInterval;
+            ambientTissuePresenceCache = 0f;
+        }
 
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
@@ -76,6 +85,8 @@ namespace Nyvorn.Source.Game.States
 
             if (input.HotbarSelectionIndex >= 0 && input.HotbarSelectionIndex < Hotbar.Capacity)
                 SelectedHotbarIndex = input.HotbarSelectionIndex;
+            else if (input.MouseWheelDelta != 0)
+                CycleSelectedHotbarSlot(input.MouseWheelDelta);
 
             InputState worldInput = input;
             InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
@@ -102,6 +113,7 @@ namespace Nyvorn.Source.Game.States
             TryPlaceSelectedBlock(worldInput, mouseWorld);
             Player.Update(dt, WorldMap, worldInput, mouseWorld);
             mouseWorld = NormalizeLoopingWorld(mouseWorld);
+            TryActivateTouchedTissueHub();
             TissueRevealController.Update(dt, input, Player.Position);
             TryBreakTargetBlock(mouseWorld);
 
@@ -130,21 +142,16 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            const int tilePadding = 2;
-            float viewWidth = screenWidth / Camera.Zoom;
-            float viewHeight = screenHeight / Camera.Zoom;
-            float localLeft = Camera.Position.X - worldOffsetX;
-            float localTop = Camera.Position.Y;
-            float localRight = localLeft + viewWidth;
-            float localBottom = localTop + viewHeight;
-
-            int startTileX = (int)MathF.Floor(localLeft / WorldMap.TileSize) - tilePadding;
-            int endTileX = (int)MathF.Ceiling(localRight / WorldMap.TileSize) + tilePadding;
-            int startTileY = (int)MathF.Floor(localTop / WorldMap.TileSize) - tilePadding;
-            int endTileY = (int)MathF.Ceiling(localBottom / WorldMap.TileSize) + tilePadding;
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
 
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
+        }
+
+        public void PrepareTerrainRender(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+            WorldMap.PrepareVisibleChunkCache(graphicsDevice, startTileX, endTileX, startTileY, endTileY);
         }
 
         public void DrawEntities(SpriteBatch spriteBatch)
@@ -199,9 +206,9 @@ namespace Nyvorn.Source.Game.States
                 revealRadius);
         }
 
-        public void DrawHud(SpriteBatch spriteBatch, int screenWidth)
+        public void DrawHud(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            HudRenderer.Draw(spriteBatch, Hotbar, SelectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth);
+            HudRenderer.Draw(spriteBatch, Hotbar, SelectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight);
         }
 
         public void SetSelectedHotbarIndex(int index)
@@ -209,9 +216,15 @@ namespace Nyvorn.Source.Game.States
             SelectedHotbarIndex = Math.Clamp(index, 0, Hotbar.Capacity - 1);
         }
 
+        private void CycleSelectedHotbarSlot(int mouseWheelDelta)
+        {
+            int direction = mouseWheelDelta > 0 ? -1 : 1;
+            SelectedHotbarIndex = (SelectedHotbarIndex + direction + Hotbar.Capacity) % Hotbar.Capacity;
+        }
+
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
         {
-            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode);
+            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
         }
 
         public WorldMinimapInteractionResult UpdateMinimapInteraction(InputState input, int screenWidth, int screenHeight, bool tissueMode)
@@ -225,7 +238,33 @@ namespace Nyvorn.Source.Game.States
                 input.MouseWheelDelta,
                 input.AttackPressed,
                 input.AttackJustPressed,
-                tissueMode);
+                tissueMode,
+                CanUseTissueFastTravel,
+                ActivatedTissueHubKeys);
+        }
+
+        public bool IsTissueRadarActive => TissueRevealController.IsActive;
+
+        public bool IsPlayerOnActivatedTissueHub => TryGetCurrentActivatedTissueHubIndex(out _);
+
+        public bool CanUseTissueFastTravel => IsTissueRadarActive && IsPlayerOnActivatedTissueHub;
+
+        public bool TryFastTravelToTissueHub(int hubIndex)
+        {
+            if (!CanUseTissueFastTravel)
+                return false;
+
+            TissueAnalysisResult analysis = WorldMap.GetOrCreateTissueAnalysis();
+            if (analysis == null || hubIndex < 0 || hubIndex >= analysis.Hubs.Count)
+                return false;
+
+            TissueHub targetHub = analysis.Hubs[hubIndex];
+            if (!IsTissueHubActivated(targetHub))
+                return false;
+
+            Vector2 targetPosition = GetHubTravelPosition(targetHub);
+            Player.TeleportTo(targetPosition);
+            return true;
         }
 
         public void DrawInventory(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
@@ -306,6 +345,80 @@ namespace Nyvorn.Source.Game.States
             return ambientTissuePresenceCache;
         }
 
+        private void TryActivateTouchedTissueHub()
+        {
+            TissueAnalysisResult analysis = WorldMap.GetOrCreateTissueAnalysis();
+            if (analysis == null || analysis.Hubs.Count == 0)
+                return;
+
+            float activationRadius = WorldMap.TileSize * TissueHubActivationRadiusInTiles;
+            for (int i = 0; i < analysis.Hubs.Count; i++)
+            {
+                TissueHub hub = analysis.Hubs[i];
+                if (GetLoopAwareDistance(hub.WorldPosition, Player.Position) > activationRadius)
+                    continue;
+
+                ActivatedTissueHubKeys.Add(CreateTissueHubKey(hub.TilePosition));
+                return;
+            }
+        }
+
+        private bool TryGetCurrentActivatedTissueHubIndex(out int hubIndex)
+        {
+            hubIndex = -1;
+
+            TissueAnalysisResult analysis = WorldMap.GetOrCreateTissueAnalysis();
+            if (analysis == null || analysis.Hubs.Count == 0 || ActivatedTissueHubKeys.Count == 0)
+                return false;
+
+            float activationRadius = WorldMap.TileSize * TissueHubActivationRadiusInTiles;
+            float bestDistance = float.MaxValue;
+
+            for (int i = 0; i < analysis.Hubs.Count; i++)
+            {
+                TissueHub hub = analysis.Hubs[i];
+                if (!IsTissueHubActivated(hub))
+                    continue;
+
+                float distance = GetLoopAwareDistance(hub.WorldPosition, Player.Position);
+                if (distance > activationRadius || distance >= bestDistance)
+                    continue;
+
+                bestDistance = distance;
+                hubIndex = i;
+            }
+
+            return hubIndex >= 0;
+        }
+
+        private bool IsTissueHubActivated(TissueHub hub)
+        {
+            return ActivatedTissueHubKeys.Contains(CreateTissueHubKey(hub.TilePosition));
+        }
+
+        private int CreateTissueHubKey(Point tilePosition)
+        {
+            int wrappedX = WorldMap.WrapTileX(tilePosition.X);
+            return (tilePosition.Y * WorldMap.Width) + wrappedX;
+        }
+
+        private Vector2 GetHubTravelPosition(TissueHub hub)
+        {
+            float worldWidth = WorldMap.PixelWidth;
+            float x = hub.WorldPosition.X;
+            if (worldWidth > 0f)
+            {
+                x %= worldWidth;
+                if (x < 0f)
+                    x += worldWidth;
+            }
+
+            float y = hub.WorldPosition.Y + (WorldMap.TileSize * 0.5f);
+            float maxY = WorldMap.Height * WorldMap.TileSize;
+            y = Math.Clamp(y, WorldMap.TileSize, Math.Max(WorldMap.TileSize, maxY));
+            return new Vector2(x, y);
+        }
+
         private void ScheduleNextGrassSpread()
         {
             grassSpreadTimer = Random.Shared.NextSingle() switch
@@ -331,7 +444,7 @@ namespace Nyvorn.Source.Game.States
                 return false;
 
             Vector2 spawnPosition = Player.Position + new Vector2(12f, -26f);
-            WorldItems.Add(new WorldItem(definition, texture, spawnPosition, pickupDelay: 0.25f));
+            SpawnWorldItem(definition, texture, spawnPosition, pickupDelay: 0.25f);
             return true;
         }
 
@@ -361,7 +474,7 @@ namespace Nyvorn.Source.Game.States
             if (!worldItem.WorldBounds.Intersects(Player.Hurtbox))
                 return;
 
-            if (TryStoreDefinition(worldItem.Definition, 1, preferInventory: true))
+            if (TryStoreCollectedDefinition(worldItem.Definition, 1))
                 WorldItems.RemoveAt(index);
         }
 
@@ -379,7 +492,7 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
-            if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldInteractionRange)
+            if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldBreakRange)
                 return;
 
             if (!WorldMap.TryBreakTile(tile.X, tile.Y, out TileType removedTile))
@@ -404,13 +517,13 @@ namespace Nyvorn.Source.Game.States
             float horizontalDirection = Random.Shared.Next(2) == 0 ? -1f : 1f;
             float horizontalVelocity = horizontalDirection * 28f;
             const float verticalVelocity = -105f;
-            WorldItems.Add(new WorldItem(
+            SpawnWorldItem(
                 definition,
                 texture,
                 tileCenter,
                 pickupDelay: 0.15f,
                 initialVelocityX: horizontalVelocity,
-                initialVelocityY: verticalVelocity));
+                initialVelocityY: verticalVelocity);
         }
 
         private void TryPlaceSelectedBlock(InputState input, Vector2 mouseWorld)
@@ -458,6 +571,7 @@ namespace Nyvorn.Source.Game.States
             hoveredTileBounds = WorldMap.GetTileBounds(tile.X, tile.Y);
             Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
             bool inRange = Vector2.Distance(Player.Position, tileCenter) <= Player.WorldInteractionRange;
+            bool inBreakRange = Vector2.Distance(Player.Position, tileCenter) <= Player.WorldBreakRange;
 
             InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
             if (!selectedSlot.IsEmpty && TileItemMapper.TryGetTileType(selectedSlot.ItemId, out TileType placeTileType))
@@ -475,7 +589,7 @@ namespace Nyvorn.Source.Game.States
             if (!WorldMap.IsSolid(targetTile))
                 return;
 
-            hoveredTileState = inRange && Player.CanBreakTile(targetTile)
+            hoveredTileState = inBreakRange && Player.CanBreakTile(targetTile)
                 ? WorldTilePreviewState.BreakValid
                 : WorldTilePreviewState.BreakInvalid;
         }
@@ -493,6 +607,48 @@ namespace Nyvorn.Source.Game.States
             remaining -= secondary.AddToExistingStacks(definition, remaining);
             remaining -= primary.AddToEmptySlots(definition, remaining);
             remaining -= secondary.AddToEmptySlots(definition, remaining);
+
+            return remaining == 0;
+        }
+
+        private void SpawnWorldItem(
+            ItemDefinition definition,
+            Texture2D texture,
+            Vector2 position,
+            float pickupDelay,
+            float initialVelocityX = 0f,
+            float initialVelocityY = 0f)
+        {
+            WorldItems.Add(new WorldItem(
+                definition,
+                texture,
+                position,
+                pickupDelay,
+                initialVelocityX,
+                initialVelocityY));
+        }
+
+        private bool TryStoreCollectedDefinition(ItemDefinition definition, int quantity)
+        {
+            if (definition == null || quantity <= 0)
+                return false;
+
+            bool inventoryAlreadyHasItem = Inventory.ContainsItem(definition.Id);
+            int remaining = quantity;
+
+            remaining -= Inventory.AddToExistingStacks(definition, remaining);
+            remaining -= Hotbar.AddToExistingStacks(definition, remaining);
+
+            if (inventoryAlreadyHasItem)
+            {
+                remaining -= Inventory.AddToEmptySlots(definition, remaining);
+                remaining -= Hotbar.AddToEmptySlots(definition, remaining);
+            }
+            else
+            {
+                remaining -= Hotbar.AddToEmptySlots(definition, remaining);
+                remaining -= Inventory.AddToEmptySlots(definition, remaining);
+            }
 
             return remaining == 0;
         }
@@ -535,6 +691,22 @@ namespace Nyvorn.Source.Game.States
                    bounds.Left <= right &&
                    bounds.Bottom >= top &&
                    bounds.Top <= bottom;
+        }
+
+        private void GetVisibleTileRange(int screenWidth, int screenHeight, float worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY)
+        {
+            const int tilePadding = 2;
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            float localLeft = Camera.Position.X - worldOffsetX;
+            float localTop = Camera.Position.Y;
+            float localRight = localLeft + viewWidth;
+            float localBottom = localTop + viewHeight;
+
+            startTileX = (int)MathF.Floor(localLeft / WorldMap.TileSize) - tilePadding;
+            endTileX = (int)MathF.Ceiling(localRight / WorldMap.TileSize) + tilePadding;
+            startTileY = (int)MathF.Floor(localTop / WorldMap.TileSize) - tilePadding;
+            endTileY = (int)MathF.Ceiling(localBottom / WorldMap.TileSize) + tilePadding;
         }
 
         private Vector2 NormalizeLoopingWorld(Vector2 mouseWorld)

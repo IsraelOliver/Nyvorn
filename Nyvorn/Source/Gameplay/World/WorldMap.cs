@@ -14,6 +14,7 @@ namespace Nyvorn.Source.World
         private const int AutoTileSheetTileSize = 8;
         private const int AutoTileSheetSpacing = 1;
         private const int DefaultChunkTileSize = 32;
+        private const int MaxCachedChunks = 96;
 
         public int Width { get; }
         public int Height { get; }
@@ -23,7 +24,6 @@ namespace Nyvorn.Source.World
         public int PixelWidth => Width * TileSize;
         public TissueField TissueField => _tissueField;
         public TissueAnalysisResult TissueAnalysis => _tissueAnalysis;
-        public TissueBiomeField TissueBiomeField => _tissueBiomeField;
         public int TissueRevision { get; private set; }
         public int ChunkTileSize => DefaultChunkTileSize;
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
@@ -35,10 +35,13 @@ namespace Nyvorn.Source.World
         private Texture2D _stone;
         private TissueField _tissueField;
         private TissueAnalysisResult _tissueAnalysis;
-        private TissueBiomeField _tissueBiomeField;
         private int _persistedTileRevision;
+        private SpriteBatch _chunkRenderSpriteBatch;
+        private int _chunkRenderTick;
 
         private readonly TileType[,] _tiles;
+        private readonly byte[,] _autoTileVariants;
+        private readonly Dictionary<WorldChunkCoord, ChunkRenderCache> _chunkCaches = new();
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
         private readonly Dictionary<long, WorldTileChange> _trackedTileChanges = new();
         private readonly HashSet<long> _grassCandidateKeys = new();
@@ -53,6 +56,7 @@ namespace Nyvorn.Source.World
             TileSize = tileSize;
 
             _tiles = new TileType[Width, Height];
+            _autoTileVariants = new byte[Width, Height];
         }
 
         public bool IsTrackingTileChanges { get; private set; }
@@ -78,6 +82,8 @@ namespace Nyvorn.Source.World
 
             TrackTileChange(wrappedX, y, currentTile, type);
             _tiles[wrappedX, y] = type;
+            RefreshAutoTileNeighborhood(wrappedX, y);
+            MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
             EnqueueGrassCandidateArea(wrappedX, y);
         }
@@ -113,6 +119,8 @@ namespace Nyvorn.Source.World
 
             ResetTrackedTileChanges();
             ClearGrassCandidates();
+            RebuildAutoTileVariants();
+            MarkAllChunkCachesDirty();
             TileRevision++;
         }
 
@@ -160,19 +168,12 @@ namespace Nyvorn.Source.World
         {
             _tissueField = tissueField;
             _tissueAnalysis = null;
-            _tissueBiomeField = null;
             TissueRevision++;
         }
 
         public void SetTissueAnalysis(TissueAnalysisResult analysis)
         {
             _tissueAnalysis = analysis;
-        }
-
-        public void SetTissueBiomeField(TissueBiomeField tissueBiomeField)
-        {
-            _tissueBiomeField = tissueBiomeField;
-            TissueRevision++;
         }
 
         public void MarkPersisted()
@@ -207,100 +208,6 @@ namespace Nyvorn.Source.World
 
             _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
             return _tissueAnalysis;
-        }
-
-        public bool HasTissueBiomeAt(int x, int y)
-        {
-            return _tissueBiomeField?.HasBiome(x, y) ?? false;
-        }
-
-        public TissueBiomeType GetTissueBiomeType(int x, int y)
-        {
-            return _tissueBiomeField?.GetBiomeType(x, y) ?? TissueBiomeType.None;
-        }
-
-        public byte[] ExportTissueBiomeSnapshot()
-        {
-            if (_tissueBiomeField == null)
-                return null;
-
-            using MemoryStream stream = new();
-            using BinaryWriter writer = new(stream);
-
-            writer.Write(_tissueBiomeField.Width);
-            writer.Write(_tissueBiomeField.Height);
-
-            for (int y = 0; y < _tissueBiomeField.Height; y++)
-            {
-                for (int x = 0; x < _tissueBiomeField.Width; x++)
-                    writer.Write((byte)_tissueBiomeField.GetBiomeType(x, y));
-            }
-
-            writer.Write(_tissueBiomeField.Regions.Count);
-            for (int i = 0; i < _tissueBiomeField.Regions.Count; i++)
-            {
-                TissueBiomeRegion region = _tissueBiomeField.Regions[i];
-                writer.Write(region.RegionId);
-                writer.Write((byte)region.BiomeType);
-                writer.Write(region.TileBounds.X);
-                writer.Write(region.TileBounds.Y);
-                writer.Write(region.TileBounds.Width);
-                writer.Write(region.TileBounds.Height);
-                writer.Write(region.CenterTile.X);
-                writer.Write(region.CenterTile.Y);
-                writer.Write((byte)region.AnchorLayer);
-            }
-
-            writer.Flush();
-            return stream.ToArray();
-        }
-
-        public void ImportTissueBiomeSnapshot(byte[] snapshot)
-        {
-            if (snapshot == null || snapshot.Length == 0)
-            {
-                _tissueBiomeField = null;
-                return;
-            }
-
-            using MemoryStream stream = new(snapshot);
-            using BinaryReader reader = new(stream);
-
-            int width = reader.ReadInt32();
-            int height = reader.ReadInt32();
-            if (width != Width || height != Height)
-                throw new ArgumentException("Tissue biome snapshot size does not match world dimensions.", nameof(snapshot));
-
-            TissueBiomeField biomeField = new(width, height);
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                    biomeField.SetBiomeType(x, y, (TissueBiomeType)reader.ReadByte());
-            }
-
-            int regionCount = reader.ReadInt32();
-            for (int i = 0; i < regionCount; i++)
-            {
-                int regionId = reader.ReadInt32();
-                TissueBiomeType biomeType = (TissueBiomeType)reader.ReadByte();
-                Rectangle tileBounds = new Rectangle(
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadInt32());
-                Point centerTile = new Point(reader.ReadInt32(), reader.ReadInt32());
-                WorldLayerType anchorLayer = (WorldLayerType)reader.ReadByte();
-
-                biomeField.Regions.Add(new TissueBiomeRegion(
-                    regionId,
-                    biomeType,
-                    tileBounds,
-                    centerTile,
-                    anchorLayer));
-            }
-
-            _tissueBiomeField = biomeField;
-            TissueRevision++;
         }
 
         public byte[] ExportTissueAnalysisSnapshot()
@@ -533,6 +440,8 @@ namespace Nyvorn.Source.World
             removedTile = currentTile;
             TrackTileChange(wrappedX, y, currentTile, TileType.Empty);
             _tiles[wrappedX, y] = TileType.Empty;
+            RefreshAutoTileNeighborhood(wrappedX, y);
+            MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
             return true;
         }
@@ -559,6 +468,8 @@ namespace Nyvorn.Source.World
             int wrappedX = WrapTileX(x);
             TrackTileChange(wrappedX, y, TileType.Empty, tileType);
             _tiles[wrappedX, y] = tileType;
+            RefreshAutoTileNeighborhood(wrappedX, y);
+            MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
             return true;
         }
@@ -578,7 +489,7 @@ namespace Nyvorn.Source.World
                 if (!InBounds(point.X, point.Y))
                     continue;
 
-                TileType tile = GetTile(point.X, point.Y);
+            TileType tile = GetTile(point.X, point.Y);
                 if (tile == TileType.Dirt)
                 {
                     if (HasExposedSide(point.X, point.Y) && HasAdjacentGrass(point.X, point.Y))
@@ -669,6 +580,8 @@ namespace Nyvorn.Source.World
                 _trackedTileBaselines[key] = baselineTile;
                 _trackedTileChanges[key] = new WorldTileChange(wrappedX, tileChange.Y, tileChange.TileType);
                 _tiles[wrappedX, tileChange.Y] = tileChange.TileType;
+                RefreshAutoTileNeighborhood(wrappedX, tileChange.Y);
+                MarkChunkNeighborhoodDirty(wrappedX, tileChange.Y);
                 TileRevision++;
             }
 
@@ -687,6 +600,8 @@ namespace Nyvorn.Source.World
             _grass = grass;
             _sand = sand;
             _stone = stone;
+            RebuildAutoTileVariants();
+            MarkAllChunkCachesDirty();
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -704,6 +619,79 @@ namespace Nyvorn.Source.World
             if (minTileX > maxTileX || minTileY > maxTileY)
                 return;
 
+            if (_chunkCaches.Count > 0)
+            {
+                DrawCachedChunks(spriteBatch, minTileX, maxTileX, minTileY, maxTileY);
+                return;
+            }
+
+            DrawTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY, 0, 0);
+        }
+
+        public void PrepareVisibleChunkCache(GraphicsDevice graphicsDevice, int startTileX, int endTileX, int startTileY, int endTileY)
+        {
+            if (graphicsDevice == null)
+                throw new ArgumentNullException(nameof(graphicsDevice));
+
+            int minTileX = System.Math.Clamp(startTileX, 0, Width - 1);
+            int maxTileX = System.Math.Clamp(endTileX, 0, Width - 1);
+            int minTileY = System.Math.Clamp(startTileY, 0, Height - 1);
+            int maxTileY = System.Math.Clamp(endTileY, 0, Height - 1);
+
+            if (minTileX > maxTileX || minTileY > maxTileY)
+                return;
+
+            _chunkRenderSpriteBatch ??= new SpriteBatch(graphicsDevice);
+            _chunkRenderTick++;
+
+            int startChunkX = minTileX / ChunkTileSize;
+            int endChunkX = maxTileX / ChunkTileSize;
+            int startChunkY = minTileY / ChunkTileSize;
+            int endChunkY = maxTileY / ChunkTileSize;
+
+            for (int chunkY = startChunkY; chunkY <= endChunkY; chunkY++)
+            {
+                for (int chunkX = startChunkX; chunkX <= endChunkX; chunkX++)
+                {
+                    WorldChunkCoord chunkCoord = new(chunkX, chunkY);
+                    ChunkRenderCache cache = GetOrCreateChunkCache(graphicsDevice, chunkCoord);
+                    cache.LastUsedTick = _chunkRenderTick;
+
+                    if (cache.IsDirty)
+                        RenderChunkCache(graphicsDevice, chunkCoord, cache);
+                }
+            }
+
+            PruneChunkCache();
+        }
+
+        private void DrawCachedChunks(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY)
+        {
+            int startChunkX = minTileX / ChunkTileSize;
+            int endChunkX = maxTileX / ChunkTileSize;
+            int startChunkY = minTileY / ChunkTileSize;
+            int endChunkY = maxTileY / ChunkTileSize;
+
+            for (int chunkY = startChunkY; chunkY <= endChunkY; chunkY++)
+            {
+                for (int chunkX = startChunkX; chunkX <= endChunkX; chunkX++)
+                {
+                    WorldChunkCoord chunkCoord = new(chunkX, chunkY);
+                    if (!_chunkCaches.TryGetValue(chunkCoord, out ChunkRenderCache cache) || cache.RenderTarget == null)
+                    {
+                        Rectangle chunkTiles = GetChunkTileBounds(chunkCoord);
+                        DrawTiles(spriteBatch, chunkTiles.X, chunkTiles.Right - 1, chunkTiles.Y, chunkTiles.Bottom - 1, 0, 0);
+                        continue;
+                    }
+
+                    Rectangle worldBounds = GetChunkWorldBounds(chunkCoord);
+                    spriteBatch.Draw(cache.RenderTarget, worldBounds, Color.White);
+                }
+            }
+        }
+
+        private void DrawTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY, int pixelOffsetX, int pixelOffsetY)
+        {
             for (int y = minTileY; y <= maxTileY; y++)
             {
                 for (int x = minTileX; x <= maxTileX; x++)
@@ -726,19 +714,121 @@ namespace Nyvorn.Source.World
 
                     Rectangle? sourceRectangle = tile switch
                     {
-                        TileType.Dirt => GetAutoTileSourceRectangle(x, y),
+                        TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y),
                         TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
                         TileType.Stone => GetAutoTileSourceRectangle(x, y),
                         TileType.Sand => GetAutoTileSourceRectangle(x, y),
                         _ => null
                     };
 
-                    spriteBatch.Draw(texture, GetTileBounds(x, y), sourceRectangle, Color.White);
+                    Rectangle destination = new Rectangle(
+                        (x * TileSize) - pixelOffsetX,
+                        (y * TileSize) - pixelOffsetY,
+                        TileSize,
+                        TileSize);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, Color.White);
                 }
             }
         }
 
+        private ChunkRenderCache GetOrCreateChunkCache(GraphicsDevice graphicsDevice, WorldChunkCoord chunkCoord)
+        {
+            if (_chunkCaches.TryGetValue(chunkCoord, out ChunkRenderCache existing))
+                return existing;
+
+            Rectangle worldBounds = GetChunkWorldBounds(chunkCoord);
+            ChunkRenderCache created = new(new RenderTarget2D(
+                graphicsDevice,
+                System.Math.Max(1, worldBounds.Width),
+                System.Math.Max(1, worldBounds.Height),
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None));
+            _chunkCaches[chunkCoord] = created;
+            return created;
+        }
+
+        private void RenderChunkCache(GraphicsDevice graphicsDevice, WorldChunkCoord chunkCoord, ChunkRenderCache cache)
+        {
+            Rectangle chunkTileBounds = GetChunkTileBounds(chunkCoord);
+            Rectangle chunkWorldBounds = GetChunkWorldBounds(chunkCoord);
+
+            if (cache.RenderTarget.Width != chunkWorldBounds.Width || cache.RenderTarget.Height != chunkWorldBounds.Height)
+            {
+                cache.RenderTarget.Dispose();
+                cache.RenderTarget = new RenderTarget2D(
+                    graphicsDevice,
+                    System.Math.Max(1, chunkWorldBounds.Width),
+                    System.Math.Max(1, chunkWorldBounds.Height),
+                    false,
+                    SurfaceFormat.Color,
+                    DepthFormat.None);
+            }
+
+            graphicsDevice.SetRenderTarget(cache.RenderTarget);
+            graphicsDevice.Clear(Color.Transparent);
+
+            _chunkRenderSpriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            DrawTiles(
+                _chunkRenderSpriteBatch,
+                chunkTileBounds.X,
+                chunkTileBounds.Right - 1,
+                chunkTileBounds.Y,
+                chunkTileBounds.Bottom - 1,
+                chunkWorldBounds.X,
+                chunkWorldBounds.Y);
+            _chunkRenderSpriteBatch.End();
+
+            graphicsDevice.SetRenderTarget(null);
+            cache.IsDirty = false;
+        }
+
+        private void MarkChunkNeighborhoodDirty(int centerX, int centerY)
+        {
+            WorldChunkCoord centerChunk = GetChunkCoordForTile(centerX, centerY);
+            for (int chunkY = centerChunk.Y - 1; chunkY <= centerChunk.Y + 1; chunkY++)
+            {
+                if (chunkY < 0 || chunkY >= ChunkCountY)
+                    continue;
+
+                for (int chunkX = centerChunk.X - 1; chunkX <= centerChunk.X + 1; chunkX++)
+                {
+                    WorldChunkCoord wrappedChunk = new(WrapChunkX(chunkX), chunkY);
+                    if (_chunkCaches.TryGetValue(wrappedChunk, out ChunkRenderCache cache))
+                        cache.IsDirty = true;
+                }
+            }
+        }
+
+        private void MarkAllChunkCachesDirty()
+        {
+            foreach (ChunkRenderCache cache in _chunkCaches.Values)
+                cache.IsDirty = true;
+        }
+
+        private void PruneChunkCache()
+        {
+            if (_chunkCaches.Count <= MaxCachedChunks)
+                return;
+
+            List<KeyValuePair<WorldChunkCoord, ChunkRenderCache>> entries = new(_chunkCaches);
+            entries.Sort((a, b) => a.Value.LastUsedTick.CompareTo(b.Value.LastUsedTick));
+
+            int removeCount = _chunkCaches.Count - MaxCachedChunks;
+            for (int i = 0; i < removeCount; i++)
+            {
+                KeyValuePair<WorldChunkCoord, ChunkRenderCache> entry = entries[i];
+                entry.Value.RenderTarget.Dispose();
+                _chunkCaches.Remove(entry.Key);
+            }
+        }
+
         private Rectangle GetAutoTileSourceRectangle(int x, int y)
+        {
+            return GetAutoTileSheetCellFromVariant(_autoTileVariants[WrapTileX(x), y], x, y);
+        }
+
+        private Rectangle GetDirtAutoTileSourceRectangle(int x, int y)
         {
             bool up = IsSolidAt(x, y - 1);
             bool right = IsSolidAt(x + 1, y);
@@ -754,29 +844,67 @@ namespace Nyvorn.Source.World
             switch (connectedCount)
             {
                 case 0:
-                    return GetAutoTileSheetCell(0, 0);
+                    return GetAutoTileSheetCell(0, 1 + PickTileVariation(x, y, 2));
+
                 case 1:
-                    if (down) return GetAutoTileSheetCell(1, 2);
-                    if (left) return GetAutoTileSheetCell(2, 2);
-                    if (right) return GetAutoTileSheetCell(2, 3);
-                    return GetAutoTileSheetCell(1, 3);
+                    return GetDirtEndSourceRectangle(x, y, up, right, down, left);
+
                 case 2:
-                    if (left && right) return GetAutoTileSheetCell(5, 0);
-                    if (up && down) return GetAutoTileSheetCell(6, 0);
-                    if (right && down) return GetAutoTileSheetCell(3, 0);
-                    if (left && down) return GetAutoTileSheetCell(4, 0);
-                    if (up && right) return GetAutoTileSheetCell(3, 1);
-                    return GetAutoTileSheetCell(4, 1);
+                    return GetDirtTwoConnectionSourceRectangle(x, y, up, right, down, left);
+
                 case 3:
-                    if (!up) return GetAutoTileSheetCell(1, 0);
-                    if (!right) return GetAutoTileSheetCell(2, 0);
-                    if (!left) return GetAutoTileSheetCell(1, 1);
-                    return GetAutoTileSheetCell(2, 1);
+                    return GetDirtThreeConnectionSourceRectangle(x, y, up, right, down, left);
+
                 default:
-                    return ((x + y) & 1) == 0
-                        ? GetAutoTileSheetCell(5, 1)
-                        : GetAutoTileSheetCell(6, 1);
+                    return GetAutoTileSheetCell(2 + PickTileVariation(x, y, 3), 1);
             }
+        }
+
+        private Rectangle GetDirtEndSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)
+        {
+            int variationOffset = PickTileVariation(x, y, 2) * 2;
+
+            if (down)
+                return GetAutoTileSheetCell(0 + variationOffset, 5);
+            if (left)
+                return GetAutoTileSheetCell(1 + variationOffset, 5);
+            if (up)
+                return GetAutoTileSheetCell(0 + variationOffset, 6);
+
+            return GetAutoTileSheetCell(1 + variationOffset, 6);
+        }
+
+        private Rectangle GetDirtTwoConnectionSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)
+        {
+            if (up && down)
+                return GetAutoTileSheetCell(6, PickTileVariation(x, y, 3));
+            if (left && right)
+                return GetAutoTileSheetCell(6, 3 + PickTileVariation(x, y, 3));
+
+            int variationOffset = PickTileVariation(x, y, 2) * 2;
+
+            if (right && down)
+                return GetAutoTileSheetCell(0 + variationOffset, 3);
+            if (left && down)
+                return GetAutoTileSheetCell(1 + variationOffset, 3);
+            if (right && up)
+                return GetAutoTileSheetCell(0 + variationOffset, 4);
+
+            return GetAutoTileSheetCell(1 + variationOffset, 4);
+        }
+
+        private Rectangle GetDirtThreeConnectionSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)
+        {
+            int variation = PickTileVariation(x, y, 3);
+
+            if (!left)
+                return GetAutoTileSheetCell(1, variation);
+            if (!up)
+                return GetAutoTileSheetCell(2 + variation, 0);
+            if (!down)
+                return GetAutoTileSheetCell(2 + variation, 2);
+
+            return GetAutoTileSheetCell(5, variation);
         }
 
         private Rectangle GetGrassAutoTileSourceRectangle(int x, int y)
@@ -784,11 +912,113 @@ namespace Nyvorn.Source.World
             return GetAutoTileSourceRectangle(x, y);
         }
 
+        private void RebuildAutoTileVariants()
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    _autoTileVariants[x, y] = ComputeAutoTileVariant(x, y);
+            }
+        }
+
+        private void RefreshAutoTileNeighborhood(int centerX, int centerY)
+        {
+            for (int y = centerY - 1; y <= centerY + 1; y++)
+            {
+                if (y < 0 || y >= Height)
+                    continue;
+
+                for (int x = centerX - 1; x <= centerX + 1; x++)
+                {
+                    int wrappedX = WrapTileX(x);
+                    _autoTileVariants[wrappedX, y] = ComputeAutoTileVariant(wrappedX, y);
+                }
+            }
+        }
+
+        private byte ComputeAutoTileVariant(int x, int y)
+        {
+            TileType tile = _tiles[x, y];
+            if (!IsSolid(tile))
+                return 255;
+
+            bool up = IsSolidAt(x, y - 1);
+            bool right = IsSolidAt(x + 1, y);
+            bool down = IsSolidAt(x, y + 1);
+            bool left = IsSolidAt(x - 1, y);
+
+            int connectedCount = 0;
+            if (up) connectedCount++;
+            if (right) connectedCount++;
+            if (down) connectedCount++;
+            if (left) connectedCount++;
+
+            return connectedCount switch
+            {
+                0 => 0,
+                1 when down => 1,
+                1 when left => 2,
+                1 when right => 3,
+                1 => 4,
+                2 when left && right => 5,
+                2 when up && down => 6,
+                2 when right && down => 7,
+                2 when left && down => 8,
+                2 when up && right => 9,
+                2 => 10,
+                3 when !up => 11,
+                3 when !right => 12,
+                3 when !left => 13,
+                3 => 14,
+                _ => (byte)(((x + y) & 1) == 0 ? 15 : 16)
+            };
+        }
+
+        private Rectangle GetAutoTileSheetCellFromVariant(byte variant, int x, int y)
+        {
+            return variant switch
+            {
+                0 => GetAutoTileSheetCell(0, 0),
+                1 => GetAutoTileSheetCell(1, 2),
+                2 => GetAutoTileSheetCell(2, 2),
+                3 => GetAutoTileSheetCell(2, 3),
+                4 => GetAutoTileSheetCell(1, 3),
+                5 => GetAutoTileSheetCell(5, 0),
+                6 => GetAutoTileSheetCell(6, 0),
+                7 => GetAutoTileSheetCell(3, 0),
+                8 => GetAutoTileSheetCell(4, 0),
+                9 => GetAutoTileSheetCell(3, 1),
+                10 => GetAutoTileSheetCell(4, 1),
+                11 => GetAutoTileSheetCell(1, 0),
+                12 => GetAutoTileSheetCell(2, 0),
+                13 => GetAutoTileSheetCell(1, 1),
+                14 => GetAutoTileSheetCell(2, 1),
+                15 => GetAutoTileSheetCell(5, 1),
+                16 => GetAutoTileSheetCell(6, 1),
+                _ => ((x + y) & 1) == 0
+                    ? GetAutoTileSheetCell(5, 1)
+                    : GetAutoTileSheetCell(6, 1)
+            };
+        }
+
         private Rectangle GetAutoTileSheetCell(int column, int row)
         {
             int x = column * (AutoTileSheetTileSize + AutoTileSheetSpacing);
             int y = row * (AutoTileSheetTileSize + AutoTileSheetSpacing);
             return new Rectangle(x, y, AutoTileSheetTileSize, AutoTileSheetTileSize);
+        }
+
+        private static int PickTileVariation(int x, int y, int variationCount)
+        {
+            if (variationCount <= 1)
+                return 0;
+
+            unchecked
+            {
+                uint hash = (uint)(x * 73856093 ^ y * 19349663);
+                hash ^= hash >> 13;
+                return (int)(hash % (uint)variationCount);
+            }
         }
 
         private void TrackTileChange(int wrappedX, int y, TileType previousTile, TileType nextTile)
@@ -865,6 +1095,19 @@ namespace Nyvorn.Source.World
         {
             _grassCandidateKeys.Clear();
             _grassCandidateQueue.Clear();
+        }
+
+        private sealed class ChunkRenderCache
+        {
+            public ChunkRenderCache(RenderTarget2D renderTarget)
+            {
+                RenderTarget = renderTarget;
+                IsDirty = true;
+            }
+
+            public RenderTarget2D RenderTarget { get; set; }
+            public bool IsDirty { get; set; }
+            public int LastUsedTick { get; set; }
         }
     }
 }

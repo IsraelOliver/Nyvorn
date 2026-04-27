@@ -4,10 +4,11 @@ using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Tissue;
+using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.UI
 {
-    public readonly record struct WorldMinimapInteractionResult(bool ConsumedMouse, bool ToggleTissueMode);
+    public readonly record struct WorldMinimapInteractionResult(bool ConsumedMouse, bool ToggleTissueMode, int TravelHubIndex);
 
     public sealed class WorldMinimapRenderer
     {
@@ -34,7 +35,7 @@ namespace Nyvorn.Source.Gameplay.UI
             pixel.SetData(new[] { Color.White });
         }
 
-        public WorldMinimapInteractionResult HandleInput(WorldMap worldMap, Vector2 playerPosition, int screenWidth, int screenHeight, Vector2 mouseScreenPosition, int mouseWheelDelta, bool pointerDown, bool pointerJustPressed, bool tissueMode)
+        public WorldMinimapInteractionResult HandleInput(WorldMap worldMap, Vector2 playerPosition, int screenWidth, int screenHeight, Vector2 mouseScreenPosition, int mouseWheelDelta, bool pointerDown, bool pointerJustPressed, bool tissueMode, bool fastTravelEnabled, IReadOnlySet<int> activatedHubKeys)
         {
             MinimapLayout layout = GetLayout(worldMap, playerPosition, screenWidth, screenHeight);
             Point mousePoint = mouseScreenPosition.ToPoint();
@@ -45,7 +46,17 @@ namespace Nyvorn.Source.Gameplay.UI
             if (pointerJustPressed && tissueToggleButton.Contains(mousePoint))
             {
                 isDragging = false;
-                return new WorldMinimapInteractionResult(true, true);
+                return new WorldMinimapInteractionResult(true, true, -1);
+            }
+
+            if (pointerJustPressed &&
+                pointerOverMap &&
+                tissueMode &&
+                fastTravelEnabled &&
+                TryGetActivatedHubAtPoint(worldMap, layout, mousePoint, activatedHubKeys, out int travelHubIndex))
+            {
+                isDragging = false;
+                return new WorldMinimapInteractionResult(true, false, travelHubIndex);
             }
 
             if (mouseWheelDelta != 0)
@@ -70,10 +81,10 @@ namespace Nyvorn.Source.Gameplay.UI
                 isDragging = false;
             }
 
-            return new WorldMinimapInteractionResult(consumedMouse || isDragging, false);
+            return new WorldMinimapInteractionResult(consumedMouse || isDragging, false, -1);
         }
 
-        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode)
+        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
         {
             EnsureMinimapTexture(worldMap);
 
@@ -91,7 +102,7 @@ namespace Nyvorn.Source.Gameplay.UI
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
                 DrawRect(spriteBatch, panel, new Color(5, 8, 10, 120));
-                DrawTissueOverlay(spriteBatch, worldMap, tissueNetwork, panel, sourceRect);
+                DrawTissueOverlay(spriteBatch, worldMap, tissueNetwork, panel, sourceRect, activatedHubKeys);
             }
             else
             {
@@ -109,11 +120,11 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawModeButtons(spriteBatch, panel, tissueMode);
         }
 
-        private void DrawTissueOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Rectangle panel, Rectangle sourceRect)
+        private void DrawTissueOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Rectangle panel, Rectangle sourceRect, IReadOnlySet<int> activatedHubKeys)
         {
             if (worldMap.TissueField != null)
             {
-                DrawTissueFieldOverlay(spriteBatch, worldMap, worldMap.TissueField, panel, sourceRect);
+                DrawTissueFieldOverlay(spriteBatch, worldMap, worldMap.TissueField, panel, sourceRect, activatedHubKeys);
                 return;
             }
 
@@ -157,14 +168,14 @@ namespace Nyvorn.Source.Gameplay.UI
             }
         }
 
-        private void DrawTissueFieldOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueField tissueField, Rectangle panel, Rectangle sourceRect)
+        private void DrawTissueFieldOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueField tissueField, Rectangle panel, Rectangle sourceRect, IReadOnlySet<int> activatedHubKeys)
         {
             TissueAnalysisResult analysis = GetTissueAnalysis(worldMap, tissueField);
             int minPixelWidth = System.Math.Max(1, (int)System.MathF.Ceiling(panel.Width / (float)sourceRect.Width));
             int minPixelHeight = System.Math.Max(1, (int)System.MathF.Ceiling(panel.Height / (float)sourceRect.Height));
 
             DrawTissueLinks(spriteBatch, worldMap, analysis, panel, sourceRect);
-            DrawTissueHubMarkers(spriteBatch, analysis, panel, sourceRect, minPixelWidth, minPixelHeight);
+            DrawTissueHubMarkers(spriteBatch, worldMap, analysis, panel, sourceRect, minPixelWidth, minPixelHeight, activatedHubKeys);
         }
 
         private TissueAnalysisResult GetTissueAnalysis(WorldMap worldMap, TissueField tissueField)
@@ -172,7 +183,7 @@ namespace Nyvorn.Source.Gameplay.UI
             return worldMap.GetOrCreateTissueAnalysis();
         }
 
-        private void DrawTissueHubMarkers(SpriteBatch spriteBatch, TissueAnalysisResult analysis, Rectangle panel, Rectangle sourceRect, int minPixelWidth, int minPixelHeight)
+        private void DrawTissueHubMarkers(SpriteBatch spriteBatch, WorldMap worldMap, TissueAnalysisResult analysis, Rectangle panel, Rectangle sourceRect, int minPixelWidth, int minPixelHeight, IReadOnlySet<int> activatedHubKeys)
         {
             for (int i = 0; i < analysis.Hubs.Count; i++)
             {
@@ -183,7 +194,7 @@ namespace Nyvorn.Source.Gameplay.UI
                     continue;
                 }
 
-                Color hubColor = GetHubColor(hub);
+                Color hubColor = GetHubColor(worldMap, hub, activatedHubKeys);
 
                 int centerX = panel.X + (int)System.MathF.Round(((hub.TilePosition.X + 0.5f - sourceRect.X) / sourceRect.Width) * panel.Width);
                 int centerY = panel.Y + (int)System.MathF.Round(((hub.TilePosition.Y + 0.5f - sourceRect.Y) / sourceRect.Height) * panel.Height);
@@ -226,8 +237,11 @@ namespace Nyvorn.Source.Gameplay.UI
             }
         }
 
-        private Color GetHubColor(TissueHub hub)
+        private Color GetHubColor(WorldMap worldMap, TissueHub hub, IReadOnlySet<int> activatedHubKeys)
         {
+            if (IsHubActivated(worldMap, hub, activatedHubKeys))
+                return new Color(255, 205, 58);
+
             if (hub.IsIsolated)
                 return new Color(118, 92, 255);
 
@@ -235,6 +249,63 @@ namespace Nyvorn.Source.Gameplay.UI
                 return new Color(255, 145, 46);
 
             return new Color(80, 255, 110);
+        }
+
+        private bool TryGetActivatedHubAtPoint(WorldMap worldMap, MinimapLayout layout, Point mousePoint, IReadOnlySet<int> activatedHubKeys, out int hubIndex)
+        {
+            hubIndex = -1;
+
+            if (activatedHubKeys == null || activatedHubKeys.Count == 0)
+                return false;
+
+            TissueAnalysisResult analysis = worldMap.GetOrCreateTissueAnalysis();
+            if (analysis == null)
+                return false;
+
+            int minPixelWidth = System.Math.Max(1, (int)System.MathF.Ceiling(layout.Panel.Width / (float)layout.SourceRect.Width));
+            int minPixelHeight = System.Math.Max(1, (int)System.MathF.Ceiling(layout.Panel.Height / (float)layout.SourceRect.Height));
+            int markerSize = System.Math.Max(6, System.Math.Max(minPixelWidth, minPixelHeight) * 4);
+
+            for (int i = analysis.Hubs.Count - 1; i >= 0; i--)
+            {
+                TissueHub hub = analysis.Hubs[i];
+                if (!IsHubActivated(worldMap, hub, activatedHubKeys))
+                    continue;
+
+                if (hub.TilePosition.X < layout.SourceRect.Left || hub.TilePosition.X >= layout.SourceRect.Right ||
+                    hub.TilePosition.Y < layout.SourceRect.Top || hub.TilePosition.Y >= layout.SourceRect.Bottom)
+                {
+                    continue;
+                }
+
+                int centerX = layout.Panel.X + (int)System.MathF.Round(((hub.TilePosition.X + 0.5f - layout.SourceRect.X) / layout.SourceRect.Width) * layout.Panel.Width);
+                int centerY = layout.Panel.Y + (int)System.MathF.Round(((hub.TilePosition.Y + 0.5f - layout.SourceRect.Y) / layout.SourceRect.Height) * layout.Panel.Height);
+                Rectangle markerRect = new Rectangle(
+                    centerX - (markerSize / 2),
+                    centerY - (markerSize / 2),
+                    markerSize,
+                    markerSize);
+
+                if (!markerRect.Contains(mousePoint))
+                    continue;
+
+                hubIndex = i;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsHubActivated(WorldMap worldMap, TissueHub hub, IReadOnlySet<int> activatedHubKeys)
+        {
+            return activatedHubKeys != null &&
+                   activatedHubKeys.Contains(CreateHubKey(worldMap, hub.TilePosition));
+        }
+
+        private static int CreateHubKey(WorldMap worldMap, Point tilePosition)
+        {
+            int wrappedX = worldMap.WrapTileX(tilePosition.X);
+            return (tilePosition.Y * worldMap.Width) + wrappedX;
         }
 
         private bool TryGetLinkStyle(TissueLink link, out Color color, out float thickness)

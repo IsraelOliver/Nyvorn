@@ -42,9 +42,6 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             for (int x = 0; x < width; x++)
             {
-                // A malha agora pode subir por toda a ShallowUnderground e ainda
-                // tocar a base da Surface de forma mais rara, para se aproximar
-                // mais do teto das cavernas sem contaminar a superficie inteira.
                 int surfaceReach = Math.Max(6, (int)MathF.Round(surfaceLayer.Height * 0.45f));
                 int tissueStartY = Math.Max(0, surfaceLayer.EndY - surfaceReach);
 

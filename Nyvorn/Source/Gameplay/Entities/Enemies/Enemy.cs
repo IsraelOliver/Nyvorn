@@ -20,6 +20,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         bool IHitSource.HasActiveHitbox => IsAlive;
         Rectangle IHitSource.ActiveHitbox => IsAlive ? Hurtbox : Rectangle.Empty;
         int IHitSource.HitSequence => 0;
+        int IHitSource.HitDamage => config.ContactDamage;
+        float IHitSource.HitKnockbackX => config.ContactKnockbackX;
+        float IHitSource.HitKnockbackY => config.ContactKnockbackY;
         public int Health => combat.Health;
         public int MaxHealth => combat.MaxHealth;
 

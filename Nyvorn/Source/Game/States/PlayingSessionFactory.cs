@@ -351,7 +351,6 @@ namespace Nyvorn.Source.Game.States
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
-            build.WorldMap.ImportTissueBiomeSnapshot(saveData.TissueBiomeSnapshot);
 
             if (build.WorldMap.TissueField != null)
             {
@@ -373,22 +372,15 @@ namespace Nyvorn.Source.Game.States
 
         private void LoadGameplayAssets(BuildContext build)
         {
-            build.BackHandTexture = content.Load<Texture2D>("entities/player/handBackTexture_base");
-            build.BodyTexture = content.Load<Texture2D>("entities/player/bodyTexture_base");
-            build.LegsTexture = content.Load<Texture2D>("entities/player/legsTexture_base");
-            build.FrontHandTexture = content.Load<Texture2D>("entities/player/handFrontTexture_base");
-            build.ShortStickTexture = content.Load<Texture2D>("weapons/shortStick");
-            build.PickaxeTexture = content.Load<Texture2D>("weapons/Pickaxe-Sheet");
-            build.HandFrontWeaponRunTexture = content.Load<Texture2D>("entities/player/handFront_weaponRun");
-            build.PlayerDodgeTexture = content.Load<Texture2D>("entities/player/player_dodge");
-            build.AttackHandBackTexture = content.Load<Texture2D>("entities/player/handBackShortSword_attack");
-            build.AttackHandFrontTexture = content.Load<Texture2D>("entities/player/handFrontShortSword_attack");
-            build.AttackBodyTexture = content.Load<Texture2D>("entities/player/bodyShortSword_attack");
+            build.PlayerDownTexture = content.Load<Texture2D>("entities/player/playerDown_sheet");
+            build.PlayerUpTexture = content.Load<Texture2D>("entities/player/playerUp_sheet");
+            build.PickaxeTexture = content.Load<Texture2D>("weapons/pickaxe_sheet");
+            build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
 
             build.ItemTextures = LoadItemTextures();
-            build.Weapons = CreateWeapons(build.ShortStickTexture, build.PickaxeTexture);
+            build.Weapons = CreateWeapons(build.PickaxeTexture);
         }
 
         private Dictionary<ItemId, Texture2D> LoadItemTextures()
@@ -400,7 +392,7 @@ namespace Nyvorn.Source.Game.States
             return itemTextures;
         }
 
-        private Dictionary<ItemId, Weapon> CreateWeapons(Texture2D shortStickTexture, Texture2D pickaxeTexture)
+        private Dictionary<ItemId, Weapon> CreateWeapons(Texture2D pickaxeTexture)
         {
             Texture2D nullWeaponTexture = new Texture2D(graphicsDevice, 1, 1);
             nullWeaponTexture.SetData(new[] { Color.Transparent });
@@ -408,7 +400,6 @@ namespace Nyvorn.Source.Game.States
             return new Dictionary<ItemId, Weapon>
             {
                 [ItemId.None] = new HandWeapon(nullWeaponTexture),
-                [ItemId.ShortStick] = new ShortStick(shortStickTexture),
                 [ItemId.Pickaxe] = new Pickaxe(pickaxeTexture)
             };
         }
@@ -426,41 +417,28 @@ namespace Nyvorn.Source.Game.States
                 build.WorldGenConfig,
                 WorldLayerType.DeepCavern,
                 build.EnemySpawnTileX);
-            Vector2 shortStickSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+            Vector2 pickaxeSpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,
                 build.WorldGenConfig,
                 WorldLayerType.DeepCavern,
                 build.ItemSpawnTileX,
                 tilesAboveGround: 2);
-            Vector2 pickaxeSpawn = build.WorldGenerator.GetLayerSpawnPosition(
-                build.WorldMap,
-                build.WorldGenConfig,
-                WorldLayerType.DeepCavern,
-                build.ItemSpawnTileX + 3,
-                tilesAboveGround: 2);
 
             Player player = new(
                 playerSpawn,
-                build.BodyTexture,
-                build.BackHandTexture,
-                build.FrontHandTexture,
-                build.AttackHandBackTexture,
-                build.AttackHandFrontTexture,
-                build.AttackBodyTexture,
-                build.LegsTexture,
-                build.HandFrontWeaponRunTexture,
-                build.PlayerDodgeTexture,
+                build.PlayerDownTexture,
+                build.PlayerUpTexture,
                 build.PlayerConfig);
 
             List<Enemy> enemies = new();
             EnemyRespawnController enemyRespawnController = new(build.EnemyTexture, enemySpawn, build.EnemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
 
-            Hotbar hotbar = new(2);
+            Hotbar hotbar = new(6);
             Inventory inventory = new(10);
             int selectedHotbarIndex = 0;
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
-            List<WorldItem> worldItems = CreateWorldItems(build, shortStickSpawn, pickaxeSpawn);
+            List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
 
             PlayingSession session = new PlayingSession
             {
@@ -476,17 +454,20 @@ namespace Nyvorn.Source.Game.States
                 EnemyRespawnController = enemyRespawnController,
                 Camera = CreateCamera(),
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
-                HudRenderer = new HudRenderer(graphicsDevice, build.UiFont, build.ItemTextures),
+                HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 CombatSystem = new CombatSystem(),
                 TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
-                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice)
+                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
+                ActivatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData)
             };
 
             session.SetSelectedHotbarIndex(selectedHotbarIndex);
+            session.InitializeRuntimeState();
+            PrewarmVisibleTerrainChunks(session);
             return session;
         }
 
@@ -524,6 +505,19 @@ namespace Nyvorn.Source.Game.States
             selectedHotbarIndex = Math.Clamp(playerSaveData.SelectedHotbarIndex, 0, hotbar.Capacity - 1);
         }
 
+        private static HashSet<int> CreateActivatedTissueHubSet(PlayerSaveData playerSaveData)
+        {
+            HashSet<int> activatedHubKeys = new();
+
+            if (playerSaveData?.ActivatedTissueHubKeys == null)
+                return activatedHubKeys;
+
+            for (int i = 0; i < playerSaveData.ActivatedTissueHubKeys.Count; i++)
+                activatedHubKeys.Add(playerSaveData.ActivatedTissueHubKeys[i]);
+
+            return activatedHubKeys;
+        }
+
         private static void RestoreInventory(Inventory inventory, IReadOnlyList<PlayerInventorySlotSaveData> slotData)
         {
             if (inventory == null || slotData == null)
@@ -545,7 +539,7 @@ namespace Nyvorn.Source.Game.States
             }
         }
 
-        private List<WorldItem> CreateWorldItems(BuildContext build, Vector2 shortStickSpawn, Vector2 pickaxeSpawn)
+        private List<WorldItem> CreateWorldItems(BuildContext build, Vector2 pickaxeSpawn)
         {
             if (build.SavedWorldItems != null)
             {
@@ -575,7 +569,6 @@ namespace Nyvorn.Source.Game.States
 
             return new List<WorldItem>
             {
-                new WorldItem(ItemDefinitions.Get(ItemId.ShortStick), build.ShortStickTexture, shortStickSpawn),
                 new WorldItem(ItemDefinitions.Get(ItemId.Pickaxe), build.PickaxeTexture, pickaxeSpawn)
             };
         }
@@ -599,23 +592,30 @@ namespace Nyvorn.Source.Game.States
                 Array.Empty<TissueBranch>());
         }
 
+        private void PrewarmVisibleTerrainChunks(PlayingSession session)
+        {
+            int screenWidth = graphicsDevice.PresentationParameters.BackBufferWidth;
+            int screenHeight = graphicsDevice.PresentationParameters.BackBufferHeight;
+            float worldWidthPixels = session.WorldMap.PixelWidth;
+            int centerLoop = (int)MathF.Floor(session.Camera.Position.X / worldWidthPixels);
+
+            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            {
+                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                session.PrepareTerrainRender(graphicsDevice, screenWidth, screenHeight, worldOffset);
+            }
+        }
+
         private sealed class BuildContext
         {
             public Texture2D DirtTexture { get; set; }
             public Texture2D GrassTexture { get; set; }
             public Texture2D SandTexture { get; set; }
             public Texture2D StoneTexture { get; set; }
-            public Texture2D BackHandTexture { get; set; }
-            public Texture2D BodyTexture { get; set; }
-            public Texture2D LegsTexture { get; set; }
-            public Texture2D FrontHandTexture { get; set; }
-            public Texture2D ShortStickTexture { get; set; }
+            public Texture2D PlayerDownTexture { get; set; }
+            public Texture2D PlayerUpTexture { get; set; }
             public Texture2D PickaxeTexture { get; set; }
-            public Texture2D HandFrontWeaponRunTexture { get; set; }
-            public Texture2D PlayerDodgeTexture { get; set; }
-            public Texture2D AttackHandBackTexture { get; set; }
-            public Texture2D AttackHandFrontTexture { get; set; }
-            public Texture2D AttackBodyTexture { get; set; }
+            public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
             public SpriteFont UiFont { get; set; }
             public WorldGenConfig WorldGenConfig { get; set; }

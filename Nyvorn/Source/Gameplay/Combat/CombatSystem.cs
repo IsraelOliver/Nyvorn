@@ -10,14 +10,9 @@ namespace Nyvorn.Source.Gameplay.Combat
         private readonly EnemyContactResolver enemyContactResolver;
 
         public CombatSystem()
-            : this(new CombatConfig())
         {
-        }
-
-        public CombatSystem(CombatConfig config)
-        {
-            playerAttackResolver = new PlayerAttackResolver(config);
-            enemyContactResolver = new EnemyContactResolver(config);
+            playerAttackResolver = new PlayerAttackResolver();
+            enemyContactResolver = new EnemyContactResolver();
         }
 
         public void Resolve<TPlayer, TEnemy>(TPlayer player, IList<TEnemy> enemies)

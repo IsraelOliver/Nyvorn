@@ -12,6 +12,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         public float AttackVisualDuration { get; init; } = 0.12f;
         public float HurtDuration { get; init; } = 0.15f;
         public int MaxHealth { get; init; } = 100;
+        public int ContactDamage { get; init; } = 10;
+        public float ContactKnockbackX { get; init; } = 180f;
+        public float ContactKnockbackY { get; init; } = -75f;
         public int FrameWidth { get; init; } = 32;
         public int FrameHeight { get; init; } = 32;
     }

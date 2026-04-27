@@ -7,6 +7,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Interfaces
         bool HasActiveHitbox { get; }
         Rectangle ActiveHitbox { get; }
         int HitSequence { get; }
+        int HitDamage { get; }
+        float HitKnockbackX { get; }
+        float HitKnockbackY { get; }
 
         void OnHitConnected();
     }

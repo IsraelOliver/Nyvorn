@@ -60,6 +60,7 @@ namespace Nyvorn.Source.World.Persistence
                 PositionX = session.Player.Position.X,
                 PositionY = session.Player.Position.Y,
                 SelectedHotbarIndex = session.SelectedHotbarIndex,
+                ActivatedTissueHubKeys = session.ActivatedTissueHubKeys.ToList(),
                 HotbarSlots = CaptureSlots(session.Hotbar),
                 InventorySlots = CaptureSlots(session.Inventory)
             });

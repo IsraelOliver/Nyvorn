@@ -9,34 +9,18 @@ namespace Nyvorn.Source.Gameplay.Items
         private static readonly Dictionary<ItemId, ItemDefinition> definitions = new()
         {
             {
-                ItemId.ShortStick,
-                new ItemDefinition
-                {
-                    Id = ItemId.ShortStick,
-                    Name = "Short Stick",
-                    TexturePath = "weapons/shortStick",
-                    Stackable = false,
-                    MaxStack = 1,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(32, 32),
-                    WorldPivot = new Point(10, 20),
-                    SpriteSheetCell = new Point(0, 1),
-                    WorldCollisionRect = new Rectangle(6, 18, 20, 8)
-                }
-            },
-            {
                 ItemId.Pickaxe,
                 new ItemDefinition
                 {
                     Id = ItemId.Pickaxe,
                     Name = "Pickaxe",
-                    TexturePath = "weapons/Pickaxe-Sheet",
+                    TexturePath = "weapons/pickaxe_sheet",
                     Stackable = false,
                     MaxStack = 1,
                     GravityScale = 1.0f,
                     WorldSize = new Point(32, 32),
                     WorldPivot = new Point(9, 19),
-                    SpriteSheetCell = new Point(0, 1),
+                    SpriteSheetCell = new Point(3, 2),
                     WorldCollisionRect = new Rectangle(6, 18, 20, 8)
                 }
             },

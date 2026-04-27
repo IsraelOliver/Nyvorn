@@ -90,12 +90,19 @@ namespace Nyvorn.Source.World.Persistence
                     .ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
-                TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot(),
-                TissueBiomeSnapshot = session.WorldMap.ExportTissueBiomeSnapshot()
+                TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
             });
 
             playerSaveService.Save(session);
             session.WorldMap.MarkPersisted();
+        }
+
+        public void SavePlayerOnly(PlayingSession session)
+        {
+            if (session == null)
+                throw new ArgumentNullException(nameof(session));
+
+            playerSaveService.Save(session);
         }
 
         public void Save(PlanetSaveData saveData)
@@ -143,8 +150,7 @@ namespace Nyvorn.Source.World.Persistence
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
-                TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot),
-                TissueBiomeSnapshot = CompressBytes(saveData.TissueBiomeSnapshot)
+                TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
             };
         }
 
@@ -159,8 +165,7 @@ namespace Nyvorn.Source.World.Persistence
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
-                TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot),
-                TissueBiomeSnapshot = DecompressBytes(saveData.TissueBiomeSnapshot)
+                TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)
             };
         }
 

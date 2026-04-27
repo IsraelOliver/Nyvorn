@@ -25,17 +25,7 @@ namespace Nyvorn.Source.Engine.Input
             bool tissueRevealPressed = keyboard.IsKeyDown(Keys.F) && !_prevKeyboard.IsKeyDown(Keys.F);
             bool toggleMinimapPressed = keyboard.IsKeyDown(Keys.M) && !_prevKeyboard.IsKeyDown(Keys.M);
             int mouseWheelDelta = mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue;
-            int hotbarSelectionIndex = -1;
-            if ((keyboard.IsKeyDown(Keys.D1) && !_prevKeyboard.IsKeyDown(Keys.D1)) ||
-                (keyboard.IsKeyDown(Keys.NumPad1) && !_prevKeyboard.IsKeyDown(Keys.NumPad1)))
-            {
-                hotbarSelectionIndex = 0;
-            }
-            else if ((keyboard.IsKeyDown(Keys.D2) && !_prevKeyboard.IsKeyDown(Keys.D2)) ||
-                     (keyboard.IsKeyDown(Keys.NumPad2) && !_prevKeyboard.IsKeyDown(Keys.NumPad2)))
-            {
-                hotbarSelectionIndex = 1;
-            }
+            int hotbarSelectionIndex = GetHotbarSelectionIndex(keyboard);
             bool ctrlDown = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
             bool prevCtrlDown = _prevKeyboard.IsKeyDown(Keys.LeftControl) || _prevKeyboard.IsKeyDown(Keys.RightControl);
             bool ctrlJustPressed = ctrlDown && !prevCtrlDown;
@@ -63,6 +53,40 @@ namespace Nyvorn.Source.Engine.Input
                 dodgeDir,
                 new Vector2(mouse.X, mouse.Y),
                 mouseWheelDelta);
+        }
+
+        private int GetHotbarSelectionIndex(KeyboardState keyboard)
+        {
+            Keys[] numberKeys =
+            {
+                Keys.D1,
+                Keys.D2,
+                Keys.D3,
+                Keys.D4,
+                Keys.D5,
+                Keys.D6
+            };
+
+            Keys[] numPadKeys =
+            {
+                Keys.NumPad1,
+                Keys.NumPad2,
+                Keys.NumPad3,
+                Keys.NumPad4,
+                Keys.NumPad5,
+                Keys.NumPad6
+            };
+
+            for (int i = 0; i < numberKeys.Length; i++)
+            {
+                if ((keyboard.IsKeyDown(numberKeys[i]) && !_prevKeyboard.IsKeyDown(numberKeys[i])) ||
+                    (keyboard.IsKeyDown(numPadKeys[i]) && !_prevKeyboard.IsKeyDown(numPadKeys[i])))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
     }
 }

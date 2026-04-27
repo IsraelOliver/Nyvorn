@@ -20,6 +20,7 @@ namespace Nyvorn.Source.Game.States
         private readonly PlanetSaveService saveService = new();
         private readonly SpriteFont font;
         private readonly Texture2D pixel;
+        private readonly Texture2D backgroundTexture;
 
         private MouseState previousMouse;
         private KeyboardState previousKeyboard;
@@ -33,6 +34,7 @@ namespace Nyvorn.Source.Game.States
             font = content.Load<SpriteFont>("ui/UIFont");
             pixel = new Texture2D(graphicsDevice, 1, 1);
             pixel.SetData(new[] { Color.White });
+            backgroundTexture = content.Load<Texture2D>("ui/background_menu");
         }
 
         public void OnEnter()
@@ -99,9 +101,11 @@ namespace Nyvorn.Source.Game.States
             Rectangle panel = GetPanelBounds();
             Rectangle listBounds = GetWorldListBounds();
             Rectangle newWorldButton = GetNewWorldButtonBounds();
+            Rectangle screenBounds = new Rectangle(0, 0, graphicsDevice.PresentationParameters.BackBufferWidth, graphicsDevice.PresentationParameters.BackBufferHeight);
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            spriteBatch.Draw(pixel, new Rectangle(0, 0, graphicsDevice.PresentationParameters.BackBufferWidth, graphicsDevice.PresentationParameters.BackBufferHeight), new Color(10, 22, 26, 180));
+            spriteBatch.Draw(backgroundTexture, screenBounds, Color.White);
+            spriteBatch.Draw(pixel, screenBounds, new Color(10, 22, 26, 150));
             spriteBatch.Draw(pixel, panel, new Color(23, 42, 49, 220));
 
             spriteBatch.DrawString(font, "Mundos", new Vector2(panel.X + 28, panel.Y + 24), new Color(255, 241, 193));

@@ -1,115 +1,72 @@
-using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public static class PlayerAnimations
     {
-        public static Dictionary<AnimationState, Rectangle[]> CreateBase()
-        {
-            const int frameW = 32;
-            const int frameH = 32;
+        public const int FrameW = 32;
+        public const int FrameH = 32;
+        public const int PivotX = 16;
+        public const int PivotY = 31;
 
-            return new Dictionary<AnimationState, Rectangle[]>
+        private const float WalkFrameDuration = 0.13f;
+        private const float DefaultFrameDuration = 0.13f;
+        private const float AttackFrameDuration = 0.075f;
+
+        private static AnimFrame Frame(int column, int row, int offsetX = 0, int offsetY = 0, float duration = DefaultFrameDuration)
+        {
+            return new AnimFrame(row, column, offsetX, offsetY, duration);
+        }
+
+        public static Dictionary<AnimationState, Animation> CreateLocomotion()
+        {
+            return new Dictionary<AnimationState, Animation>
             {
                 {
                     AnimationState.Idle,
-                    new[]
-                    {
-                        new Rectangle(0 * frameW, 1 * frameH, frameW, frameH)
-                    }
+                    new Animation(new[] { Frame(0, 1) })
                 },
 
                 {
                     AnimationState.Walk,
-                    new[]
+                    new Animation(new[]
                     {
-                        new Rectangle(0 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(1 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(2 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(3 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(4 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(5 * frameW, 0 * frameH, frameW, frameH)
-                    }
+                        Frame(0, 0, offsetY: -2, duration: WalkFrameDuration),
+                        Frame(1, 0, offsetY: -1, duration: WalkFrameDuration),
+                        Frame(2, 0, offsetY: 0, duration: WalkFrameDuration),
+                        Frame(3, 0, offsetY: -2, duration: WalkFrameDuration),
+                        Frame(4, 0, offsetY: -1, duration: WalkFrameDuration),
+                        Frame(5, 0, offsetY: 0, duration: WalkFrameDuration)
+                    })
                 },
 
                 {
                     AnimationState.Jump,
-                    new[]
-                    {
-                        new Rectangle(1 * frameW, 1 * frameH, frameW, frameH)
-                    }
+                    new Animation(new[] { Frame(1, 1) })
                 },
 
                 {
                     AnimationState.Fall,
-                    new[]
-                    {
-                        new Rectangle(2 * frameW, 1 * frameH, frameW, frameH)
-                    }
+                    new Animation(new[] { Frame(2, 1) })
                 },
             };
         }
 
-        public static Dictionary<AnimationState, Rectangle[]> CreateAttackShortSword()
+        public static Dictionary<AnimationState, Animation> CreateUpperCombat()
         {
-            const int frameW = 32;
-            const int frameH = 32;
-
-            return new Dictionary<AnimationState, Rectangle[]>
+            return new Dictionary<AnimationState, Animation>
             {
                 {
                     AnimationState.Attack,
-                    new[]
+                    new Animation(new[]
                     {
-                        new Rectangle(0 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(1 * frameW, 0 * frameH, frameW, frameH),
-                        new Rectangle(2 * frameW, 0 * frameH, frameW, frameH)
-                    }
-                }
-            };
-        }
-
-        public static Dictionary<AnimationState, Rectangle[]> CreateDodge()
-        {
-            const int frameW = 32;
-            const int frameH = 32;
-
-            return new Dictionary<AnimationState, Rectangle[]>
-            {
-                {
-                    AnimationState.Dodge,
-                    new[]
-                    {
-                        new Rectangle(0 * frameW, 0, frameW, frameH),
-                        new Rectangle(1 * frameW, 0, frameW, frameH),
-                        new Rectangle(2 * frameW, 0, frameW, frameH),
-                        new Rectangle(3 * frameW, 0, frameW, frameH),
-                        new Rectangle(4 * frameW, 0, frameW, frameH),
-                        new Rectangle(5 * frameW, 0, frameW, frameH),
-                        new Rectangle(6 * frameW, 0, frameW, frameH)
-                    }
-                }
-            };
-        }
-
-        public static Dictionary<AnimationState, float[]> CreateDodgeFrameTimes()
-        {
-            return new Dictionary<AnimationState, float[]>
-            {
-                {
-                    AnimationState.Dodge,
-                    new[]
-                    {
-                        0.06f,
-                        0.06f,
-                        0.06f,
-                        0.05f,
-                        0.05f,
-                        0.05f,
-                        0.05f
-                    }
+                        Frame(0, 0, duration: AttackFrameDuration),
+                        Frame(1, 0, duration: AttackFrameDuration),
+                        Frame(2, 0, duration: AttackFrameDuration),
+                        Frame(3, 0, duration: AttackFrameDuration)
+                    }, loop: false)
                 }
             };
         }
@@ -153,7 +110,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             new Vector2(7, 13),
             new Vector2(17, 16),
-            new Vector2(14, 24)
+            new Vector2(14, 24),
+            new Vector2(12, 22)
         };
 
         public static Vector2 GetHandAnchor(AnimationState state, int frameIndex, bool useWeaponWalkAnchor)
@@ -205,9 +163,5 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
         }
 
-        public static Vector2 GetHandAnchor(Animator animator, bool useWeaponWalkAnchor)
-        {
-            return GetHandAnchor(animator.CurrentState, animator.FrameIndex, useWeaponWalkAnchor);
-        }
     }
 }

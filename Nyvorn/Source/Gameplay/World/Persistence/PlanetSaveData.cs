@@ -13,6 +13,5 @@ namespace Nyvorn.Source.World.Persistence
         public byte[] WorldTileSnapshot { get; init; }
         public byte[] TissueFieldSnapshot { get; init; }
         public byte[] TissueAnalysisSnapshot { get; init; }
-        public byte[] TissueBiomeSnapshot { get; init; }
     }
 }

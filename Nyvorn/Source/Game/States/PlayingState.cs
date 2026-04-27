@@ -61,6 +61,12 @@ namespace Nyvorn.Source.Game.States
             InputState input = inputService.Update();
             if (input.ToggleMinimapPressed)
                 minimapVisible = !minimapVisible;
+            if (input.TissueRevealPressed && session.IsPlayerOnActivatedTissueHub)
+            {
+                minimapVisible = true;
+                minimapTissueMode = true;
+            }
+
             if (minimapVisible)
             {
                 WorldMinimapInteractionResult minimapInteraction = session.UpdateMinimapInteraction(
@@ -71,6 +77,13 @@ namespace Nyvorn.Source.Game.States
 
                 if (minimapInteraction.ToggleTissueMode)
                     minimapTissueMode = !minimapTissueMode;
+
+                if (minimapInteraction.TravelHubIndex >= 0 &&
+                    session.TryFastTravelToTissueHub(minimapInteraction.TravelHubIndex))
+                {
+                    minimapVisible = false;
+                    session.Camera.CenterOn(session.Player.Position + new Vector2(8f, 12f), screenW, screenH);
+                }
 
                 if (minimapInteraction.ConsumedMouse)
                     input = input.ConsumeWorldMouseInput();
@@ -97,7 +110,11 @@ namespace Nyvorn.Source.Game.States
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
-                saveService.Save(session);
+                if (session.WorldMap.HasUnsavedChanges)
+                    saveService.Save(session);
+                else
+                    saveService.SavePlayerOnly(session);
+
                 autoSaveTimer = AutoSaveInterval;
             }
 
@@ -118,19 +135,15 @@ namespace Nyvorn.Source.Game.States
             float worldWidthPixels = session.WorldMap.PixelWidth;
             int centerLoop = (int)System.MathF.Floor(session.Camera.Position.X / worldWidthPixels);
 
-            spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
-            session.DrawSky(spriteBatch, screenW, screenH);
-            spriteBatch.End();
-
             for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
             {
                 float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawTerrain(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
+                session.PrepareTerrainRender(graphicsDevice, screenW, screenH, worldOffset);
             }
+
+            spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
+            session.DrawSky(spriteBatch, screenW, screenH);
+            spriteBatch.End();
 
             for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
             {
@@ -151,13 +164,23 @@ namespace Nyvorn.Source.Game.States
                 float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrain(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            for (int loopOffset = -1; loopOffset <= 1; loopOffset++)
+            {
+                float worldOffset = (centerLoop + loopOffset) * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
             }
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            session.DrawHud(spriteBatch, screenW);
+            session.DrawHud(spriteBatch, screenW, screenH);
             if (minimapVisible)
                 session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
             spriteBatch.End();

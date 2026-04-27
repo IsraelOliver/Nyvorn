@@ -6,9 +6,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
     public sealed class PlayerCombat
     {
         private readonly PlayerConfig config;
+        private readonly Animation attackAnimation;
         private Weapon equippedWeapon;
-        private readonly Animator attackAnimator;
-        private readonly Animator dodgeAnimator;
 
         private bool isAttacking;
         private bool isDodging;
@@ -25,11 +24,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             this.config = config;
             this.equippedWeapon = equippedWeapon;
-            attackAnimator = new Animator(PlayerAnimations.CreateAttackShortSword(), AnimationState.Attack);
-            dodgeAnimator = new Animator(PlayerAnimations.CreateDodge(), PlayerAnimations.CreateDodgeFrameTimes(), AnimationState.Dodge)
-            {
-                FrameTime = config.DodgeFrameTime
-            };
+            attackAnimation = PlayerAnimations.CreateUpperCombat()[AnimationState.Attack];
 
             attackSequence = 0;
             dodgeDir = 1;
@@ -38,14 +33,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         }
 
         public Weapon EquippedWeapon => equippedWeapon;
-        public Animator AttackAnimator => attackAnimator;
-        public Animator DodgeAnimator => dodgeAnimator;
+        public Animation AttackAnimation => attackAnimation;
         public bool IsAttacking => isAttacking;
         public bool IsDodging => isDodging;
         public bool IsInvincible => isDodging;
         public int DodgeDirection => dodgeDir;
         public bool HasVisibleWeaponEquipped => equippedWeapon != null && equippedWeapon.IsVisibleInHand;
         public bool UsesAttackHandPose => equippedWeapon != null && equippedWeapon.UsesAttackHandPose;
+        public bool UsesPlayerAttackUpperPose => equippedWeapon != null && equippedWeapon.UsesPlayerAttackUpperPose;
+        public float? WorldBreakRangeOverride => equippedWeapon?.WorldBreakRangeOverride;
+        public int HitDamage => equippedWeapon?.HitDamage ?? 1;
+        public float HitKnockbackX => equippedWeapon?.HitKnockbackX ?? 80f;
+        public float HitKnockbackY => equippedWeapon?.HitKnockbackY ?? -35f;
         public bool HasActiveAttackHitbox => !attackHitbox.IsEmpty;
         public Rectangle AttackHitbox => attackHitbox;
         public int AttackSequence => attackSequence;
@@ -55,56 +54,23 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public void Tick(float dt)
         {
-            if (hurtCooldownTimer > 0f)
-                hurtCooldownTimer -= dt;
-            if (dodgeCooldownTimer > 0f)
-                dodgeCooldownTimer -= dt;
+            TickCooldowns(dt);
+        }
+
+        public void SetEquippedWeapon(Weapon weapon)
+        {
+            if (weapon != null)
+                equippedWeapon = weapon;
         }
 
         public bool TryStartAttack(Vector2 playerPosition, Vector2 mouseWorld, out bool attackFacingRight)
         {
             attackFacingRight = mouseWorld.X >= playerPosition.X;
 
-            if (equippedWeapon == null || !equippedWeapon.CanAttack)
+            if (!CanStartAttack())
                 return false;
 
-            if (isDodging || isAttacking)
-                return false;
-
-            isAttacking = true;
-            attackTimer = config.AttackDuration;
-            attackSequence++;
-
-            attackAnimator.Reset();
-            attackAnimator.Play(AnimationState.Attack);
-            return true;
-        }
-
-        public void SetEquippedWeapon(Weapon weapon)
-        {
-            equippedWeapon = weapon;
-        }
-
-        public bool TryStartDodge(bool isGrounded, int inputDodgeDir, bool currentFacingRight, out bool dodgeFacingRight)
-        {
-            dodgeFacingRight = currentFacingRight;
-
-            if (!isGrounded)
-                return false;
-
-            if (isDodging || isAttacking)
-                return false;
-
-            if (dodgeCooldownTimer > 0f)
-                return false;
-
-            dodgeDir = inputDodgeDir != 0 ? inputDodgeDir : (currentFacingRight ? 1 : -1);
-            dodgeFacingRight = dodgeDir > 0;
-            isDodging = true;
-            dodgeTimer = config.DodgeDuration;
-            dodgeCooldownTimer = config.DodgeCooldown;
-            dodgeAnimator.Reset();
-            dodgeAnimator.Play(AnimationState.Dodge);
+            StartAttack();
             return true;
         }
 
@@ -114,14 +80,33 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 return;
 
             attackTimer -= dt;
-            attackAnimator.Update(dt);
+            attackAnimation.Update(dt);
 
             if (attackTimer > 0f)
                 return;
 
-            isAttacking = false;
-            if (moveDir != 0)
-                facingRight = moveDir > 0;
+            FinishAttack(moveDir, ref facingRight);
+        }
+
+        public void UpdateAttackHitbox(Vector2 handWorld, bool facingRight)
+        {
+            attackHitbox = Rectangle.Empty;
+
+            if (!CanUseAttackHitbox())
+                return;
+
+            attackHitbox = equippedWeapon.GetAttackHitbox(handWorld, facingRight);
+        }
+
+        public bool TryStartDodge(bool isGrounded, int inputDodgeDir, bool currentFacingRight, out bool dodgeFacingRight)
+        {
+            dodgeFacingRight = currentFacingRight;
+
+            if (!CanStartDodge(isGrounded))
+                return false;
+
+            StartDodge(inputDodgeDir, currentFacingRight, out dodgeFacingRight);
+            return true;
         }
 
         public void UpdateDodge(float dt)
@@ -130,27 +115,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 return;
 
             dodgeTimer -= dt;
-            dodgeAnimator.Play(AnimationState.Dodge);
-            dodgeAnimator.Update(dt);
-
             if (dodgeTimer > 0f)
                 return;
 
             isDodging = false;
             dodgeTimer = 0f;
-        }
-
-        public void UpdateAttackHitbox(Vector2 handWorld, bool facingRight)
-        {
-            attackHitbox = Rectangle.Empty;
-
-            if (isDodging || !isAttacking)
-                return;
-
-            if (!equippedWeapon.IsActiveFrame(attackAnimator.FrameIndex))
-                return;
-
-            attackHitbox = equippedWeapon.GetAttackHitbox(handWorld, facingRight);
         }
 
         public bool TryReceiveHit(Rectangle hurtbox, Rectangle hitbox, int damage)
@@ -163,18 +132,86 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public bool TryReceiveDamage(int damage)
         {
+            if (!CanReceiveDamage())
+                return false;
+
+            health = System.Math.Max(0, health - damage);
+            hurtCooldownTimer = config.HurtCooldown;
+            return true;
+        }
+
+        private void TickCooldowns(float dt)
+        {
+            if (hurtCooldownTimer > 0f)
+                hurtCooldownTimer -= dt;
+            if (dodgeCooldownTimer > 0f)
+                dodgeCooldownTimer -= dt;
+        }
+
+        private bool CanStartAttack()
+        {
+            if (equippedWeapon == null || !equippedWeapon.CanAttack)
+                return false;
+
+            return !isDodging && !isAttacking;
+        }
+
+        private void StartAttack()
+        {
+            isAttacking = true;
+            attackTimer = equippedWeapon.AttackDuration;
+            attackSequence++;
+            attackAnimation.Reset();
+            attackHitbox = Rectangle.Empty;
+        }
+
+        private void FinishAttack(int moveDir, ref bool facingRight)
+        {
+            isAttacking = false;
+            attackTimer = 0f;
+            attackHitbox = Rectangle.Empty;
+
+            if (moveDir != 0)
+                facingRight = moveDir > 0;
+        }
+
+        private bool CanUseAttackHitbox()
+        {
+            if (isDodging || !isAttacking || equippedWeapon == null)
+                return false;
+
+            return equippedWeapon.IsActiveFrame(attackAnimation.CurrentFrameIndex);
+        }
+
+        private bool CanStartDodge(bool isGrounded)
+        {
+            if (!isGrounded)
+                return false;
+
+            if (isDodging || isAttacking)
+                return false;
+
+            return dodgeCooldownTimer <= 0f;
+        }
+
+        private void StartDodge(int inputDodgeDir, bool currentFacingRight, out bool dodgeFacingRight)
+        {
+            dodgeDir = inputDodgeDir != 0 ? inputDodgeDir : (currentFacingRight ? 1 : -1);
+            dodgeFacingRight = dodgeDir > 0;
+            isDodging = true;
+            dodgeTimer = config.DodgeDuration;
+            dodgeCooldownTimer = config.DodgeCooldown;
+        }
+
+        private bool CanReceiveDamage()
+        {
             if (!IsAlive)
                 return false;
 
             if (IsInvincible)
                 return false;
 
-            if (hurtCooldownTimer > 0f)
-                return false;
-
-            health = System.Math.Max(0, health - damage);
-            hurtCooldownTimer = config.HurtCooldown;
-            return true;
+            return hurtCooldownTimer <= 0f;
         }
     }
 }

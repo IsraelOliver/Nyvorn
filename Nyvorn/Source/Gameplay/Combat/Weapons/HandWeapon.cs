@@ -13,6 +13,10 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 
         public override bool IsVisibleInHand => false;
         public override bool UsesAttackHandPose => true;
+        public override int HitDamage => 3;
+        public override float HitKnockbackX => 90f;
+        public override float HitKnockbackY => -35f;
+        public override float AttackDuration => 0.24f;
 
         public override bool IsActiveFrame(int frameIndex)
         {
