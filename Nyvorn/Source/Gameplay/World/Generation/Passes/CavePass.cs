@@ -51,7 +51,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                         bool cavernCarve = ShouldCarveCavern(context, caveNoise, warpNoise, x, y, startY, cavernLayer.EndY, caveFadeHeight);
                         bool deepCarve = ShouldCarveDeepCavern(context, caveNoise, warpNoise, deepNoise, x, y, deepLayer);
 
-                        float selector = context.SampleTerrain2D(deepNoise, x, y, 0.05f, 0.05f, 641.3f, -219.4f);
+                        float selector = (float)deepNoise.Evaluate(x * 0.05f, y * 0.05f);
                         float bias = Lerp(-0.35f, 0.35f, blendT);
                         bool finalCarve = (selector + bias) > 0f ? deepCarve : cavernCarve;
 
@@ -82,17 +82,12 @@ namespace Nyvorn.Source.World.Generation.Passes
             float warpFrequency = 0.040f;
             float warpStrength = 18f;
 
-            float warpX = Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 0f, 0f) * warpStrength;
-            float warpY = Fractal(context, warpNoise, x + 1000f, y + 1000f, warpFrequency, warpFrequency, 317.8f, -144.2f) * warpStrength;
+            float warpX = Fractal(warpNoise, x * warpFrequency, y * warpFrequency) * warpStrength;
+            float warpY = Fractal(warpNoise, (x + 1000f) * warpFrequency, (y + 1000f) * warpFrequency) * warpStrength;
 
-            float sample = context.SampleTerrain2D(
-                caveNoise,
-                x + warpX,
-                y + warpY,
-                frequency,
-                frequency,
-                0f,
-                0f);
+            float sample = (float)caveNoise.Evaluate(
+                (x + warpX) * frequency,
+                (y + warpY) * frequency);
 
             float depthT = (y - startY) / (float)Math.Max(1, cavernEndY - startY);
             depthT = Math.Clamp(depthT, 0f, 1f);
@@ -120,21 +115,16 @@ namespace Nyvorn.Source.World.Generation.Passes
             float warpFrequency = 0.045f;
             float warpStrength = 22f;
 
-            float warpX = Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 0f, 0f) * warpStrength;
-            float warpY = Fractal(context, warpNoise, x + 1400f, y + 1400f, warpFrequency, warpFrequency, 503.4f, 188.7f) * warpStrength;
+            float warpX = Fractal(warpNoise, x * warpFrequency, y * warpFrequency) * warpStrength;
+            float warpY = Fractal(warpNoise, (x + 1400f) * warpFrequency, (y + 1400f) * warpFrequency) * warpStrength;
 
-            float baseSample = context.SampleTerrain2D(
-                caveNoise,
-                x + warpX,
-                y + warpY,
-                baseFrequency,
-                baseFrequency,
-                0f,
-                0f);
+            float baseSample = (float)caveNoise.Evaluate(
+                (x + warpX) * baseFrequency,
+                (y + warpY) * baseFrequency);
 
-            float largeVoid = Fractal(context, deepNoise, x, y, 0.018f, 0.018f, 91.7f, -42.6f);
-            float macroVoid = context.SampleTerrain2D(deepNoise, x, y, 0.006f, 0.006f, 211.3f, 78.5f);
-            float verticalBias = MathF.Abs(context.SampleTerrain2D(deepNoise, x, y, 0.004f, 0.090f, -351.9f, 124.8f));
+            float largeVoid = Fractal(deepNoise, x * 0.018f, y * 0.018f);
+            float macroVoid = (float)deepNoise.Evaluate(x * 0.006f, y * 0.006f);
+            float verticalBias = MathF.Abs((float)deepNoise.Evaluate(x * 0.004f, y * 0.090f));
             float deepAggression = Lerp(0.08f, 0.24f, depthT);
 
             float combined =
@@ -147,15 +137,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             return combined > effectiveThreshold;
         }
 
-        private static float Fractal(
-            WorldGenContext context,
-            OpenSimplexNoise noise,
-            float x,
-            float y,
-            float xFrequency,
-            float yFrequency,
-            float seedOffsetA,
-            float seedOffsetB)
+        private static float Fractal(OpenSimplexNoise noise, float x, float y)
         {
             float value = 0f;
             float amplitude = 1f;
@@ -164,14 +146,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             for (int i = 0; i < 3; i++)
             {
-                value += context.SampleTerrain2D(
-                    noise,
-                    x,
-                    y,
-                    xFrequency * frequency,
-                    yFrequency * frequency,
-                    seedOffsetA,
-                    seedOffsetB) * amplitude;
+                value += (float)noise.Evaluate(x * frequency, y * frequency) * amplitude;
                 amplitudeSum += amplitude;
                 frequency *= 2f;
                 amplitude *= 0.5f;

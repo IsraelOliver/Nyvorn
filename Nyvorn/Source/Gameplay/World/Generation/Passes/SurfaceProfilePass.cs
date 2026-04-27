@@ -98,9 +98,7 @@ namespace Nyvorn.Source.World.Generation.Passes
         private static float GetCenterPlainsMask(int x, int worldWidth, float plainsWidthPercent = 0.22f)
         {
             float centerX = (worldWidth - 1) * 0.5f;
-            float directDistance = MathF.Abs(x - centerX);
-            float wrappedDistance = worldWidth - directDistance;
-            float distanceFromCenter = MathF.Min(directDistance, wrappedDistance);
+            float distanceFromCenter = MathF.Abs(x - centerX);
 
             float plainsHalfWidth = worldWidth * plainsWidthPercent * 0.5f;
 
