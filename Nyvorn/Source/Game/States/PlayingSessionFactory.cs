@@ -331,8 +331,8 @@ namespace Nyvorn.Source.Game.States
 
         private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
         {
-            int edgeSpawnTileX = System.Math.Max(6, build.WorldGenConfig.BorderThickness + 2);
-            build.PlayerSpawnTileX = edgeSpawnTileX;
+            int worldCenterTileX = build.WorldMap.Width / 2;
+            build.PlayerSpawnTileX = worldCenterTileX;
             build.ItemSpawnTileX = WrapTileX(build.PlayerSpawnTileX + 5, build.WorldMap.Width);
             build.EnemySpawnTileX = WrapTileX(build.PlayerSpawnTileX + 16, build.WorldMap.Width);
 
@@ -406,11 +406,10 @@ namespace Nyvorn.Source.Game.States
 
         private PlayingSession CreateSession(BuildContext build, PlanetWorldMetadata planetMetadata)
         {
-            Vector2 defaultPlayerSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+            Vector2 defaultPlayerSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(
                 build.WorldMap,
-                build.WorldGenConfig,
-                WorldLayerType.DeepCavern,
-                build.PlayerSpawnTileX);
+                build.PlayerSpawnTileX,
+                tilesAboveSurface: 2);
             Vector2 playerSpawn = ResolvePlayerSpawn(build, defaultPlayerSpawn);
             Vector2 enemySpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,

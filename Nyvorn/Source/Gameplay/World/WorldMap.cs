@@ -856,8 +856,51 @@ namespace Nyvorn.Source.World
                     return GetDirtThreeConnectionSourceRectangle(x, y, up, right, down, left);
 
                 default:
+                    if (TryGetDirtInnerCornerSourceRectangle(x, y, out Rectangle innerCorner))
+                        return innerCorner;
+
                     return GetAutoTileSheetCell(2 + PickTileVariation(x, y, 3), 1);
             }
+        }
+
+        private bool TryGetDirtInnerCornerSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            bool up = IsSolidAt(x, y - 1);
+            bool right = IsSolidAt(x + 1, y);
+            bool down = IsSolidAt(x, y + 1);
+            bool left = IsSolidAt(x - 1, y);
+
+            bool downRightAir = right && down && !IsSolidAt(x + 1, y + 1);
+            bool downLeftAir = left && down && !IsSolidAt(x - 1, y + 1);
+            bool upRightAir = up && right && !IsSolidAt(x + 1, y - 1);
+            bool upLeftAir = up && left && !IsSolidAt(x - 1, y - 1);
+
+            if (downRightAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(4, 3);
+                return true;
+            }
+
+            if (downLeftAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(5, 3);
+                return true;
+            }
+
+            if (upRightAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(4, 4);
+                return true;
+            }
+
+            if (upLeftAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(5, 4);
+                return true;
+            }
+
+            sourceRectangle = Rectangle.Empty;
+            return false;
         }
 
         private Rectangle GetDirtEndSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)

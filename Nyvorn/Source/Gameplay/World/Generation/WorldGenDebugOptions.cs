@@ -5,6 +5,7 @@ namespace Nyvorn.Source.World.Generation
         public bool EnableLayerBoundaryPass { get; init; } = true;
         public bool EnableSurfaceProfilePass { get; init; } = true;
         public bool EnableBaseTerrainFillPass { get; init; } = true;
+        public bool EnableDirtToStoneTransitionPass { get; init; } = true;
         public bool EnableWorldBoundsPass { get; init; } = true;
 
         public bool IsEnabled(string passName)
@@ -14,6 +15,7 @@ namespace Nyvorn.Source.World.Generation
                 "LayerBoundary" => EnableLayerBoundaryPass,
                 "SurfaceProfile" => EnableSurfaceProfilePass,
                 "BaseTerrainFill" => EnableBaseTerrainFillPass,
+                "DirtToStoneTransition" => EnableDirtToStoneTransitionPass,
                 "WorldBounds" => EnableWorldBoundsPass,
                 _ => true
             };
