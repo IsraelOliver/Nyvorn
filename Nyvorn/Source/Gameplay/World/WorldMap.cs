@@ -716,7 +716,7 @@ namespace Nyvorn.Source.World
                     {
                         TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y),
                         TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
-                        TileType.Stone => GetAutoTileSourceRectangle(x, y),
+                        TileType.Stone => GetStoneAutoTileSourceRectangle(x, y),
                         TileType.Sand => GetAutoTileSourceRectangle(x, y),
                         _ => null
                     };
@@ -953,6 +953,11 @@ namespace Nyvorn.Source.World
         private Rectangle GetGrassAutoTileSourceRectangle(int x, int y)
         {
             return GetAutoTileSourceRectangle(x, y);
+        }
+
+        private Rectangle GetStoneAutoTileSourceRectangle(int x, int y)
+        {
+            return GetDirtAutoTileSourceRectangle(x, y);
         }
 
         private void RebuildAutoTileVariants()
