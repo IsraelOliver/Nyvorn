@@ -297,7 +297,7 @@ namespace Nyvorn.Source.Game.States
                     build.WorldMap.MarkPersisted();
             }, weight: 5f, runInBackground: true));
 
-            if (!hasTissueSnapshot)
+              if (!hasTissueSnapshot)
             {
                 steps.Add(new BuildOperation.BuildStep("Preparando tecido do planeta", () =>
                 {

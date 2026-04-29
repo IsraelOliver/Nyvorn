@@ -4,9 +4,6 @@ namespace Nyvorn.Source.World.Generation.Passes
 {
     public sealed class CavePass : IWorldGenPass
     {
-        private const int MinSeamWidthTiles = 32;
-        private const int MaxSeamWidthTiles = 96;
-
         public string Name => "Cave";
 
         public void Apply(WorldGenContext context)
@@ -54,7 +51,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                         bool cavernCarve = ShouldCarveCavern(context, caveNoise, warpNoise, x, y, startY, cavernLayer.EndY, caveFadeHeight);
                         bool deepCarve = ShouldCarveDeepCavern(context, caveNoise, warpNoise, deepNoise, x, y, deepLayer);
 
-                        float selector = SampleSeamedNoise(context, deepNoise, x, y, 0.05f, 0.05f);
+                        float selector = (float)deepNoise.Evaluate(x * 0.05f, y * 0.05f);
                         float bias = Lerp(-0.35f, 0.35f, blendT);
                         bool finalCarve = (selector + bias) > 0f ? deepCarve : cavernCarve;
 
@@ -85,10 +82,12 @@ namespace Nyvorn.Source.World.Generation.Passes
             float warpFrequency = 0.040f;
             float warpStrength = 18f;
 
-            float warpX = Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency) * warpStrength;
-            float warpY = Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 1000f, 1000f) * warpStrength;
+            float warpX = Fractal(warpNoise, x * warpFrequency, y * warpFrequency) * warpStrength;
+            float warpY = Fractal(warpNoise, (x + 1000f) * warpFrequency, (y + 1000f) * warpFrequency) * warpStrength;
 
-            float sample = SampleSeamedNoise(context, caveNoise, x, y, frequency, frequency, warpX, warpY);
+            float sample = (float)caveNoise.Evaluate(
+                (x + warpX) * frequency,
+                (y + warpY) * frequency);
 
             float depthT = (y - startY) / (float)Math.Max(1, cavernEndY - startY);
             depthT = Math.Clamp(depthT, 0f, 1f);
@@ -116,14 +115,16 @@ namespace Nyvorn.Source.World.Generation.Passes
             float warpFrequency = 0.045f;
             float warpStrength = 22f;
 
-            float warpX = Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency) * warpStrength;
-            float warpY = Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 1400f, 1400f) * warpStrength;
+            float warpX = Fractal(warpNoise, x * warpFrequency, y * warpFrequency) * warpStrength;
+            float warpY = Fractal(warpNoise, (x + 1400f) * warpFrequency, (y + 1400f) * warpFrequency) * warpStrength;
 
-            float baseSample = SampleSeamedNoise(context, caveNoise, x, y, baseFrequency, baseFrequency, warpX, warpY);
+            float baseSample = (float)caveNoise.Evaluate(
+                (x + warpX) * baseFrequency,
+                (y + warpY) * baseFrequency);
 
-            float largeVoid = Fractal(context, deepNoise, x, y, 0.018f, 0.018f);
-            float macroVoid = SampleSeamedNoise(context, deepNoise, x, y, 0.006f, 0.006f);
-            float verticalBias = MathF.Abs(SampleSeamedNoise(context, deepNoise, x, y, 0.004f, 0.090f));
+            float largeVoid = Fractal(deepNoise, x * 0.018f, y * 0.018f);
+            float macroVoid = (float)deepNoise.Evaluate(x * 0.006f, y * 0.006f);
+            float verticalBias = MathF.Abs((float)deepNoise.Evaluate(x * 0.004f, y * 0.090f));
             float deepAggression = Lerp(0.08f, 0.24f, depthT);
 
             float combined =
@@ -136,15 +137,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             return combined > effectiveThreshold;
         }
 
-        private static float Fractal(
-            WorldGenContext context,
-            OpenSimplexNoise noise,
-            float x,
-            float y,
-            float xFrequency,
-            float yFrequency,
-            float sampleOffsetX = 0f,
-            float sampleOffsetY = 0f)
+        private static float Fractal(OpenSimplexNoise noise, float x, float y)
         {
             float value = 0f;
             float amplitude = 1f;
@@ -153,15 +146,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             for (int i = 0; i < 3; i++)
             {
-                value += SampleSeamedNoise(
-                    context,
-                    noise,
-                    x,
-                    y,
-                    xFrequency * frequency,
-                    yFrequency * frequency,
-                    sampleOffsetX,
-                    sampleOffsetY) * amplitude;
+                value += (float)noise.Evaluate(x * frequency, y * frequency) * amplitude;
                 amplitudeSum += amplitude;
                 frequency *= 2f;
                 amplitude *= 0.5f;
@@ -171,49 +156,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                 return 0f;
 
             return value / amplitudeSum;
-        }
-
-        private static float SampleSeamedNoise(
-            WorldGenContext context,
-            OpenSimplexNoise noise,
-            float x,
-            float y,
-            float xFrequency,
-            float yFrequency,
-            float sampleOffsetX = 0f,
-            float sampleOffsetY = 0f)
-        {
-            int seamWidth = GetSeamWidth(context);
-            float baseSample = SampleNoise(noise, x + sampleOffsetX, y + sampleOffsetY, xFrequency, yFrequency);
-
-            if (seamWidth <= 0 || x >= seamWidth)
-                return baseSample;
-
-            // Only the left edge is blended. At x=0 it samples the continuation
-            // after the right edge, then fades back to the original cave noise.
-            float edgeSample = SampleNoise(
-                noise,
-                x + context.WorldMap.Width + sampleOffsetX,
-                y + sampleOffsetY,
-                xFrequency,
-                yFrequency);
-            float seamT = SmoothStep01(Math.Clamp(x / seamWidth, 0f, 1f));
-
-            return Lerp(edgeSample, baseSample, seamT);
-        }
-
-        private static float SampleNoise(OpenSimplexNoise noise, float x, float y, float xFrequency, float yFrequency)
-        {
-            return (float)noise.Evaluate(x * xFrequency, y * yFrequency);
-        }
-
-        private static int GetSeamWidth(WorldGenContext context)
-        {
-            if (!context.Config.WrapHorizontally || context.WorldMap.Width <= 0)
-                return 0;
-
-            int width = Math.Clamp(context.WorldMap.Width / 64, MinSeamWidthTiles, MaxSeamWidthTiles);
-            return Math.Min(width, Math.Max(1, context.WorldMap.Width / 2));
         }
 
         private static float Lerp(float a, float b, float t)
