@@ -247,7 +247,12 @@ namespace Nyvorn.Source.Game.States
 
         public bool IsPlayerOnActivatedTissueHub => TryGetCurrentActivatedTissueHubIndex(out _);
 
-        public bool CanUseTissueFastTravel => IsTissueRadarActive && IsPlayerOnActivatedTissueHub;
+        public bool CanUseTissueFastTravel => IsPlayerOnActivatedTissueHub;
+
+        public void EnsureCurrentTissueHubActivated()
+        {
+            TryActivateTouchedTissueHub();
+        }
 
         public bool TryFastTravelToTissueHub(int hubIndex)
         {

@@ -91,6 +91,8 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            session.EnsureCurrentTissueHubActivated();
+
             if (input.ToggleMinimapPressed)
                 minimapVisible = !minimapVisible;
             if (input.TissueRevealPressed && session.IsPlayerOnActivatedTissueHub)
