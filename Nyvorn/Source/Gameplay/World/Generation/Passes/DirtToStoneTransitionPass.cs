@@ -6,8 +6,8 @@ namespace Nyvorn.Source.World.Generation.Passes
     {
         private const float InversionDepthPercent = 0.35f;
         private const float SurfaceQuietPercent = 0.12f;
-        private const float TopStoneThresholdNearSurface = 0.55f;
-        private const float TopStoneThresholdEndOfSurfaceQuiet = 0.50f;
+        private const float TopStoneThresholdNearSurface = 0.75f;
+        private const float TopStoneThresholdEndOfSurfaceQuiet = 0.85f;
         private const float MidStoneThresholdStart = 0.50f;
         private const float MidStoneThresholdAtInversion = 0.40f;
         private const float DeepDirtThresholdAtInversion = 0.42f;
