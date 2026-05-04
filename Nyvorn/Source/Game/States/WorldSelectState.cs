@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
+using System;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Game.States
@@ -25,6 +26,7 @@ namespace Nyvorn.Source.Game.States
         private MouseState previousMouse;
         private KeyboardState previousKeyboard;
         private IReadOnlyList<PlanetSaveSummary> worlds = new List<PlanetSaveSummary>();
+        private int listScrollOffset;
 
         public WorldSelectState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
         {
@@ -55,21 +57,44 @@ namespace Nyvorn.Source.Game.States
             bool leftClickPressed = mouse.LeftButton == ButtonState.Pressed &&
                                     previousMouse.LeftButton == ButtonState.Released;
             bool refreshPressed = keyboard.IsKeyDown(Keys.F5) && !previousKeyboard.IsKeyDown(Keys.F5);
+            Rectangle listBounds = GetWorldListBounds();
 
             if (refreshPressed)
                 RefreshWorlds();
+
+            if (listBounds.Contains(mouse.Position))
+            {
+                int wheelDelta = mouse.ScrollWheelValue - previousMouse.ScrollWheelValue;
+                if (wheelDelta != 0)
+                    listScrollOffset = Math.Clamp(listScrollOffset - Math.Sign(wheelDelta) * 40, 0, GetMaxScrollOffset());
+            }
 
             if ((leftClickPressed && GetNewWorldButtonBounds().Contains(mouse.Position)) ||
                 (keyboard.IsKeyDown(Keys.N) && !previousKeyboard.IsKeyDown(Keys.N)))
             {
                 stateMachine.ReplaceState(new WorldCreationState(graphicsDevice, content, stateMachine));
+                previousMouse = mouse;
+                previousKeyboard = keyboard;
+                return;
             }
 
-            if (leftClickPressed)
+            if (leftClickPressed && listBounds.Contains(mouse.Position))
             {
                 foreach ((PlanetSaveSummary summary, Rectangle bounds) in GetWorldEntryBounds())
                 {
+                    if (!bounds.Intersects(listBounds))
+                        continue;
+
+                    Rectangle editButton = GetEditButtonBounds(bounds);
                     Rectangle deleteButton = GetDeleteButtonBounds(bounds);
+                    if (editButton.Contains(mouse.Position))
+                    {
+                        stateMachine.ReplaceState(new WorldEditState(graphicsDevice, content, stateMachine, summary));
+                        previousMouse = mouse;
+                        previousKeyboard = keyboard;
+                        return;
+                    }
+
                     if (deleteButton.Contains(mouse.Position))
                     {
                         saveService.Delete(summary.FilePath);
@@ -102,6 +127,7 @@ namespace Nyvorn.Source.Game.States
             Rectangle listBounds = GetWorldListBounds();
             Rectangle newWorldButton = GetNewWorldButtonBounds();
             Rectangle screenBounds = new Rectangle(0, 0, graphicsDevice.PresentationParameters.BackBufferWidth, graphicsDevice.PresentationParameters.BackBufferHeight);
+            RasterizerState scissorRasterizer = new RasterizerState { ScissorTestEnable = true };
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             spriteBatch.Draw(backgroundTexture, screenBounds, Color.White);
@@ -120,8 +146,8 @@ namespace Nyvorn.Source.Game.States
             }
             else
             {
-                foreach ((PlanetSaveSummary summary, Rectangle bounds) in GetWorldEntryBounds())
-                    DrawWorldEntry(spriteBatch, summary, bounds);
+                if (GetMaxScrollOffset() > 0)
+                    DrawScrollHint(spriteBatch, listBounds);
             }
 
             bool buttonHovered = newWorldButton.Contains(Mouse.GetState().Position);
@@ -134,6 +160,17 @@ namespace Nyvorn.Source.Game.States
 
             spriteBatch.DrawString(font, "F5 atualiza a lista", new Vector2(panel.X + 28, panel.Bottom - 32), new Color(143, 211, 255));
             spriteBatch.End();
+
+            if (worlds.Count > 0)
+            {
+                graphicsDevice.ScissorRectangle = listBounds;
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, rasterizerState: scissorRasterizer);
+
+                foreach ((PlanetSaveSummary summary, Rectangle bounds) in GetWorldEntryBounds())
+                    DrawWorldEntry(spriteBatch, summary, bounds);
+
+                spriteBatch.End();
+            }
         }
 
         private void DrawWorldEntry(SpriteBatch spriteBatch, PlanetSaveSummary summary, Rectangle bounds)
@@ -141,7 +178,9 @@ namespace Nyvorn.Source.Game.States
             bool hovered = bounds.Contains(Mouse.GetState().Position);
             Color fill = hovered ? new Color(39, 70, 79) : new Color(28, 50, 58);
             Color accent = hovered ? new Color(255, 241, 193) : new Color(143, 211, 255);
+            Rectangle editButton = GetEditButtonBounds(bounds);
             Rectangle deleteButton = GetDeleteButtonBounds(bounds);
+            bool editHovered = editButton.Contains(Mouse.GetState().Position);
             bool deleteHovered = deleteButton.Contains(Mouse.GetState().Position);
 
             spriteBatch.Draw(pixel, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), accent * 0.7f);
@@ -155,6 +194,12 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, subtitle, new Vector2(bounds.X + 14, bounds.Y + 34), new Color(168, 230, 207));
             spriteBatch.DrawString(font, saveInfo, new Vector2(bounds.X + 14, bounds.Y + 58), new Color(255, 241, 193));
 
+            spriteBatch.Draw(pixel, new Rectangle(editButton.X - 2, editButton.Y - 2, editButton.Width + 4, editButton.Height + 4), new Color(143, 211, 255, 150));
+            spriteBatch.Draw(pixel, editButton, editHovered ? new Color(190, 238, 255) : new Color(143, 211, 255));
+            Vector2 editSize = font.MeasureString("Editar");
+            Vector2 editPos = new Vector2(editButton.X + (editButton.Width - editSize.X) * 0.5f, editButton.Y + (editButton.Height - editSize.Y) * 0.5f);
+            spriteBatch.DrawString(font, "Editar", editPos, new Color(16, 31, 36));
+
             spriteBatch.Draw(pixel, new Rectangle(deleteButton.X - 2, deleteButton.Y - 2, deleteButton.Width + 4, deleteButton.Height + 4), new Color(255, 180, 180, 150));
             spriteBatch.Draw(pixel, deleteButton, deleteHovered ? new Color(255, 210, 210) : new Color(230, 140, 140));
             Vector2 deleteSize = font.MeasureString("Excluir");
@@ -165,6 +210,7 @@ namespace Nyvorn.Source.Game.States
         private void RefreshWorlds()
         {
             worlds = saveService.ListWorlds();
+            listScrollOffset = Math.Clamp(listScrollOffset, 0, GetMaxScrollOffset());
         }
 
         private IEnumerable<(PlanetSaveSummary Summary, Rectangle Bounds)> GetWorldEntryBounds()
@@ -173,16 +219,42 @@ namespace Nyvorn.Source.Game.States
             int entryHeight = 88;
             int gap = 10;
 
-            for (int i = 0; i < worlds.Count && i < 5; i++)
+            for (int i = 0; i < worlds.Count; i++)
             {
                 Rectangle bounds = new Rectangle(
                     listBounds.X + 16,
-                    listBounds.Y + 16 + (i * (entryHeight + gap)),
+                    listBounds.Y + 16 + (i * (entryHeight + gap)) - listScrollOffset,
                     listBounds.Width - 32,
                     entryHeight);
 
                 yield return (worlds[i], bounds);
             }
+        }
+
+        private int GetMaxScrollOffset()
+        {
+            const int entryHeight = 88;
+            const int gap = 10;
+
+            Rectangle listBounds = GetWorldListBounds();
+            int contentHeight = worlds.Count == 0
+                ? 0
+                : 16 + (worlds.Count * entryHeight) + ((worlds.Count - 1) * gap) + 16;
+
+            return Math.Max(0, contentHeight - listBounds.Height);
+        }
+
+        private void DrawScrollHint(SpriteBatch spriteBatch, Rectangle listBounds)
+        {
+            int maxScrollOffset = GetMaxScrollOffset();
+            Rectangle track = new Rectangle(listBounds.Right - 10, listBounds.Y + 12, 4, listBounds.Height - 24);
+            int thumbHeight = Math.Max(36, (int)(track.Height * (listBounds.Height / (float)(listBounds.Height + maxScrollOffset))));
+            int thumbTravel = track.Height - thumbHeight;
+            int thumbOffset = maxScrollOffset == 0 ? 0 : (int)(thumbTravel * (listScrollOffset / (float)maxScrollOffset));
+            Rectangle thumb = new Rectangle(track.X, track.Y + thumbOffset, track.Width, thumbHeight);
+
+            spriteBatch.Draw(pixel, track, new Color(70, 112, 128, 120));
+            spriteBatch.Draw(pixel, thumb, new Color(168, 230, 207, 220));
         }
 
         private string GetPresetLabel(WorldSizePreset preset)
@@ -195,9 +267,14 @@ namespace Nyvorn.Source.Game.States
             };
         }
 
+        private Rectangle GetEditButtonBounds(Rectangle entryBounds)
+        {
+            return new Rectangle(entryBounds.Right - 118, entryBounds.Y + 10, 100, 28);
+        }
+
         private Rectangle GetDeleteButtonBounds(Rectangle entryBounds)
         {
-            return new Rectangle(entryBounds.Right - 118, entryBounds.Y + 24, 100, 36);
+            return new Rectangle(entryBounds.Right - 118, entryBounds.Bottom - 38, 100, 28);
         }
 
         private Rectangle GetPanelBounds()

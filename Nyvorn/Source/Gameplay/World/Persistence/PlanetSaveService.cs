@@ -67,6 +67,27 @@ namespace Nyvorn.Source.World.Persistence
             playerSaveService.Delete(worldId);
         }
 
+        public void Rename(string filePath, string newPlanetName)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                throw new FileNotFoundException("Arquivo do mundo nao encontrado.", filePath);
+
+            string finalPlanetName = string.IsNullOrWhiteSpace(newPlanetName) ? "Mundo" : newPlanetName.Trim();
+            PlanetSaveData saveData = Load(filePath);
+            saveData.Metadata = new PlanetWorldMetadata
+            {
+                WorldId = saveData.Metadata.WorldId,
+                PlanetName = finalPlanetName,
+                Seed = saveData.Metadata.Seed,
+                SizePreset = saveData.Metadata.SizePreset,
+                WorldWidth = saveData.Metadata.WorldWidth,
+                WorldHeight = saveData.Metadata.WorldHeight,
+                TileSize = saveData.Metadata.TileSize
+            };
+
+            Save(saveData);
+        }
+
         public void Save(PlayingSession session)
         {
             if (session == null)

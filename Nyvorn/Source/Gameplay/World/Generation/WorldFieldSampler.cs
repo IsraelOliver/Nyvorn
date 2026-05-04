@@ -4,8 +4,11 @@ namespace Nyvorn.Source.World.Generation
 {
     public static class WorldFieldSampler
     {
-        private const float ShallowStonePocketFrequencyScale = 4f;
-        private const float ShallowStonePocketWarpStrengthScale = 0.25f;
+        private const float ShallowStonePocketFrequencyScale = 3.5f;
+        private const float ShallowStonePocketWarpStrengthScale = 0.15f;
+        private const float DeepDirtPocketBaseFrequency = 0.08f;
+        private const float DeepDirtPocketWarpFrequency = 0.035f;
+        private const float DeepDirtPocketWarpStrength = 8f;
 
         private sealed class NoiseSet
         {
@@ -61,6 +64,30 @@ namespace Nyvorn.Source.World.Generation
                 y,
                 ShallowStonePocketFrequencyScale,
                 ShallowStonePocketWarpStrengthScale);
+        }
+
+        public static float SampleDeepDirtPocketField(WorldGenContext context, int x, int y)
+        {
+            NoiseSet noiseSet = GetNoiseSet(context.Config.Seed);
+
+            float warpX = Fractal(context, noiseSet.WarpNoise, x, y, DeepDirtPocketWarpFrequency, DeepDirtPocketWarpFrequency, 2200f, 400f) * DeepDirtPocketWarpStrength;
+            float warpY = Fractal(context, noiseSet.WarpNoise, x, y, DeepDirtPocketWarpFrequency, DeepDirtPocketWarpFrequency, 3200f, 1400f) * DeepDirtPocketWarpStrength;
+
+            float pocketBase = SampleSeamedNoise(
+                context,
+                noiseSet.DeepNoise,
+                x,
+                y,
+                DeepDirtPocketBaseFrequency,
+                DeepDirtPocketBaseFrequency,
+                warpX,
+                warpY);
+            float broadPocket = Fractal(context, noiseSet.DeepNoise, x, y, 0.010f, 0.015f, 1100f, 2600f);
+            float verticalPocket = SampleSeamedNoise(context, noiseSet.CaveNoise, x, y, 0.008f, 0.040f, 1700f, 800f);
+
+            return (pocketBase * 0.55f) +
+                   (broadPocket * 0.30f) +
+                   (verticalPocket * 0.15f);
         }
 
         public static bool UsesDeepThreshold(WorldGenContext context, int x, int y)
