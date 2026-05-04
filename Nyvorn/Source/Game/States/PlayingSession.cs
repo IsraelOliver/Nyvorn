@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.Combat;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
@@ -21,6 +22,7 @@ namespace Nyvorn.Source.Game.States
     {
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required WorldMap WorldMap { get; init; }
+        public SandSystem SandSystem { get; private set; }
         public required Player Player { get; init; }
         public required List<Enemy> Enemies { get; init; }
         public required List<WorldItem> WorldItems { get; init; }
@@ -28,6 +30,7 @@ namespace Nyvorn.Source.Game.States
         public required Inventory Inventory { get; init; }
         public required Dictionary<ItemId, Texture2D> ItemTextures { get; init; }
         public required Dictionary<ItemId, Weapon> Weapons { get; init; }
+        public required Texture2D DebugPixel { get; init; }
         public required EnemyRespawnController EnemyRespawnController { get; init; }
         public required Camera2D Camera { get; init; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
@@ -90,7 +93,8 @@ namespace Nyvorn.Source.Game.States
 
             InputState worldInput = input;
             InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
-            if (!selectedSlot.IsEmpty && TileItemMapper.TryGetTileType(selectedSlot.ItemId, out _))
+            bool isSandPixelItem = selectedSlot.ItemId == ItemId.SandBlock;
+            if (!selectedSlot.IsEmpty && (isSandPixelItem || TileItemMapper.TryGetTileType(selectedSlot.ItemId, out _)))
             {
                 worldInput = new InputState(
                     input.MoveDir,
@@ -111,6 +115,7 @@ namespace Nyvorn.Source.Game.States
             SyncEquippedWeapon();
             UpdateTilePreview(mouseWorld);
             TryPlaceSelectedBlock(worldInput, mouseWorld);
+            SandSystem?.Update(dt);
             Player.Update(dt, WorldMap, worldInput, mouseWorld);
             mouseWorld = NormalizeLoopingWorld(mouseWorld);
             TryActivateTouchedTissueHub();
@@ -145,6 +150,7 @@ namespace Nyvorn.Source.Game.States
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
 
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
+            DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
         }
 
@@ -546,6 +552,12 @@ namespace Nyvorn.Source.Game.States
             if (selectedSlot.IsEmpty)
                 return;
 
+            if (selectedSlot.ItemId == ItemId.SandBlock)
+            {
+                TryPlaceSandPixel(selectedSlot, mouseWorld);
+                return;
+            }
+
             if (!TileItemMapper.TryGetTileType(selectedSlot.ItemId, out TileType tileType))
                 return;
 
@@ -565,9 +577,39 @@ namespace Nyvorn.Source.Game.States
             blockPlaceCooldownTimer = BlockPlaceInterval;
         }
 
+        private void TryPlaceSandPixel(InventorySlot selectedSlot, Vector2 mouseWorld)
+        {
+            if (blockPlaceCooldownTimer > 0f || SandSystem == null)
+                return;
+
+            int pixelX = WrapPixelX((int)MathF.Floor(mouseWorld.X));
+            int pixelY = (int)MathF.Floor(mouseWorld.Y);
+            if (pixelY < 0 || pixelY >= SandSystem.Height)
+                return;
+
+            Point tile = WorldMap.WorldToTile(new Vector2(pixelX, pixelY));
+            if (!WorldMap.InBounds(tile.X, tile.Y))
+                return;
+
+            if (WorldMap.IsSolidAt(tile.X, tile.Y) || SandSystem.HasSandAt(pixelX, pixelY))
+                return;
+
+            Vector2 pixelCenter = new Vector2(pixelX + 0.5f, pixelY + 0.5f);
+            if (Vector2.Distance(Player.Position, pixelCenter) > Player.WorldInteractionRange)
+                return;
+
+            SandSystem.SetSandAt(pixelX, pixelY, true);
+            selectedSlot.RemoveOne();
+            blockPlaceCooldownTimer = BlockPlaceInterval;
+        }
+
         private void UpdateTilePreview(Vector2 mouseWorld)
         {
             hoveredTileState = WorldTilePreviewState.Hidden;
+
+            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
+            if (!selectedSlot.IsEmpty && selectedSlot.ItemId == ItemId.SandBlock)
+                return;
 
             Point tile = WorldMap.WorldToTile(mouseWorld);
             if (!WorldMap.InBounds(tile.X, tile.Y))
@@ -578,7 +620,6 @@ namespace Nyvorn.Source.Game.States
             bool inRange = Vector2.Distance(Player.Position, tileCenter) <= Player.WorldInteractionRange;
             bool inBreakRange = Vector2.Distance(Player.Position, tileCenter) <= Player.WorldBreakRange;
 
-            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
             if (!selectedSlot.IsEmpty && TileItemMapper.TryGetTileType(selectedSlot.ItemId, out TileType placeTileType))
             {
                 bool canPlace = inRange &&
@@ -731,6 +772,45 @@ namespace Nyvorn.Source.Game.States
             Camera.ShiftX(wrapDelta);
 
             return new Vector2(mouseWorld.X + wrapDelta, mouseWorld.Y);
+        }
+
+        public void InitializeSandSystem()
+        {
+            SandSystem = new SandSystem(WorldMap);
+        }
+
+        private void DrawSandPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (SandSystem == null)
+                return;
+
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            int startPixelX = (int)MathF.Floor(Camera.Position.X - worldOffsetX);
+            int endPixelX = (int)MathF.Ceiling(Camera.Position.X - worldOffsetX + viewWidth);
+            int startPixelY = Math.Max(0, (int)MathF.Floor(Camera.Position.Y));
+            int endPixelY = Math.Min(SandSystem.Height - 1, (int)MathF.Ceiling(Camera.Position.Y + viewHeight));
+
+            for (int y = startPixelY; y <= endPixelY; y++)
+            {
+                for (int x = startPixelX; x <= endPixelX; x++)
+                {
+                    if (!SandSystem.HasSandAt(WrapPixelX(x), y))
+                        continue;
+
+                    spriteBatch.Draw(DebugPixel, new Rectangle(x, y, 1, 1), Color.Yellow);
+                }
+            }
+        }
+
+        private int WrapPixelX(int pixelX)
+        {
+            int worldWidth = WorldMap.PixelWidth;
+            if (worldWidth <= 0)
+                return 0;
+
+            int wrapped = pixelX % worldWidth;
+            return wrapped < 0 ? wrapped + worldWidth : wrapped;
         }
     }
 }

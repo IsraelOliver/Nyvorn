@@ -437,6 +437,7 @@ namespace Nyvorn.Source.Game.States
             Inventory inventory = new(10);
             int selectedHotbarIndex = 0;
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
+            GiveStarterSandBlocks(build.PlayerSaveData, hotbar, inventory);
             List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
 
             PlayingSession session = new PlayingSession
@@ -450,6 +451,7 @@ namespace Nyvorn.Source.Game.States
                 Inventory = inventory,
                 ItemTextures = build.ItemTextures,
                 Weapons = build.Weapons,
+                DebugPixel = CreateDebugPixelTexture(),
                 EnemyRespawnController = enemyRespawnController,
                 Camera = CreateCamera(),
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
@@ -464,10 +466,29 @@ namespace Nyvorn.Source.Game.States
                 ActivatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData)
             };
 
+            session.InitializeSandSystem();
+
             session.SetSelectedHotbarIndex(selectedHotbarIndex);
             session.InitializeRuntimeState();
             PrewarmVisibleTerrainChunks(session);
             return session;
+        }
+
+        private Texture2D CreateDebugPixelTexture()
+        {
+            Texture2D debugPixel = new Texture2D(graphicsDevice, 1, 1);
+            debugPixel.SetData(new[] { Color.White });
+            return debugPixel;
+        }
+
+        private static void GiveStarterSandBlocks(PlayerSaveData playerSaveData, Hotbar hotbar, Inventory inventory)
+        {
+            if (hotbar.ContainsItem(ItemId.SandBlock) || inventory.ContainsItem(ItemId.SandBlock))
+                return;
+
+            ItemDefinition sandDefinition = ItemDefinitions.Get(ItemId.SandBlock);
+            if (!hotbar.TryAdd(sandDefinition, 20))
+                inventory.TryAdd(sandDefinition, 20);
         }
 
         private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
