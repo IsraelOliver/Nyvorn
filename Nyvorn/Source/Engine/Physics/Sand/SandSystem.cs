@@ -1,3 +1,4 @@
+using System;
 using Nyvorn.Source.World;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
@@ -15,6 +16,8 @@ namespace Nyvorn.Source.Engine.Physics.Sand
         public int Width { get; }
         public int Height { get; }
         public int TileSize { get; }
+
+        private readonly Random random = new();
 
         public SandSystem(WorldMap worldMap)
         {
@@ -47,28 +50,54 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                 activeSand.Add(new Point(pixelX, pixelY));
         }
 
-        private Point TryMoveSandDown(int x, int y)
+        private bool CanMoveTo(int x, int y)
         {
-            int newY = y + 1;
+            if (x < 0 || y < 0 || x >= Width || y >= Height)
+                return false;
 
-            if (newY >= Height)
-                return new Point(x, y);
+            if (sandGrid[x, y])
+                return false;
 
             int tileX = x / TileSize;
-            int tileY = newY / TileSize;
+            int tileY = y / TileSize;
+
+            TileType tile = worldMap.GetTile(tileX, tileY);
 
             TileType tileBelow = worldMap.GetTile(tileX, tileY);
 
-            if (worldMap.IsSolid(tileBelow))
-                return new Point(x, y);
+            return !worldMap.IsSolid(tileBelow);
+        }
 
-            if (sandGrid[x, newY])
-                return new Point(x, y);
+        private Point MoveSand(int fromX, int fromY, int toX, int toY)
+        {
+            sandGrid[fromX, fromY] = false;
+            sandGrid[toX, toY] = true;
 
-            sandGrid[x, y] = false;
-            sandGrid[x, newY] = true;
+            return new Point(toX, toY);
+        }
 
-            return new Point(x, newY);
+        private Point TryMoveSandDown(int x, int y)
+        {
+            // 1. Tenta cair reto
+            if (CanMoveTo(x, y + 1))
+                return MoveSand(x, y, x, y + 1);
+
+            // 2. Randomiza qual diagonal testar primeiro
+            bool tryLeftFirst = random.Next(2) == 0;
+
+            int firstDx = tryLeftFirst ? -1 : 1;
+            int secondDx = tryLeftFirst ? 1 : -1;
+
+            // 3. Tenta primeira diagonal
+            if (CanMoveTo(x + firstDx, y + 1))
+                return MoveSand(x, y, x + firstDx, y + 1);
+
+            // 4. Tenta segunda diagonal
+            if (CanMoveTo(x + secondDx, y + 1))
+                return MoveSand(x, y, x + secondDx, y + 1);
+
+            // 5. Não conseguiu mover
+            return new Point(x, y);
         }
         public void Update(float dt)
         {
