@@ -8,6 +8,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
     {
         private const float VisualFootSink = 0f;
         private const float GroundedAnimationGrace = 0.08f;
+        private const float WalkSlopeFallVelocityThreshold = 45f;
 
         private readonly Dictionary<AnimationState, Animation> movementAnimations;
         private readonly Dictionary<AnimationState, Animation> upperMovementAnimations;
@@ -18,6 +19,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private AnimationState movementState = AnimationState.Idle;
         private AnimationState upperState = AnimationState.Idle;
         private float groundedAnimationGraceTimer;
+        private bool isVisuallyGrounded;
 
         public PlayerAnimator()
         {
@@ -35,6 +37,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public int MovementFrameIndex => movementAnimation.CurrentFrameIndex;
         public int UpperFrameIndex => upperAnimation.CurrentFrameIndex;
         public SpriteEffects Effects => facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
+        public bool IsVisuallyGrounded => isVisuallyGrounded;
 
         public void SetFacing(bool value)
         {
@@ -61,6 +64,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 groundedAnimationGraceTimer = System.Math.Max(0f, groundedAnimationGraceTimer - dt);
                 groundedForAnimation = groundedAnimationGraceTimer > 0f && velocity.Y > -apexThreshold;
             }
+
+            if (!groundedForAnimation &&
+                moveDir != 0 &&
+                velocity.Y >= 0f &&
+                velocity.Y <= WalkSlopeFallVelocityThreshold)
+            {
+                groundedForAnimation = true;
+            }
+
+            isVisuallyGrounded = groundedForAnimation;
 
             if (!groundedForAnimation)
             {

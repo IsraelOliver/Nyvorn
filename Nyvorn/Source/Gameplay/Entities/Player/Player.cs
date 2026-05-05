@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Gameplay.Combat.Interfaces;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
@@ -60,7 +61,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             playerAnimator = new PlayerAnimator();
         }
 
-        public void Update(float dt, WorldMap worldMap, InputState input, Vector2 mouseWorld)
+        public void Update(float dt, WorldMap worldMap, SandSystem sandSystem, InputState input, Vector2 mouseWorld)
         {
             combat.Tick(dt);
 
@@ -71,14 +72,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             playerAnimator.SetFacing(facingRight);
 
             float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
-            motor.Update(dt, worldMap, horizontalVelocity, combat.IsDodging);
+            motor.Update(dt, worldMap, sandSystem, horizontalVelocity, combat.IsDodging);
 
             if (motor.IsGrounded && jumpPressed)
                 motor.TryJump();
 
             bool useUpperAttackPose = combat.IsAttacking && combat.UsesPlayerAttackUpperPose;
             playerAnimator.Update(dt, motor.Velocity, moveDir, motor.IsGrounded, useUpperAttackPose);
-            bool useWeaponWalkAnchor = combat.HasVisibleWeaponEquipped && combat.UsesAttackHandPose && moveDir != 0 && motor.IsGrounded && !combat.IsAttacking;
+            bool useWeaponWalkAnchor = combat.HasVisibleWeaponEquipped && combat.UsesAttackHandPose && moveDir != 0 && playerAnimator.IsVisuallyGrounded && !combat.IsAttacking;
             handWorld = playerAnimator.GetHandWorld(VisualPosition, useWeaponWalkAnchor);
             combat.EquippedWeapon.UpdateAim(handWorld, mouseWorld);
             combat.UpdateAttackHitbox(handWorld, playerAnimator.FacingRight);
@@ -99,7 +100,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             if (combat.IsAttacking)
                 combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimation.CurrentFrameIndex);
-            else if (!motor.IsGrounded && motor.Velocity.Y > 0)
+            else if (!playerAnimator.IsVisuallyGrounded && motor.Velocity.Y > 0)
                 combat.EquippedWeapon.SetAttackFrame(0);
             else if (isMoving)
                 combat.EquippedWeapon.SetWalk();

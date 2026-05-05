@@ -55,6 +55,8 @@ namespace Nyvorn.Source.Game.States
         private const float AmbientLinkPresence = 0.045f;
         private const float AmbientHubPresence = 0.085f;
         private const float AmbientTissueSampleInterval = 0.15f;
+        private static readonly Color SandPixelColor = new Color(214, 196, 150);
+        private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
         public int SelectedHotbarIndex { get; private set; }
         private int lastBlockBreakAttackSequence = -1;
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
@@ -116,7 +118,7 @@ namespace Nyvorn.Source.Game.States
             UpdateTilePreview(mouseWorld);
             TryPlaceSelectedBlock(worldInput, mouseWorld);
             SandSystem?.Update(dt);
-            Player.Update(dt, WorldMap, worldInput, mouseWorld);
+            Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
             mouseWorld = NormalizeLoopingWorld(mouseWorld);
             TryActivateTouchedTissueHub();
             TissueRevealController.Update(dt, input, Player.Position);
@@ -509,6 +511,7 @@ namespace Nyvorn.Source.Game.States
             if (!WorldMap.TryBreakTile(tile.X, tile.Y, out TileType removedTile))
                 return;
 
+            SandSystem?.WakeAreaAboveTile(tile.X, tile.Y);
             SpawnBrokenBlockDrop(removedTile, tileCenter);
             lastBlockBreakAttackSequence = Player.AttackSequence;
             lastBrokenBlockTile = tile;
@@ -564,6 +567,9 @@ namespace Nyvorn.Source.Game.States
             Point tile = WorldMap.WorldToTile(mouseWorld);
             Rectangle tileBounds = WorldMap.GetTileBounds(tile.X, tile.Y);
             if (tileBounds.Intersects(Player.Hurtbox))
+                return;
+
+            if (SandSystem != null && SandSystem.HasSandInRectangle(tileBounds.X, tileBounds.Y, tileBounds.Width, tileBounds.Height))
                 return;
 
             Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
@@ -791,15 +797,36 @@ namespace Nyvorn.Source.Game.States
             int startPixelY = Math.Max(0, (int)MathF.Floor(Camera.Position.Y));
             int endPixelY = Math.Min(SandSystem.Height - 1, (int)MathF.Ceiling(Camera.Position.Y + viewHeight));
 
-            for (int y = startPixelY; y <= endPixelY; y++)
-            {
-                for (int x = startPixelX; x <= endPixelX; x++)
-                {
-                    if (!SandSystem.HasSandAt(WrapPixelX(x), y))
-                        continue;
+            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandPixelColor, topEdgesOnly: false);
+            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, topEdgesOnly: true);
+        }
 
-                    spriteBatch.Draw(DebugPixel, new Rectangle(x, y, 1, 1), Color.Yellow);
+        private void DrawWrappedSandRange(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY, Color tint, bool topEdgesOnly)
+        {
+            int worldWidth = SandSystem.Width;
+            if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
+                return;
+
+            int currentRawStartX = rawStartX;
+            while (currentRawStartX <= rawEndX)
+            {
+                int wrappedStartX = WrapPixelX(currentRawStartX);
+                int segmentMaxLength = worldWidth - wrappedStartX;
+                int currentRawEndX = Math.Min(rawEndX, currentRawStartX + segmentMaxLength - 1);
+                int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
+                int drawOffsetX = currentRawStartX - wrappedStartX;
+
+                IEnumerable<Rectangle> segments = topEdgesOnly
+                    ? SandSystem.GetVisibleTopEdgeSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY)
+                    : SandSystem.GetVisibleSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY);
+
+                foreach (Rectangle segment in segments)
+                {
+                    Rectangle drawBounds = new Rectangle(segment.X + drawOffsetX, segment.Y, segment.Width, segment.Height);
+                    spriteBatch.Draw(DebugPixel, drawBounds, tint);
                 }
+
+                currentRawStartX = currentRawEndX + 1;
             }
         }
 
