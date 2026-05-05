@@ -110,6 +110,7 @@ namespace Nyvorn.Source.World.Persistence
                     })
                     .ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
+                SandSnapshot = session.SandSystem?.ExportSnapshot(),
                 TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
                 TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
             });
@@ -170,6 +171,7 @@ namespace Nyvorn.Source.World.Persistence
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
+                SandSnapshot = CompressBytes(saveData.SandSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
             };
@@ -185,6 +187,7 @@ namespace Nyvorn.Source.World.Persistence
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
+                SandSnapshot = DecompressBytes(saveData.SandSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)
             };

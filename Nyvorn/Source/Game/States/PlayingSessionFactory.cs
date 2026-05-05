@@ -253,6 +253,7 @@ namespace Nyvorn.Source.Game.States
             BuildContext build = new();
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
+            build.SavedSandSnapshot = saveData?.SandSnapshot;
             build.SavedWorldItems = saveData != null && saveData.Version >= 5 && saveData.WorldItems != null
                 ? new List<WorldItemSaveData>(saveData.WorldItems)
                 : null;
@@ -467,6 +468,8 @@ namespace Nyvorn.Source.Game.States
             };
 
             session.InitializeSandSystem();
+            if (build.SavedSandSnapshot != null && build.SavedSandSnapshot.Length > 0)
+                session.SandSystem.ImportSnapshot(build.SavedSandSnapshot);
 
             session.SetSelectedHotbarIndex(selectedHotbarIndex);
             session.InitializeRuntimeState();
@@ -487,8 +490,8 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             ItemDefinition sandDefinition = ItemDefinitions.Get(ItemId.SandBlock);
-            if (!hotbar.TryAdd(sandDefinition, 20))
-                inventory.TryAdd(sandDefinition, 20);
+            if (!hotbar.TryAdd(sandDefinition, 2000))
+                inventory.TryAdd(sandDefinition, 2000);
         }
 
         private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
@@ -648,6 +651,7 @@ namespace Nyvorn.Source.Game.States
             public int EnemySpawnTileX { get; set; }
             public TissueNetwork TissueNetwork { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
+            public byte[] SavedSandSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
