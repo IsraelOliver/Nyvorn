@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Gameplay.Items;
+using System;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.UI
@@ -10,8 +11,6 @@ namespace Nyvorn.Source.Gameplay.UI
         public const int SlotSize = 36;
         public const int SlotGap = 6;
         private const int HotbarPadding = 14;
-        private const int HotbarWidth = 137;
-        private const int HotbarHeight = 22;
         private const int HotbarSlotSize = 22;
         private const int HotbarSlotStep = 23;
         private const int HotbarItemSize = 16;
@@ -62,7 +61,7 @@ namespace Nyvorn.Source.Gameplay.UI
             InventoryLayout inventoryLayout = GetInventoryLayout(screenWidth, screenHeight);
             for (int i = 0; i < hotbar.Capacity; i++)
             {
-                Rectangle bounds = GetHotbarSlotBounds(i, screenWidth, screenHeight);
+                Rectangle bounds = GetHotbarSlotBounds(i, hotbar.Capacity, screenWidth, screenHeight);
                 if (bounds.Contains(point))
                 {
                     isHotbar = true;
@@ -89,12 +88,12 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private void DrawHotbar(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int screenWidth, int screenHeight)
         {
-            HotbarLayout layout = GetHotbarLayout(screenWidth, screenHeight);
+            HotbarLayout layout = GetHotbarLayout(hotbar.Capacity, screenWidth, screenHeight);
             spriteBatch.Draw(toolbarTexture, layout.Bounds, layout.Source, Color.White);
 
             for (int i = 0; i < hotbar.Capacity; i++)
             {
-                Rectangle slotBounds = GetHotbarSlotBounds(i, screenWidth, screenHeight);
+                Rectangle slotBounds = GetHotbarSlotBounds(i, hotbar.Capacity, screenWidth, screenHeight);
 
                 if (i == selectedHotbarIndex)
                     spriteBatch.Draw(toolbarTexture, slotBounds, layout.SelectedSource, Color.White);
@@ -179,9 +178,9 @@ namespace Nyvorn.Source.Gameplay.UI
             return new Rectangle(x, y, SlotSize, SlotSize);
         }
 
-        private Rectangle GetHotbarSlotBounds(int slotIndex, int screenWidth, int screenHeight)
+        private Rectangle GetHotbarSlotBounds(int slotIndex, int hotbarCapacity, int screenWidth, int screenHeight)
         {
-            Rectangle hotbarBounds = GetHotbarLayout(screenWidth, screenHeight).Bounds;
+            Rectangle hotbarBounds = GetHotbarLayout(hotbarCapacity, screenWidth, screenHeight).Bounds;
             return new Rectangle(
                 hotbarBounds.X + slotIndex * HotbarSlotStep * HotbarScale,
                 hotbarBounds.Y,
@@ -189,10 +188,16 @@ namespace Nyvorn.Source.Gameplay.UI
                 HotbarSlotSize * HotbarScale);
         }
 
-        private HotbarLayout GetHotbarLayout(int screenWidth, int screenHeight)
+        private HotbarLayout GetHotbarLayout(int hotbarCapacity, int screenWidth, int screenHeight)
         {
-            int width = HotbarWidth * HotbarScale;
-            int height = HotbarHeight * HotbarScale;
+            int sourceWidth = toolbarTexture.Width;
+            int sourceHeight = HotbarSlotSize;
+            int minimumSourceWidth = HotbarSlotSize + Math.Max(0, hotbarCapacity - 1) * HotbarSlotStep;
+            if (sourceWidth < minimumSourceWidth)
+                sourceWidth = minimumSourceWidth;
+
+            int width = sourceWidth * HotbarScale;
+            int height = sourceHeight * HotbarScale;
             Rectangle bounds = new Rectangle(
                 (screenWidth - width) / 2,
                 screenHeight - height - HotbarPadding,
@@ -201,7 +206,7 @@ namespace Nyvorn.Source.Gameplay.UI
 
             return new HotbarLayout(
                 bounds,
-                new Rectangle(0, 0, HotbarWidth, HotbarHeight),
+                new Rectangle(0, 0, sourceWidth, sourceHeight),
                 new Rectangle(0, 23, HotbarSlotSize, HotbarSlotSize));
         }
 

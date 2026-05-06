@@ -434,7 +434,7 @@ namespace Nyvorn.Source.Game.States
             EnemyRespawnController enemyRespawnController = new(build.EnemyTexture, enemySpawn, build.EnemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
 
-            Hotbar hotbar = new(6);
+            Hotbar hotbar = new(9);
             Inventory inventory = new(10);
             int selectedHotbarIndex = 0;
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);

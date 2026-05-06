@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using System;
@@ -119,7 +120,8 @@ namespace Nyvorn.Source.Game.States
 
             Vector2 titlePos = new Vector2(panel.X + 28, panel.Y + 24);
             spriteBatch.DrawString(font, "Novo Mundo", titlePos, new Color(255, 241, 193));
-            spriteBatch.DrawString(font, "Crie um planeta e entre em Elyra.", titlePos + new Vector2(0f, 26f), new Color(168, 230, 207));
+            string wrappedSubtitle = TextLayout.WrapText(font, "Crie um planeta e entre em Elyra.", panel.Width - 56);
+            spriteBatch.DrawString(font, wrappedSubtitle, titlePos + new Vector2(0f, 26f), new Color(168, 230, 207));
 
             DrawLabeledField(spriteBatch, "Planeta", GetPlanetNameBounds(), planetName, focusField == FocusField.PlanetName);
             DrawLabeledField(spriteBatch, "Seed", GetSeedBounds(), string.IsNullOrWhiteSpace(seedText) ? "Aleatoria" : seedText, focusField == FocusField.Seed);
@@ -201,7 +203,8 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, label, labelPos, border);
             spriteBatch.Draw(pixel, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), border * 0.75f);
             spriteBatch.Draw(pixel, bounds, fill);
-            spriteBatch.DrawString(font, value, new Vector2(bounds.X + 12, bounds.Y + 10), Color.White);
+            string wrappedValue = TextLayout.WrapText(font, value, bounds.Width - 24);
+            spriteBatch.DrawString(font, wrappedValue, new Vector2(bounds.X + 12, bounds.Y + 10), Color.White);
         }
 
         private void DrawPresetSelector(SpriteBatch spriteBatch)
@@ -240,9 +243,10 @@ namespace Nyvorn.Source.Game.States
             };
             string line3 = "Esquerda/Direita mudam o preset.";
 
-            spriteBatch.DrawString(font, line1, new Vector2(area.X + 12, area.Y + 10), new Color(255, 241, 193));
-            spriteBatch.DrawString(font, line2, new Vector2(area.X + 12, area.Y + 34), new Color(168, 230, 207));
-            spriteBatch.DrawString(font, line3, new Vector2(area.X + 12, area.Y + 58), new Color(143, 211, 255));
+            float textWidth = area.Width - 24;
+            spriteBatch.DrawString(font, TextLayout.WrapText(font, line1, textWidth), new Vector2(area.X + 12, area.Y + 10), new Color(255, 241, 193));
+            spriteBatch.DrawString(font, TextLayout.WrapText(font, line2, textWidth), new Vector2(area.X + 12, area.Y + 10 + font.LineSpacing), new Color(168, 230, 207));
+            spriteBatch.DrawString(font, TextLayout.WrapText(font, line3, textWidth), new Vector2(area.X + 12, area.Y + 10 + (font.LineSpacing * 2)), new Color(143, 211, 255));
         }
 
         private void DrawCreateButton(SpriteBatch spriteBatch)

@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using System;
@@ -135,14 +136,17 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(pixel, panel, new Color(23, 42, 49, 220));
 
             spriteBatch.DrawString(font, "Mundos", new Vector2(panel.X + 28, panel.Y + 24), new Color(255, 241, 193));
-            spriteBatch.DrawString(font, "Continue um planeta salvo ou crie um novo.", new Vector2(panel.X + 28, panel.Y + 50), new Color(168, 230, 207));
+            string wrappedSubtitle = TextLayout.WrapText(font, "Continue um planeta salvo ou crie um novo.", panel.Width - 56);
+            spriteBatch.DrawString(font, wrappedSubtitle, new Vector2(panel.X + 28, panel.Y + 50), new Color(168, 230, 207));
 
             spriteBatch.Draw(pixel, listBounds, new Color(18, 34, 40, 210));
 
             if (worlds.Count == 0)
             {
-                spriteBatch.DrawString(font, "Nenhum mundo salvo ainda.", new Vector2(listBounds.X + 18, listBounds.Y + 18), Color.White);
-                spriteBatch.DrawString(font, "Crie um novo para gerar o primeiro .plt.", new Vector2(listBounds.X + 18, listBounds.Y + 42), new Color(143, 211, 255));
+                string wrappedEmptyTitle = TextLayout.WrapText(font, "Nenhum mundo salvo ainda.", listBounds.Width - 36);
+                string wrappedEmptyHint = TextLayout.WrapText(font, "Crie um novo para gerar o primeiro .plt.", listBounds.Width - 36);
+                spriteBatch.DrawString(font, wrappedEmptyTitle, new Vector2(listBounds.X + 18, listBounds.Y + 18), Color.White);
+                spriteBatch.DrawString(font, wrappedEmptyHint, new Vector2(listBounds.X + 18, listBounds.Y + 18 + font.LineSpacing * 2), new Color(143, 211, 255));
             }
             else
             {
@@ -158,7 +162,8 @@ namespace Nyvorn.Source.Game.States
             Vector2 buttonPos = new Vector2(newWorldButton.X + (newWorldButton.Width - buttonSize.X) * 0.5f, newWorldButton.Y + (newWorldButton.Height - buttonSize.Y) * 0.5f);
             spriteBatch.DrawString(font, "Novo Mundo", buttonPos, new Color(16, 31, 36));
 
-            spriteBatch.DrawString(font, "F5 atualiza a lista", new Vector2(panel.X + 28, panel.Bottom - 32), new Color(143, 211, 255));
+            string wrappedFooter = TextLayout.WrapText(font, "F5 atualiza a lista", panel.Width - 56);
+            spriteBatch.DrawString(font, wrappedFooter, new Vector2(panel.X + 28, panel.Bottom - 32), new Color(143, 211, 255));
             spriteBatch.End();
 
             if (worlds.Count > 0)
@@ -190,9 +195,14 @@ namespace Nyvorn.Source.Game.States
             string subtitle = $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {summary.Metadata.Seed}";
             string saveInfo = $"Salvo em {summary.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}";
 
-            spriteBatch.DrawString(font, title, new Vector2(bounds.X + 14, bounds.Y + 10), Color.White);
-            spriteBatch.DrawString(font, subtitle, new Vector2(bounds.X + 14, bounds.Y + 34), new Color(168, 230, 207));
-            spriteBatch.DrawString(font, saveInfo, new Vector2(bounds.X + 14, bounds.Y + 58), new Color(255, 241, 193));
+            float textWidth = editButton.X - bounds.X - 28;
+            string wrappedTitle = TextLayout.WrapText(font, title, textWidth);
+            string wrappedSubtitle = TextLayout.WrapText(font, subtitle, textWidth);
+            string wrappedSaveInfo = TextLayout.WrapText(font, saveInfo, textWidth);
+
+            spriteBatch.DrawString(font, wrappedTitle, new Vector2(bounds.X + 14, bounds.Y + 10), Color.White);
+            spriteBatch.DrawString(font, wrappedSubtitle, new Vector2(bounds.X + 14, bounds.Y + 10 + font.LineSpacing), new Color(168, 230, 207));
+            spriteBatch.DrawString(font, wrappedSaveInfo, new Vector2(bounds.X + 14, bounds.Y + 10 + (font.LineSpacing * 2)), new Color(255, 241, 193));
 
             spriteBatch.Draw(pixel, new Rectangle(editButton.X - 2, editButton.Y - 2, editButton.Width + 4, editButton.Height + 4), new Color(143, 211, 255, 150));
             spriteBatch.Draw(pixel, editButton, editHovered ? new Color(190, 238, 255) : new Color(143, 211, 255));
