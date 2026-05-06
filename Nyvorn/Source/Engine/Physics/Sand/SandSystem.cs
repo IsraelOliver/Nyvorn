@@ -324,40 +324,102 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             return true;
         }
 
-        public bool TryGetWalkableSurfaceY(int minPixelX, int maxPixelX, out int surfaceY)
+        public bool TryGetSurfaceSupportY(
+            int minPixelX,
+            int maxPixelX,
+            float referenceY,
+            float maxDistance,
+            int minWidth,
+            int maxStepPerColumn,
+            out int supportY)
         {
-            surfaceY = 0;
-            if (minPixelX > maxPixelX || Width <= 0)
+            supportY = 0;
+            if (minPixelX > maxPixelX || Width <= 0 || minWidth <= 0 || maxDistance < 0f)
                 return false;
 
-            bool foundSurface = false;
-            int bestSurfaceY = int.MaxValue;
-            int currentRawX = minPixelX;
+            bool foundSupport = false;
+            int bestSupportY = 0;
+            float bestDistance = float.MaxValue;
+            int currentGroupStartX = 0;
+            int currentGroupEndX = 0;
+            int currentGroupBestY = 0;
+            float currentGroupBestDistance = float.MaxValue;
+            int previousSurfaceY = 0;
+            bool hasOpenGroup = false;
 
-            while (currentRawX <= maxPixelX)
+            for (int rawX = minPixelX; rawX <= maxPixelX; rawX++)
             {
-                int wrappedStartX = WrapPixelX(currentRawX);
-                int segmentMaxLength = Width - wrappedStartX;
-                int currentRawEndX = Math.Min(maxPixelX, currentRawX + segmentMaxLength - 1);
-                int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawX);
-
-                for (int wrappedX = wrappedStartX; wrappedX <= wrappedEndX; wrappedX++)
+                if (!TryGetTopSandY(rawX, out int candidateSurfaceY) ||
+                    Math.Abs(candidateSurfaceY - referenceY) > maxDistance)
                 {
-                    if (!TryGetTopSandY(wrappedX, out int candidateSurfaceY) || candidateSurfaceY >= bestSurfaceY)
-                        continue;
-
-                    bestSurfaceY = candidateSurfaceY;
-                    foundSurface = true;
+                    CloseGroupIfValid();
+                    continue;
                 }
 
-                currentRawX = currentRawEndX + 1;
+                if (!hasOpenGroup)
+                {
+                    OpenGroup(rawX, candidateSurfaceY);
+                    continue;
+                }
+
+                if (Math.Abs(candidateSurfaceY - previousSurfaceY) <= maxStepPerColumn)
+                {
+                    currentGroupEndX = rawX;
+                    RegisterGroupCandidate(candidateSurfaceY);
+                    previousSurfaceY = candidateSurfaceY;
+                    continue;
+                }
+
+                CloseGroupIfValid();
+                OpenGroup(rawX, candidateSurfaceY);
             }
 
-            if (!foundSurface)
+            CloseGroupIfValid();
+
+            if (!foundSupport)
                 return false;
 
-            surfaceY = bestSurfaceY;
+            supportY = bestSupportY;
             return true;
+
+            void OpenGroup(int rawX, int topY)
+            {
+                hasOpenGroup = true;
+                currentGroupStartX = rawX;
+                currentGroupEndX = rawX;
+                currentGroupBestY = topY;
+                currentGroupBestDistance = Math.Abs(topY - referenceY);
+                previousSurfaceY = topY;
+            }
+
+            void RegisterGroupCandidate(int candidateY)
+            {
+                float distance = Math.Abs(candidateY - referenceY);
+                if (distance < currentGroupBestDistance ||
+                    (distance == currentGroupBestDistance && candidateY < currentGroupBestY))
+                {
+                    currentGroupBestY = candidateY;
+                    currentGroupBestDistance = distance;
+                }
+            }
+
+            void CloseGroupIfValid()
+            {
+                if (!hasOpenGroup)
+                    return;
+
+                int groupWidth = currentGroupEndX - currentGroupStartX + 1;
+                if (groupWidth >= minWidth &&
+                    (currentGroupBestDistance < bestDistance ||
+                    (currentGroupBestDistance == bestDistance && currentGroupBestY < bestSupportY)))
+                {
+                    bestSupportY = currentGroupBestY;
+                    bestDistance = currentGroupBestDistance;
+                    foundSupport = true;
+                }
+
+                hasOpenGroup = false;
+            }
         }
 
         public bool HasSandInRectangle(int pixelX, int pixelY, int width, int height)
