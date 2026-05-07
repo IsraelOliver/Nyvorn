@@ -166,7 +166,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            session.Camera.Follow(session.Player.Position + new Vector2(8f, 12f), screenW, screenH);
+            session.FollowCamera(screenW, screenH);
             previousConsoleKeyboard = keyboard;
         }
 

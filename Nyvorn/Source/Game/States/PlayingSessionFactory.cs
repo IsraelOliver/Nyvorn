@@ -440,32 +440,79 @@ namespace Nyvorn.Source.Game.States
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
             GiveStarterSandBlocks(build.PlayerSaveData, hotbar, inventory);
             List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
-
-            PlayingSession session = new PlayingSession
+            Camera2D camera = CreateCamera();
+            SessionRuntimeContext runtimeContext = new SessionRuntimeContext
             {
-                PlanetMetadata = planetMetadata,
                 WorldMap = build.WorldMap,
                 Player = player,
                 Enemies = enemies,
                 WorldItems = worldItems,
                 Hotbar = hotbar,
                 Inventory = inventory,
-                ItemTextures = build.ItemTextures,
-                Weapons = build.Weapons,
+                Camera = camera
+            };
+            WorldItemRuntimeSystem worldItemRuntimeSystem = new WorldItemRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                WorldItems = worldItems,
+                Hotbar = hotbar,
+                Inventory = inventory,
+                ItemTextures = build.ItemTextures
+            };
+            PlayingSessionEntityRuntimeSystem entityRuntimeSystem = new PlayingSessionEntityRuntimeSystem
+            {
+                RuntimeContext = runtimeContext,
+                WorldItemRuntimeSystem = worldItemRuntimeSystem,
+                EnemyRespawnController = enemyRespawnController
+            };
+            TissueNetwork tissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed);
+            HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
+            PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                TissueNetwork = tissueNetwork,
+                TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
+                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
+                ActivatedTissueHubKeys = activatedTissueHubKeys
+            };
+            PlayingSessionBlockInteractionSystem blockInteractionSystem = new PlayingSessionBlockInteractionSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                WorldItemRuntimeSystem = worldItemRuntimeSystem
+            };
+            PlayingSessionViewCoordinator viewCoordinator = new PlayingSessionViewCoordinator
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Enemies = enemies,
+                WorldItems = worldItems,
+                Camera = runtimeContext.Camera,
                 DebugPixel = CreateDebugPixelTexture(),
-                EnemyRespawnController = enemyRespawnController,
-                Camera = CreateCamera(),
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
                 HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
+                TissueNetwork = tissueNetwork,
+                ActivatedTissueHubKeys = activatedTissueHubKeys
+            };
+
+            PlayingSession session = new PlayingSession
+            {
+                PlanetMetadata = planetMetadata,
+                RuntimeContext = runtimeContext,
+                WorldItemRuntimeSystem = worldItemRuntimeSystem,
+                EntityRuntimeSystem = entityRuntimeSystem,
+                BlockInteractionSystem = blockInteractionSystem,
+                ViewCoordinator = viewCoordinator,
+                TissueSystem = tissueSystem,
+                Weapons = build.Weapons,
                 CombatSystem = new CombatSystem(),
                 WorldTickSystem = new WorldTickSystem(),
-                TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
-                TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
-                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
-                ActivatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData)
             };
 
             session.InitializeSandSystem();
