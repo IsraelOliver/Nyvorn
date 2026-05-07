@@ -17,19 +17,45 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         }
 
         public WorldTickConfig Config => config;
+        public float TimeScale { get; private set; } = 1f;
+        public bool IsPaused { get; private set; }
         public long FastTickCount { get; private set; }
         public long MediumTickCount { get; private set; }
         public long SlowTickCount { get; private set; }
         public WorldTickDispatch LastDispatch { get; private set; }
 
+        public void SetTimeScale(float timeScale)
+        {
+            if (float.IsNaN(timeScale) || float.IsInfinity(timeScale) || timeScale <= 0f)
+                throw new ArgumentOutOfRangeException(nameof(timeScale), "Time scale precisa ser maior que zero.");
+
+            TimeScale = timeScale;
+        }
+
+        public void SetPaused(bool isPaused)
+        {
+            IsPaused = isPaused;
+            if (isPaused)
+                LastDispatch = default;
+        }
+
+        public void RecordManualDispatch(WorldTickDispatch dispatch)
+        {
+            FastTickCount += dispatch.FastTicks;
+            MediumTickCount += dispatch.MediumTicks;
+            SlowTickCount += dispatch.SlowTicks;
+            LastDispatch = dispatch;
+        }
+
         public WorldTickDispatch Advance(float dt)
         {
-            if (dt <= 0f)
+            if (dt <= 0f || IsPaused)
             {
                 LastDispatch = default;
                 return LastDispatch;
             }
 
+            dt *= TimeScale;
             fastAccumulator += dt;
             mediumAccumulator += dt;
             slowAccumulator += dt;
@@ -69,6 +95,8 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 fastAccumulator,
                 mediumAccumulator,
                 slowAccumulator,
+                TimeScale,
+                IsPaused,
                 LastDispatch);
         }
 

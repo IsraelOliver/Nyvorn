@@ -44,10 +44,6 @@ namespace Nyvorn.Source.World
         private readonly Dictionary<WorldChunkCoord, ChunkRenderCache> _chunkCaches = new();
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
         private readonly Dictionary<long, WorldTileChange> _trackedTileChanges = new();
-        private readonly HashSet<long> _grassCandidateKeys = new();
-        private readonly Queue<Point> _grassCandidateQueue = new();
-        private const int GrassSpreadBatchSize = 512;
-        private const float GrassSpreadChance = 0.28f;
 
         public WorldMap(int width, int height, int tileSize)
         {
@@ -85,7 +81,6 @@ namespace Nyvorn.Source.World
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
-            EnqueueGrassCandidateArea(wrappedX, y);
         }
 
         public byte[] ExportTileSnapshot()
@@ -118,7 +113,6 @@ namespace Nyvorn.Source.World
             }
 
             ResetTrackedTileChanges();
-            ClearGrassCandidates();
             RebuildAutoTileVariants();
             MarkAllChunkCachesDirty();
             TileRevision++;
@@ -472,74 +466,6 @@ namespace Nyvorn.Source.World
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
             return true;
-        }
-
-        public int UpdateGrassSpread()
-        {
-            List<(int X, int Y, TileType TileType)> changes = new();
-            List<Point> retryCandidates = new();
-            int processed = 0;
-
-            while (_grassCandidateQueue.Count > 0 && processed < GrassSpreadBatchSize)
-            {
-                Point point = _grassCandidateQueue.Dequeue();
-                long key = CreateTileKey(WrapTileX(point.X), point.Y);
-                _grassCandidateKeys.Remove(key);
-
-                if (!InBounds(point.X, point.Y))
-                    continue;
-
-            TileType tile = GetTile(point.X, point.Y);
-                if (tile == TileType.Dirt)
-                {
-                    if (HasExposedSide(point.X, point.Y) && HasAdjacentGrass(point.X, point.Y))
-                    {
-                        if (Random.Shared.NextSingle() <= GrassSpreadChance)
-                            changes.Add((WrapTileX(point.X), point.Y, TileType.Grass));
-                        else
-                            retryCandidates.Add(new Point(WrapTileX(point.X), point.Y));
-                    }
-                }
-                else if (tile == TileType.Grass)
-                {
-                    continue;
-                }
-
-                processed++;
-            }
-
-            for (int i = 0; i < changes.Count; i++)
-            {
-                (int x, int y, TileType tileType) = changes[i];
-                SetTile(x, y, tileType);
-            }
-
-            for (int i = 0; i < retryCandidates.Count; i++)
-            {
-                Point point = retryCandidates[i];
-                EnqueueGrassCandidate(point.X, point.Y);
-            }
-
-            return changes.Count;
-        }
-
-        public void InitializeGrassSimulation()
-        {
-            _grassCandidateKeys.Clear();
-            _grassCandidateQueue.Clear();
-
-            for (int y = 0; y < Height; y++)
-            {
-                for (int x = 0; x < Width; x++)
-                {
-                    TileType tile = _tiles[x, y];
-                    if (tile != TileType.Grass && tile != TileType.Dirt)
-                        continue;
-
-                    if (tile == TileType.Grass || HasExposedSide(x, y))
-                        EnqueueGrassCandidateArea(x, y);
-                }
-            }
         }
 
         public void BeginTileChangeTracking()
@@ -952,7 +878,7 @@ namespace Nyvorn.Source.World
 
         private Rectangle GetGrassAutoTileSourceRectangle(int x, int y)
         {
-            return GetAutoTileSourceRectangle(x, y);
+            return GetDirtAutoTileSourceRectangle(x, y);
         }
 
         private Rectangle GetStoneAutoTileSourceRectangle(int x, int y)
@@ -1094,55 +1020,6 @@ namespace Nyvorn.Source.World
         private static long CreateTileKey(int x, int y)
         {
             return ((long)y << 32) | (uint)x;
-        }
-
-        private bool HasExposedSide(int x, int y)
-        {
-            return GetTile(x, y - 1) == TileType.Empty
-                || GetTile(x - 1, y) == TileType.Empty
-                || GetTile(x + 1, y) == TileType.Empty
-                || GetTile(x, y + 1) == TileType.Empty;
-        }
-
-        private bool HasAdjacentGrass(int x, int y)
-        {
-            return GetTile(x - 1, y) == TileType.Grass
-                || GetTile(x + 1, y) == TileType.Grass
-                || GetTile(x, y - 1) == TileType.Grass
-                || GetTile(x, y + 1) == TileType.Grass
-                || GetTile(x - 1, y - 1) == TileType.Grass
-                || GetTile(x + 1, y - 1) == TileType.Grass
-                || GetTile(x - 1, y + 1) == TileType.Grass
-                || GetTile(x + 1, y + 1) == TileType.Grass;
-        }
-
-        private void EnqueueGrassCandidateArea(int centerX, int centerY)
-        {
-            for (int y = centerY - 1; y <= centerY + 1; y++)
-            {
-                if (y < 0 || y >= Height)
-                    continue;
-
-                for (int x = centerX - 1; x <= centerX + 1; x++)
-                    EnqueueGrassCandidate(x, y);
-            }
-        }
-
-        private void EnqueueGrassCandidate(int x, int y)
-        {
-            if (!InBounds(x, y))
-                return;
-
-            int wrappedX = WrapTileX(x);
-            long key = CreateTileKey(wrappedX, y);
-            if (_grassCandidateKeys.Add(key))
-                _grassCandidateQueue.Enqueue(new Point(wrappedX, y));
-        }
-
-        private void ClearGrassCandidates()
-        {
-            _grassCandidateKeys.Clear();
-            _grassCandidateQueue.Clear();
         }
 
         private sealed class ChunkRenderCache

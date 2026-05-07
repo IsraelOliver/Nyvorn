@@ -9,6 +9,7 @@ using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
@@ -39,6 +40,7 @@ namespace Nyvorn.Source.Game.States
         public required ElyraSkyRenderer ElyraSkyRenderer { get; init; }
         public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
         public required CombatSystem CombatSystem { get; init; }
+        public required WorldTickSystem WorldTickSystem { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
         public required TissueRevealController TissueRevealController { get; init; }
         public required TissueFieldDebugRenderer TissueDebugRenderer { get; init; }
@@ -48,20 +50,30 @@ namespace Nyvorn.Source.Game.States
         private const float ItemPullStrength = 900f;
         private const float EntitySimulationRangeInTiles = 56f;
         private const float EntityDrawPaddingPixels = 48f;
-        private const float GrassSpreadIntervalMin = 0.9f;
-        private const float GrassSpreadIntervalMax = 3.2f;
         private const float AmbientTissueRadiusInTiles = 7f;
         private const float TissueHubActivationRadiusInTiles = 1.35f;
         private const float AmbientLinkPresence = 0.045f;
         private const float AmbientHubPresence = 0.085f;
         private const float AmbientTissueSampleInterval = 0.15f;
+        private const int SimulationChunkBorder = 1;
+        private const int RandomTileSamplesPerChunk = 2;
+        private const int MaxRandomTileSamplesPerTick = 128;
         private static readonly Color SandPixelColor = new Color(214, 196, 150);
         private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
+        private readonly List<WorldChunkCoord> activeSimulationChunks = new();
+        private readonly Random randomTileUpdateRandom = new();
         public int SelectedHotbarIndex { get; private set; }
+        public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
+        public int LastRandomTileSampleCount { get; private set; }
+        public int LastGrassGrowthCount { get; private set; }
+        public float WorldTickTimeScale => WorldTickSystem.TimeScale;
+        public bool WorldTicksPaused => WorldTickSystem.IsPaused;
+        public long FastTickCount => WorldTickSystem.FastTickCount;
+        public long MediumTickCount => WorldTickSystem.MediumTickCount;
+        public long SlowTickCount => WorldTickSystem.SlowTickCount;
         private int lastBlockBreakAttackSequence = -1;
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
         private float blockPlaceCooldownTimer;
-        private float grassSpreadTimer;
         private float ambientTissuePresenceTimer;
         private float ambientTissuePresenceCache;
         private Rectangle hoveredTileBounds;
@@ -69,24 +81,92 @@ namespace Nyvorn.Source.Game.States
 
         public void InitializeRuntimeState()
         {
-            ScheduleNextGrassSpread();
             ambientTissuePresenceTimer = AmbientTissueSampleInterval;
             ambientTissuePresenceCache = 0f;
         }
 
+        public void SetWorldTickTimeScale(float timeScale)
+        {
+            WorldTickSystem.SetTimeScale(MathHelper.Clamp(timeScale, 0.1f, 16f));
+        }
+
+        public void SetWorldTicksPaused(bool isPaused)
+        {
+            WorldTickSystem.SetPaused(isPaused);
+        }
+
+        public int ForceGrassGrowthSamples(int sampleCount)
+        {
+            int grassGrowthCount = 0;
+            LastRandomTileSampleCount = RandomTileUpdateHelper.VisitRandomTiles(
+                WorldMap,
+                activeSimulationChunks,
+                Math.Max(1, sampleCount),
+                Math.Max(1, sampleCount),
+                randomTileUpdateRandom,
+                tile =>
+                {
+                    if (GrassSimulation.TryRandomUpdate(WorldMap, tile.X, tile.Y, randomTileUpdateRandom))
+                        grassGrowthCount++;
+                });
+
+            LastGrassGrowthCount = grassGrowthCount;
+            return grassGrowthCount;
+        }
+
+        public void StepWorldTicks(int cycles)
+        {
+            int safeCycles = Math.Clamp(cycles, 1, 600);
+            for (int i = 0; i < safeCycles; i++)
+            {
+                OnFastTick();
+                OnMediumTick();
+                OnSlowTick();
+            }
+
+            WorldTickSystem.RecordManualDispatch(new WorldTickDispatch(
+                safeCycles,
+                safeCycles,
+                safeCycles,
+                FastOverflowed: false,
+                MediumOverflowed: false,
+                SlowOverflowed: false));
+        }
+
         public void Update(float dt, InputState input, Vector2 mouseWorld)
+        {
+            UpdateFrame(dt, input, mouseWorld);
+            AdvanceWorldTicks(dt);
+        }
+
+        public void UpdateSimulationViewport(int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+            {
+                activeSimulationChunks.Clear();
+                return;
+            }
+
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            int startTileX = (int)MathF.Floor(Camera.Position.X / WorldMap.TileSize);
+            int endTileX = (int)MathF.Ceiling((Camera.Position.X + viewWidth) / WorldMap.TileSize);
+            int startTileY = (int)MathF.Floor(Camera.Position.Y / WorldMap.TileSize);
+            int endTileY = (int)MathF.Ceiling((Camera.Position.Y + viewHeight) / WorldMap.TileSize);
+
+            ActiveSimulationChunkSelector.Collect(
+                WorldMap,
+                new Rectangle(startTileX, startTileY, Math.Max(1, endTileX - startTileX + 1), Math.Max(1, endTileY - startTileY + 1)),
+                SimulationChunkBorder,
+                activeSimulationChunks);
+        }
+
+        private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)
         {
             ambientTissuePresenceTimer -= dt;
 
             if (blockPlaceCooldownTimer > 0f)
                 blockPlaceCooldownTimer -= dt;
-
-            grassSpreadTimer -= dt;
-            if (grassSpreadTimer <= 0f)
-            {
-                WorldMap.UpdateGrassSpread();
-                ScheduleNextGrassSpread();
-            }
 
             if (input.HotbarSelectionIndex >= 0 && input.HotbarSelectionIndex < Hotbar.Capacity)
                 SelectedHotbarIndex = input.HotbarSelectionIndex;
@@ -117,7 +197,6 @@ namespace Nyvorn.Source.Game.States
             SyncEquippedWeapon();
             UpdateTilePreview(mouseWorld);
             TryPlaceSelectedBlock(worldInput, mouseWorld);
-            SandSystem?.Update(dt);
             Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
             mouseWorld = NormalizeLoopingWorld(mouseWorld);
             TryActivateTouchedTissueHub();
@@ -145,6 +224,46 @@ namespace Nyvorn.Source.Game.States
 
             CombatSystem.Resolve(Player, Enemies);
             EnemyRespawnController.Update(dt, Enemies);
+        }
+
+        private void AdvanceWorldTicks(float dt)
+        {
+            WorldTickDispatch dispatch = WorldTickSystem.Advance(dt);
+
+            for (int i = 0; i < dispatch.FastTicks; i++)
+                OnFastTick();
+
+            for (int i = 0; i < dispatch.MediumTicks; i++)
+                OnMediumTick();
+
+            for (int i = 0; i < dispatch.SlowTicks; i++)
+                OnSlowTick();
+        }
+
+        private void OnFastTick()
+        {
+            SandSystem?.TickFast();
+        }
+
+        private void OnMediumTick()
+        {
+            int grassGrowthCount = 0;
+            LastRandomTileSampleCount = RandomTileUpdateHelper.VisitRandomTiles(
+                WorldMap,
+                activeSimulationChunks,
+                RandomTileSamplesPerChunk,
+                MaxRandomTileSamplesPerTick,
+                randomTileUpdateRandom,
+                tile =>
+                {
+                    if (GrassSimulation.TryRandomUpdate(WorldMap, tile.X, tile.Y, randomTileUpdateRandom))
+                        grassGrowthCount++;
+                });
+            LastGrassGrowthCount = grassGrowthCount;
+        }
+
+        private void OnSlowTick()
+        {
         }
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -430,15 +549,6 @@ namespace Nyvorn.Source.Game.States
             float maxY = WorldMap.Height * WorldMap.TileSize;
             y = Math.Clamp(y, WorldMap.TileSize, Math.Max(WorldMap.TileSize, maxY));
             return new Vector2(x, y);
-        }
-
-        private void ScheduleNextGrassSpread()
-        {
-            grassSpreadTimer = Random.Shared.NextSingle() switch
-            {
-                float roll when roll < 0.18f => MathHelper.Lerp(0.18f, 0.55f, Random.Shared.NextSingle()),
-                _ => MathHelper.Lerp(GrassSpreadIntervalMin, GrassSpreadIntervalMax, Random.Shared.NextSingle())
-            };
         }
 
         public Rectangle GetInventoryPanelBounds(int screenWidth, int screenHeight)

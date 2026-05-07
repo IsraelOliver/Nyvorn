@@ -7,5 +7,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         float FastAccumulator,
         float MediumAccumulator,
         float SlowAccumulator,
+        float TimeScale,
+        bool IsPaused,
         WorldTickDispatch LastDispatch);
 }

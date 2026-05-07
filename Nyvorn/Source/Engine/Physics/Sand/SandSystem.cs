@@ -116,7 +116,7 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             // 5. Não conseguiu mover
             return new Point(x, y);
         }
-        public void Update(float dt)
+        public void TickFast()
         {
             for (int i = activeSand.Count - 1; i >= 0; i--)
             {

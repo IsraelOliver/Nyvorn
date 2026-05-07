@@ -8,6 +8,7 @@ using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
@@ -339,7 +340,6 @@ namespace Nyvorn.Source.Game.States
 
             build.WorldMap.ResetTrackedTileChanges();
             build.WorldMap.ApplyPersistentTileChanges(tileChanges);
-            build.WorldMap.InitializeGrassSimulation();
             build.WorldMap.BeginTileChangeTracking();
         }
 
@@ -461,6 +461,7 @@ namespace Nyvorn.Source.Game.States
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 CombatSystem = new CombatSystem(),
+                WorldTickSystem = new WorldTickSystem(),
                 TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
