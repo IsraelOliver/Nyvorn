@@ -8,6 +8,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Persistence;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Nyvorn.Source.Game.States
 {
@@ -31,10 +32,12 @@ namespace Nyvorn.Source.Game.States
         private bool consoleOpen;
         private string consoleInput = string.Empty;
         private string consoleMessage = string.Empty;
+        private readonly List<string> consoleHistory = new();
         private KeyboardState previousConsoleKeyboard;
         private float autoSaveTimer;
         private const float AutoSaveInterval = 60f;
         private const int MaxConsoleInputLength = 96;
+        private const int MaxConsoleHistoryLines = 6;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -74,6 +77,7 @@ namespace Nyvorn.Source.Game.States
 
             InputState input = inputService.Update();
             KeyboardState keyboard = Keyboard.GetState();
+            bool handledConsoleThisFrame = false;
 
             if (!consoleOpen && IsNewConsoleKeyPress(keyboard, Keys.T))
             {
@@ -81,14 +85,15 @@ namespace Nyvorn.Source.Game.States
                 consoleInput = string.Empty;
                 consoleMessage = string.Empty;
                 previousConsoleKeyboard = keyboard;
-                return;
+                handledConsoleThisFrame = true;
             }
 
             if (consoleOpen)
             {
                 HandleConsoleInput(keyboard);
                 previousConsoleKeyboard = keyboard;
-                return;
+                input = CreateConsoleGameplayInput(input);
+                handledConsoleThisFrame = true;
             }
 
             session.EnsureCurrentTissueHubActivated();
@@ -123,7 +128,7 @@ namespace Nyvorn.Source.Game.States
                     input = input.ConsumeWorldMouseInput();
             }
 
-            if (IsNewConsoleKeyPress(keyboard, Keys.Escape))
+            if (!handledConsoleThisFrame && IsNewConsoleKeyPress(keyboard, Keys.Escape))
             {
                 previousConsoleKeyboard = keyboard;
                 stateMachine.PushState(new PauseMenuState(graphicsDevice, content, stateMachine, session));
@@ -140,6 +145,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             Vector2 mouseWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
+            session.UpdateSimulationViewport(screenW, screenH);
             session.Update(dt, input, mouseWorld);
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
@@ -269,31 +275,243 @@ namespace Nyvorn.Source.Game.States
             if (command.Length == 0)
                 return;
 
+            AddConsoleHistory("> " + command);
             string normalized = command.ToLowerInvariant();
-            if (normalized == "spawn pickaxe" || normalized == "spawn picareta")
+            if (normalized == "/help" || normalized == "help")
             {
-                consoleMessage = session.TryDropItem(ItemId.Pickaxe)
-                    ? "Spawned: pickaxe"
-                    : "Falha ao spawnar pickaxe";
+                SetConsoleMessage("Comandos: /help, spawn pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
                 consoleInput = string.Empty;
                 return;
             }
 
-            consoleMessage = $"Comando desconhecido: {command}";
+            if (normalized == "spawn pickaxe" || normalized == "spawn picareta")
+            {
+                SetConsoleMessage(session.TryDropItem(ItemId.Pickaxe)
+                    ? "Spawned: pickaxe"
+                    : "Falha ao spawnar pickaxe");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (TryExecuteTickCommand(command))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (TryExecuteGrassCommand(command))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (TryExecuteDebugCommand(command))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (TryExecuteWorldCommand(command))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
+            SetConsoleMessage($"Comando desconhecido: {command}");
             consoleInput = string.Empty;
+        }
+
+        private void SetConsoleMessage(string message)
+        {
+            consoleMessage = message;
+            if (!string.IsNullOrWhiteSpace(message))
+                AddConsoleHistory(message);
+        }
+
+        private void AddConsoleHistory(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return;
+
+            consoleHistory.Add(line);
+            while (consoleHistory.Count > MaxConsoleHistoryLines)
+                consoleHistory.RemoveAt(0);
+        }
+
+        private static InputState CreateConsoleGameplayInput(InputState input)
+        {
+            return new InputState(
+                0,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                -1,
+                false,
+                0,
+                input.MouseScreenPosition,
+                0);
+        }
+
+        private bool TryExecuteTickCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("tick", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1 || parts[1].Equals("status", System.StringComparison.OrdinalIgnoreCase))
+            {
+                SetConsoleMessage(session.WorldTicksPaused
+                    ? $"Tick speed: {session.WorldTickTimeScale:0.##}x (paused)"
+                    : $"Tick speed: {session.WorldTickTimeScale:0.##}x");
+                return true;
+            }
+
+            if (parts[1].Equals("reset", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTickTimeScale(1f);
+                session.SetWorldTicksPaused(false);
+                SetConsoleMessage("Tick speed: 1x");
+                return true;
+            }
+
+            if (parts[1].Equals("pause", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTicksPaused(true);
+                SetConsoleMessage("World ticks pausados");
+                return true;
+            }
+
+            if (parts[1].Equals("resume", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTicksPaused(false);
+                SetConsoleMessage($"Tick speed: {session.WorldTickTimeScale:0.##}x");
+                return true;
+            }
+
+            if (parts[1].Equals("step", System.StringComparison.OrdinalIgnoreCase))
+            {
+                int cycles = 1;
+                if (parts.Length >= 3 && !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out cycles))
+                {
+                    SetConsoleMessage("Uso: tick step [1..600]");
+                    return true;
+                }
+
+                cycles = System.Math.Clamp(cycles, 1, 600);
+                session.StepWorldTicks(cycles);
+                SetConsoleMessage($"Ticks manuais: {cycles}");
+                return true;
+            }
+
+            if (parts[1].Equals("speed", System.StringComparison.OrdinalIgnoreCase) &&
+                parts.Length >= 3 &&
+                float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float speed))
+            {
+                session.SetWorldTickTimeScale(speed);
+                session.SetWorldTicksPaused(false);
+                SetConsoleMessage($"Tick speed: {session.WorldTickTimeScale:0.##}x");
+                return true;
+            }
+
+            SetConsoleMessage("Uso: tick speed 1..16, tick step [n], tick pause, tick resume, tick reset, tick status");
+            return true;
+        }
+
+        private bool TryExecuteGrassCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("grass", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length >= 2 && parts[1].Equals("grow", System.StringComparison.OrdinalIgnoreCase))
+            {
+                int samples = 256;
+                if (parts.Length >= 3 && !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out samples))
+                {
+                    SetConsoleMessage("Uso: grass grow [samples]");
+                    return true;
+                }
+
+                samples = System.Math.Clamp(samples, 1, 10000);
+                int grown = session.ForceGrassGrowthSamples(samples);
+                SetConsoleMessage($"Grass grow: {grown}/{samples}");
+                return true;
+            }
+
+            SetConsoleMessage("Uso: grass grow [samples]");
+            return true;
+        }
+
+        private bool TryExecuteDebugCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("debug", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length >= 2 && parts[1].Equals("ticks", System.StringComparison.OrdinalIgnoreCase))
+            {
+                string paused = session.WorldTicksPaused ? " paused" : string.Empty;
+                SetConsoleMessage(
+                    $"F:{session.FastTickCount} M:{session.MediumTickCount} S:{session.SlowTickCount} " +
+                    $"samples:{session.LastRandomTileSampleCount} grass:{session.LastGrassGrowthCount} " +
+                    $"chunks:{session.ActiveSimulationChunks.Count} speed:{session.WorldTickTimeScale:0.##}x{paused}");
+                return true;
+            }
+
+            SetConsoleMessage("Uso: debug ticks");
+            return true;
+        }
+
+        private bool TryExecuteWorldCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("world", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length >= 2 && parts[1].Equals("save", System.StringComparison.OrdinalIgnoreCase))
+            {
+                saveService.Save(session);
+                autoSaveTimer = AutoSaveInterval;
+                SetConsoleMessage("World saved");
+                return true;
+            }
+
+            SetConsoleMessage("Uso: world save");
+            return true;
         }
 
         private void DrawConsole(SpriteBatch spriteBatch, int screenWidth)
         {
-            Rectangle panelBounds = new Rectangle(12, 12, System.Math.Min(screenWidth - 24, 720), 72);
-            spriteBatch.Draw(consolePixel, panelBounds, Color.Black * 0.78f);
-            spriteBatch.Draw(consolePixel, new Rectangle(panelBounds.X, panelBounds.Bottom - 2, panelBounds.Width, 2), new Color(143, 211, 255));
+            int lineHeight = (int)System.MathF.Ceiling(consoleFont.LineSpacing * 0.9f);
+            int inputHeight = lineHeight + 10;
+            int inputY = graphicsDevice.PresentationParameters.BackBufferHeight - inputHeight;
+            Rectangle inputBounds = new Rectangle(0, inputY, screenWidth, inputHeight);
 
-            if (!string.IsNullOrWhiteSpace(consoleMessage))
-                spriteBatch.DrawString(consoleFont, consoleMessage, new Vector2(panelBounds.X + 10, panelBounds.Y + 8), new Color(180, 220, 255));
+            int historyCount = consoleHistory.Count;
+            if (historyCount > 0)
+            {
+                int historyHeight = (lineHeight * historyCount) + 8;
+                Rectangle historyBounds = new Rectangle(0, System.Math.Max(0, inputY - historyHeight), screenWidth, historyHeight);
+                spriteBatch.Draw(consolePixel, historyBounds, Color.Black * 0.58f);
+
+                int firstLineY = historyBounds.Y + 4;
+                for (int i = 0; i < historyCount; i++)
+                {
+                    string line = consoleHistory[i];
+                    Color color = line.StartsWith("> ", System.StringComparison.Ordinal) ? new Color(180, 220, 255) : new Color(220, 235, 238);
+                    spriteBatch.DrawString(consoleFont, line, new Vector2(10, firstLineY + (i * lineHeight)), color);
+                }
+            }
+
+            spriteBatch.Draw(consolePixel, inputBounds, Color.Black * 0.82f);
+            spriteBatch.Draw(consolePixel, new Rectangle(0, inputBounds.Y, screenWidth, 2), new Color(143, 211, 255));
 
             string prompt = "> " + consoleInput + "_";
-            spriteBatch.DrawString(consoleFont, prompt, new Vector2(panelBounds.X + 10, panelBounds.Y + 38), Color.White);
+            spriteBatch.DrawString(consoleFont, prompt, new Vector2(10, inputBounds.Y + 5), Color.White);
         }
 
         private bool IsNewConsoleKeyPress(KeyboardState keyboard, Keys key)

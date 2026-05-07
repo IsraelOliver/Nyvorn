@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Game;
+using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Persistence;
 
 namespace Nyvorn.Source.Game.States
@@ -83,12 +84,14 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(pixel, panel, new Color(23, 42, 49, 230));
 
             spriteBatch.DrawString(font, "Pausado", new Vector2(panel.X + 28, panel.Y + 24), new Color(255, 241, 193));
-            spriteBatch.DrawString(font, session.PlanetMetadata.PlanetName, new Vector2(panel.X + 28, panel.Y + 50), new Color(168, 230, 207));
+            string wrappedPlanetName = TextLayout.WrapText(font, session.PlanetMetadata.PlanetName, panel.Width - 56);
+            spriteBatch.DrawString(font, wrappedPlanetName, new Vector2(panel.X + 28, panel.Y + 50), new Color(168, 230, 207));
 
             DrawButton(spriteBatch, resumeButton, "Continuar", resumeButton.Contains(Mouse.GetState().Position));
             DrawButton(spriteBatch, worldsButton, "Voltar aos Mundos", worldsButton.Contains(Mouse.GetState().Position));
 
-            spriteBatch.DrawString(font, "Esc fecha este menu", new Vector2(panel.X + 28, panel.Bottom - 34), new Color(143, 211, 255));
+            string wrappedHint = TextLayout.WrapText(font, "Esc fecha este menu", panel.Width - 56);
+            spriteBatch.DrawString(font, wrappedHint, new Vector2(panel.X + 28, panel.Bottom - 34), new Color(143, 211, 255));
             spriteBatch.End();
         }
 

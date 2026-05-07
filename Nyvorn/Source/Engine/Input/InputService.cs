@@ -64,7 +64,10 @@ namespace Nyvorn.Source.Engine.Input
                 Keys.D3,
                 Keys.D4,
                 Keys.D5,
-                Keys.D6
+                Keys.D6,
+                Keys.D7,
+                Keys.D8,
+                Keys.D9
             };
 
             Keys[] numPadKeys =
@@ -74,7 +77,10 @@ namespace Nyvorn.Source.Engine.Input
                 Keys.NumPad3,
                 Keys.NumPad4,
                 Keys.NumPad5,
-                Keys.NumPad6
+                Keys.NumPad6,
+                Keys.NumPad7,
+                Keys.NumPad8,
+                Keys.NumPad9
             };
 
             for (int i = 0; i < numberKeys.Length; i++)

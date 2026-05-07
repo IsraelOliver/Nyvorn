@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 
@@ -103,10 +104,12 @@ namespace Nyvorn.Source.Game.States
 
             Vector2 titlePos = new Vector2(panel.X + 28, panel.Y + 24);
             spriteBatch.DrawString(font, "Editar Mundo", titlePos, new Color(255, 241, 193));
-            spriteBatch.DrawString(font, "Renomeie o planeta salvo.", titlePos + new Vector2(0f, 26f), new Color(168, 230, 207));
+            string wrappedSubtitle = TextLayout.WrapText(font, "Renomeie o planeta salvo.", panel.Width - 56);
+            spriteBatch.DrawString(font, wrappedSubtitle, titlePos + new Vector2(0f, 26f), new Color(168, 230, 207));
 
             DrawLabeledField(spriteBatch, "Nome", nameBounds, string.IsNullOrWhiteSpace(planetName) ? "Mundo" : planetName);
-            spriteBatch.DrawString(font, $"Seed {worldSummary.Metadata.Seed} | {GetPresetLabel(worldSummary.Metadata.SizePreset)}", new Vector2(nameBounds.X, nameBounds.Bottom + 20), new Color(143, 211, 255));
+            string wrappedMeta = TextLayout.WrapText(font, $"Seed {worldSummary.Metadata.Seed} | {GetPresetLabel(worldSummary.Metadata.SizePreset)}", nameBounds.Width);
+            spriteBatch.DrawString(font, wrappedMeta, new Vector2(nameBounds.X, nameBounds.Bottom + 20), new Color(143, 211, 255));
 
             DrawButton(spriteBatch, saveBounds, "Salvar", new Color(255, 241, 193), new Color(16, 31, 36));
             DrawButton(spriteBatch, cancelBounds, "Cancelar", new Color(28, 50, 58), Color.White);
@@ -141,7 +144,8 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, label, labelPos, border);
             spriteBatch.Draw(pixel, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), border * 0.75f);
             spriteBatch.Draw(pixel, bounds, fill);
-            spriteBatch.DrawString(font, value, new Vector2(bounds.X + 12, bounds.Y + 10), Color.White);
+            string wrappedValue = TextLayout.WrapText(font, value, bounds.Width - 24);
+            spriteBatch.DrawString(font, wrappedValue, new Vector2(bounds.X + 12, bounds.Y + 10), Color.White);
         }
 
         private void DrawButton(SpriteBatch spriteBatch, Rectangle bounds, string label, Color fill, Color textColor)

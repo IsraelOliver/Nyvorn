@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.Gameplay.UI;
 using System;
 
 namespace Nyvorn.Source.Game.States
@@ -100,16 +101,17 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(pixel, panel, new Color(23, 42, 49, 230));
 
             Vector2 titlePos = new Vector2(panel.X + 28, panel.Y + 32);
-            spriteBatch.DrawString(font, titleText, titlePos, new Color(255, 241, 193));
+            float textWidth = panel.Width - 56;
+            spriteBatch.DrawString(font, TextLayout.WrapText(font, titleText, textWidth), titlePos, new Color(255, 241, 193));
             string phaseText = buildOperation.IsCompleted ? "Concluido" : buildOperation.CurrentPhaseLabel;
             string statusText = buildOperation.IsCompleted ? "Concluido" : buildOperation.StatusText;
             bool showDetail = !string.Equals(phaseText, statusText, StringComparison.Ordinal);
-            spriteBatch.DrawString(font, phaseText + dots, titlePos + new Vector2(0f, 42f), Color.White);
+            spriteBatch.DrawString(font, TextLayout.WrapText(font, phaseText + dots, textWidth), titlePos + new Vector2(0f, 42f), Color.White);
             if (showDetail)
-                spriteBatch.DrawString(font, statusText, titlePos + new Vector2(0f, 68f), new Color(168, 230, 207));
+                spriteBatch.DrawString(font, TextLayout.WrapText(font, statusText, textWidth), titlePos + new Vector2(0f, 68f), new Color(168, 230, 207));
 
             float helperYOffset = showDetail ? 110f : 84f;
-            spriteBatch.DrawString(font, "Isso pode levar um pouco mais em mundos grandes.", titlePos + new Vector2(0f, helperYOffset), new Color(168, 230, 207));
+            spriteBatch.DrawString(font, TextLayout.WrapText(font, "Isso pode levar um pouco mais em mundos grandes.", textWidth), titlePos + new Vector2(0f, helperYOffset), new Color(168, 230, 207));
 
             Rectangle barOuter = new Rectangle(panel.X + 28, panel.Bottom - 56, panel.Width - 56, 16);
             spriteBatch.Draw(pixel, barOuter, new Color(18, 34, 40, 220));
