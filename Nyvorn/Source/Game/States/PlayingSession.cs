@@ -3,8 +3,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Physics.Sand;
-using Nyvorn.Source.Gameplay.Combat;
-using Nyvorn.Source.Gameplay.Combat.Weapons;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
@@ -14,7 +12,6 @@ using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
-using System;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Game.States
@@ -29,21 +26,19 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionBlockInteractionSystem BlockInteractionSystem { get; init; }
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required PlayingSessionTissueSystem TissueSystem { get; init; }
-        public required Dictionary<ItemId, Weapon> Weapons { get; init; }
-        public required CombatSystem CombatSystem { get; init; }
-        public required WorldTickSystem WorldTickSystem { get; init; }
-        private const int RandomTileSamplesPerChunk = 2;
-        private const int MaxRandomTileSamplesPerTick = 128;
-        private readonly Random randomTileUpdateRandom = new();
-        public int SelectedHotbarIndex { get; private set; }
+        public required PlayingSessionInputRouter InputRouter { get; init; }
+        public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
+        public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
+        public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
+        public int SelectedHotbarIndex => InputRouter.SelectedHotbarIndex;
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => ViewCoordinator.ActiveSimulationChunks;
-        public int LastRandomTileSampleCount { get; private set; }
-        public int LastGrassGrowthCount { get; private set; }
-        public float WorldTickTimeScale => WorldTickSystem.TimeScale;
-        public bool WorldTicksPaused => WorldTickSystem.IsPaused;
-        public long FastTickCount => WorldTickSystem.FastTickCount;
-        public long MediumTickCount => WorldTickSystem.MediumTickCount;
-        public long SlowTickCount => WorldTickSystem.SlowTickCount;
+        public int LastRandomTileSampleCount => WorldTickCoordinator.LastRandomTileSampleCount;
+        public int LastGrassGrowthCount => WorldTickCoordinator.LastGrassGrowthCount;
+        public float WorldTickTimeScale => WorldTickCoordinator.WorldTickTimeScale;
+        public bool WorldTicksPaused => WorldTickCoordinator.WorldTicksPaused;
+        public long FastTickCount => WorldTickCoordinator.FastTickCount;
+        public long MediumTickCount => WorldTickCoordinator.MediumTickCount;
+        public long SlowTickCount => WorldTickCoordinator.SlowTickCount;
         public WorldMap WorldMap => RuntimeContext.WorldMap;
         public Player Player => RuntimeContext.Player;
         public List<Enemy> Enemies => RuntimeContext.Enemies;
@@ -63,50 +58,22 @@ namespace Nyvorn.Source.Game.States
 
         public void SetWorldTickTimeScale(float timeScale)
         {
-            WorldTickSystem.SetTimeScale(MathHelper.Clamp(timeScale, 0.1f, 16f));
+            WorldTickCoordinator.SetWorldTickTimeScale(timeScale);
         }
 
         public void SetWorldTicksPaused(bool isPaused)
         {
-            WorldTickSystem.SetPaused(isPaused);
+            WorldTickCoordinator.SetWorldTicksPaused(isPaused);
         }
 
         public int ForceGrassGrowthSamples(int sampleCount)
         {
-            int grassGrowthCount = 0;
-            LastRandomTileSampleCount = RandomTileUpdateHelper.VisitRandomTiles(
-                WorldMap,
-                ViewCoordinator.ActiveSimulationChunks,
-                Math.Max(1, sampleCount),
-                Math.Max(1, sampleCount),
-                randomTileUpdateRandom,
-                tile =>
-                {
-                    if (GrassSimulation.TryRandomUpdate(WorldMap, tile.X, tile.Y, randomTileUpdateRandom))
-                        grassGrowthCount++;
-                });
-
-            LastGrassGrowthCount = grassGrowthCount;
-            return grassGrowthCount;
+            return WorldTickCoordinator.ForceGrassGrowthSamples(sampleCount);
         }
 
         public void StepWorldTicks(int cycles)
         {
-            int safeCycles = Math.Clamp(cycles, 1, 600);
-            for (int i = 0; i < safeCycles; i++)
-            {
-                OnFastTick();
-                OnMediumTick();
-                OnSlowTick();
-            }
-
-            WorldTickSystem.RecordManualDispatch(new WorldTickDispatch(
-                safeCycles,
-                safeCycles,
-                safeCycles,
-                FastOverflowed: false,
-                MediumOverflowed: false,
-                SlowOverflowed: false));
+            WorldTickCoordinator.StepWorldTicks(cycles);
         }
 
         public void Update(float dt, InputState input, Vector2 mouseWorld)
@@ -123,83 +90,23 @@ namespace Nyvorn.Source.Game.States
         private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)
         {
             BlockInteractionSystem.Update(dt);
+            InputState worldInput = InputRouter.RouteFrameInput(input);
 
-            if (input.HotbarSelectionIndex >= 0 && input.HotbarSelectionIndex < Hotbar.Capacity)
-                SelectedHotbarIndex = input.HotbarSelectionIndex;
-            else if (input.MouseWheelDelta != 0)
-                CycleSelectedHotbarSlot(input.MouseWheelDelta);
-
-            InputState worldInput = input;
-            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
-            bool isSandPixelItem = selectedSlot.ItemId == ItemId.SandBlock;
-            if (!selectedSlot.IsEmpty && (isSandPixelItem || TileItemMapper.TryGetTileType(selectedSlot.ItemId, out _)))
-            {
-                worldInput = new InputState(
-                    input.MoveDir,
-                    input.JumpPressed,
-                    false,
-                    false,
-                    input.PlacePressed,
-                    input.OpenInventoryPressed,
-                    input.TissueRevealPressed,
-                    input.ToggleMinimapPressed,
-                    input.HotbarSelectionIndex,
-                    input.DodgePressed,
-                    input.DodgeDir,
-                    input.MouseScreenPosition,
-                    input.MouseWheelDelta);
-            }
-
-            SyncEquippedWeapon();
+            CombatCoordinator.SyncEquippedWeapon(SelectedHotbarIndex);
             BlockInteractionSystem.UpdateTilePreview(SelectedHotbarIndex, mouseWorld);
             BlockInteractionSystem.TryPlaceSelectedBlock(worldInput, SelectedHotbarIndex, mouseWorld);
             Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
-            mouseWorld = NormalizeLoopingWorld(mouseWorld);
+            mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             TissueSystem.Update(dt, input);
             BlockInteractionSystem.TryBreakTargetBlock(mouseWorld);
             EntityRuntimeSystem.Update(dt);
 
-            CombatSystem.Resolve(Player, Enemies);
+            CombatCoordinator.ResolveCombat();
         }
 
         private void AdvanceWorldTicks(float dt)
         {
-            WorldTickDispatch dispatch = WorldTickSystem.Advance(dt);
-
-            for (int i = 0; i < dispatch.FastTicks; i++)
-                OnFastTick();
-
-            for (int i = 0; i < dispatch.MediumTicks; i++)
-                OnMediumTick();
-
-            for (int i = 0; i < dispatch.SlowTicks; i++)
-                OnSlowTick();
-        }
-
-        private void OnFastTick()
-        {
-            SandSystem?.TickFast();
-        }
-
-        private void OnMediumTick()
-        {
-            int grassGrowthCount = 0;
-            LastRandomTileSampleCount = RandomTileUpdateHelper.VisitRandomTiles(
-                WorldMap,
-                ViewCoordinator.ActiveSimulationChunks,
-                RandomTileSamplesPerChunk,
-                MaxRandomTileSamplesPerTick,
-                randomTileUpdateRandom,
-                tile =>
-                {
-                    if (GrassSimulation.TryRandomUpdate(WorldMap, tile.X, tile.Y, randomTileUpdateRandom))
-                        grassGrowthCount++;
-                });
-            LastGrassGrowthCount = grassGrowthCount;
-        }
-
-        private void OnSlowTick()
-        {
+            WorldTickCoordinator.Advance(dt);
         }
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -246,13 +153,7 @@ namespace Nyvorn.Source.Game.States
 
         public void SetSelectedHotbarIndex(int index)
         {
-            SelectedHotbarIndex = Math.Clamp(index, 0, Hotbar.Capacity - 1);
-        }
-
-        private void CycleSelectedHotbarSlot(int mouseWheelDelta)
-        {
-            int direction = mouseWheelDelta > 0 ? -1 : 1;
-            SelectedHotbarIndex = (SelectedHotbarIndex + direction + Hotbar.Capacity) % Hotbar.Capacity;
+            InputRouter.SetSelectedHotbarIndex(index);
         }
 
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
@@ -322,39 +223,12 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.FollowPlayer(screenWidth, screenHeight);
         }
 
-        private void SyncEquippedWeapon()
-        {
-            InventorySlot selectedSlot = Hotbar.GetSlot(SelectedHotbarIndex);
-            if (selectedSlot.IsEmpty || !Weapons.TryGetValue(selectedSlot.ItemId, out Weapon weapon))
-                weapon = Weapons[ItemId.None];
-
-            Player.SetEquippedWeapon(weapon);
-        }
-
-        private Vector2 NormalizeLoopingWorld(Vector2 mouseWorld)
-        {
-            float worldWidth = WorldMap.PixelWidth;
-            float wrapDelta = 0f;
-
-            if (Player.Position.X < 0f)
-                wrapDelta = worldWidth;
-            else if (Player.Position.X >= worldWidth)
-                wrapDelta = -worldWidth;
-
-            if (wrapDelta == 0f)
-                return mouseWorld;
-
-            Player.ShiftX(wrapDelta);
-            Camera.ShiftX(wrapDelta);
-
-            return new Vector2(mouseWorld.X + wrapDelta, mouseWorld.Y);
-        }
-
         public void InitializeSandSystem()
         {
             SandSystem = new SandSystem(WorldMap);
             BlockInteractionSystem.SandSystem = SandSystem;
             ViewCoordinator.SandSystem = SandSystem;
+            WorldTickCoordinator.SandSystem = SandSystem;
         }
     }
 }

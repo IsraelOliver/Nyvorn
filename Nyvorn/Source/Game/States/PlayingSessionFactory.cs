@@ -10,6 +10,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
@@ -322,13 +323,16 @@ namespace Nyvorn.Source.Game.States
             build.GrassTexture = content.Load<Texture2D>("blocks/grass_spritesheet");
             build.SandTexture = content.Load<Texture2D>("blocks/sand_spritesheet");
             build.StoneTexture = content.Load<Texture2D>("blocks/stone_spritesheet");
+            build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
 
             build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.Seed);
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
             build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture);
+            build.WorldMap.SetTreeTexture(build.TreeTexture);
             build.WorldGenerator = new WorldGenerator();
             build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
             build.GenerationProgress = new WorldGenProgressReporter(WorldGenerator.GetOrderedPasses());
+            build.GenerationContext.ProgressReporter = build.GenerationProgress;
         }
 
         private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
@@ -352,6 +356,7 @@ namespace Nyvorn.Source.Game.States
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
+            RestoreTrees(build, saveData.Trees);
 
             if (build.WorldMap.TissueField != null)
             {
@@ -369,6 +374,22 @@ namespace Nyvorn.Source.Game.States
 
             int wrapped = tileX % worldWidth;
             return wrapped < 0 ? wrapped + worldWidth : wrapped;
+        }
+
+        private static void RestoreTrees(BuildContext build, IReadOnlyList<TreeSaveData> savedTrees)
+        {
+            if (savedTrees == null || savedTrees.Count == 0)
+                return;
+
+            List<TreeInstance> trees = new(savedTrees.Count);
+            for (int i = 0; i < savedTrees.Count; i++)
+            {
+                TreeSaveData savedTree = savedTrees[i];
+                if (savedTree != null)
+                    trees.Add(savedTree.ToTree());
+            }
+
+            build.WorldMap.SetTrees(trees);
         }
 
         private void LoadGameplayAssets(BuildContext build)
@@ -484,6 +505,14 @@ namespace Nyvorn.Source.Game.States
                 Hotbar = hotbar,
                 WorldItemRuntimeSystem = worldItemRuntimeSystem
             };
+            PlayingSessionInputRouter inputRouter = new PlayingSessionInputRouter
+            {
+                Hotbar = hotbar
+            };
+            PlayingSessionWorldWrapSystem worldWrapSystem = new PlayingSessionWorldWrapSystem
+            {
+                RuntimeContext = runtimeContext
+            };
             PlayingSessionViewCoordinator viewCoordinator = new PlayingSessionViewCoordinator
             {
                 WorldMap = build.WorldMap,
@@ -500,6 +529,18 @@ namespace Nyvorn.Source.Game.States
                 TissueNetwork = tissueNetwork,
                 ActivatedTissueHubKeys = activatedTissueHubKeys
             };
+            PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
+            {
+                WorldMap = build.WorldMap,
+                ViewCoordinator = viewCoordinator,
+                WorldTickSystem = new WorldTickSystem()
+            };
+            PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
+            {
+                RuntimeContext = runtimeContext,
+                Weapons = build.Weapons,
+                CombatSystem = new CombatSystem()
+            };
 
             PlayingSession session = new PlayingSession
             {
@@ -510,9 +551,10 @@ namespace Nyvorn.Source.Game.States
                 BlockInteractionSystem = blockInteractionSystem,
                 ViewCoordinator = viewCoordinator,
                 TissueSystem = tissueSystem,
-                Weapons = build.Weapons,
-                CombatSystem = new CombatSystem(),
-                WorldTickSystem = new WorldTickSystem(),
+                InputRouter = inputRouter,
+                WorldWrapSystem = worldWrapSystem,
+                WorldTickCoordinator = worldTickCoordinator,
+                CombatCoordinator = combatCoordinator,
             };
 
             session.InitializeSandSystem();
@@ -683,6 +725,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D GrassTexture { get; set; }
             public Texture2D SandTexture { get; set; }
             public Texture2D StoneTexture { get; set; }
+            public Texture2D TreeTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
             public Texture2D PickaxeTexture { get; set; }

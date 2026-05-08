@@ -88,21 +88,22 @@ Responsabilidades principais:
 ```text
 PlayingSession.Update
   -> UpdateFrame
-    -> input contextual / hotbar
-    -> SyncEquippedWeapon
+    -> PlayingSessionInputRouter.RouteFrameInput
+    -> PlayingSessionCombatCoordinator.SyncEquippedWeapon
     -> PlayingSessionBlockInteractionSystem.UpdateTilePreview
     -> PlayingSessionBlockInteractionSystem.TryPlaceSelectedBlock
     -> Player.Update
-    -> NormalizeLoopingWorld
+    -> PlayingSessionWorldWrapSystem.NormalizePlayerAndMouse
     -> PlayingSessionTissueSystem.Update
     -> PlayingSessionBlockInteractionSystem.TryBreakTargetBlock
     -> PlayingSessionEntityRuntimeSystem.Update
-    -> CombatSystem.Resolve
+    -> PlayingSessionCombatCoordinator.ResolveCombat
   -> AdvanceWorldTicks
-    -> WorldTickSystem.Advance
-    -> OnFastTick
-    -> OnMediumTick
-    -> OnSlowTick
+    -> PlayingSessionWorldTickCoordinator.Advance
+      -> WorldTickSystem.Advance
+      -> FastTick
+      -> MediumTick
+      -> SlowTick
 ```
 
 ### Responsabilidades observadas
@@ -114,7 +115,12 @@ PlayingSession.Update
 - camera, viewport de simulacao e helpers principais de render agora estao concentrados em `PlayingSessionViewCoordinator`
 - interacao com blocos, preview, place e break agora estao concentrados em `PlayingSessionBlockInteractionSystem`
 - tecido, presenca ambiente, ativacao de hubs, radar e fast travel agora estao concentrados em `PlayingSessionTissueSystem`
+- roteamento contextual de input e selecao da hotbar agora estao concentrados em `PlayingSessionInputRouter`
+- normalizacao de world wrapping do player, camera e mouse agora esta concentrada em `PlayingSessionWorldWrapSystem`
+- coordenacao de world ticks, ticks manuais, tick de areia e random update de grama agora esta concentrada em `PlayingSessionWorldTickCoordinator`
+- sincronizacao da arma equipada e resolucao de combate agora estao concentradas em `PlayingSessionCombatCoordinator`
 - referencias-base da sessao agora podem ser agrupadas por `SessionRuntimeContext`
+- os sistemas auxiliares da sessao ficam organizados em `Nyvorn/Source/Game/States/PlayingSession/`
 - `PlayingSession` ainda mistura:
   - runtime de entidades
   - random updates
@@ -130,9 +136,10 @@ Depois das extracoes da Fase 3, `PlayingSession` ainda permanece responsavel por
 - ordem principal do frame de gameplay
 - roteamento entre player, inimigos, combate, itens, blocos, tecido e world ticks
 - estado de sessao compartilhado entre subsistemas
-- controle da hotbar selecionada
+- fachada publica para a hotbar selecionada
 - regras de alcance de simulacao de entidades proximas
-- normalizacao de world wrapping no runtime do player e mouse
+- delegacao da normalizacao de world wrapping no runtime do player e mouse
+- fachada publica para comandos/debug de world ticks usados por `PlayingState`
 - fachada publica usada por `PlayingState`, `InventoryState` e persistencia
 
 Esses pontos ainda fazem sentido nela como orquestrador. Novas extracoes devem evitar desmontar essa funcao central e focar apenas em regras detalhadas que ainda sobrarem dentro da sessao.
@@ -310,10 +317,11 @@ PlayingState.Update
   -> PlayingSession.UpdateSimulationViewport
   -> PlayingSession.Update
     -> AdvanceWorldTicks
-      -> WorldTickSystem.Advance(dt)
-      -> OnFastTick
-      -> OnMediumTick
-      -> OnSlowTick
+      -> PlayingSessionWorldTickCoordinator.Advance(dt)
+        -> WorldTickSystem.Advance(dt)
+        -> FastTick
+        -> MediumTick
+        -> SlowTick
 ```
 
 ### FastTick
@@ -422,9 +430,10 @@ Se alguem novo for estudar o projeto, a ordem recomendada e:
 3. `Nyvorn/Source/Game/States/PlayingState.cs`
 4. `Nyvorn/Source/Game/States/PlayingSession.cs`
 5. `Nyvorn/Source/Game/States/PlayingSessionFactory.cs`
-6. `Nyvorn/Source/Gameplay/World/WorldMap.cs`
-7. `Nyvorn/Source/Gameplay/World/Simulation/WorldTickSystem.cs`
-8. `Nyvorn/Source/Gameplay/World/Generation/WorldGenerator.cs`
+6. `Nyvorn/Source/Game/States/PlayingSession/`
+7. `Nyvorn/Source/Gameplay/World/WorldMap.cs`
+8. `Nyvorn/Source/Gameplay/World/Simulation/WorldTickSystem.cs`
+9. `Nyvorn/Source/Gameplay/World/Generation/WorldGenerator.cs`
 
 ## 14. Uso recomendado deste documento
 

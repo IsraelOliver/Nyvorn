@@ -1,0 +1,113 @@
+using Microsoft.Xna.Framework;
+using System.Collections.Generic;
+
+namespace Nyvorn.Source.World.Decorations
+{
+    public sealed class TreePartAtlas
+    {
+        public const int SmallPartPixelSize = 10;
+        public const int SmallPartSpacing = 1;
+
+        public const int SmallGridStartX = 1;
+        public const int SmallGridStartY = 0;
+
+        public const int CanopyPixelWidth = 42;
+        public const int CanopyPixelHeight = 41;
+        public const int CanopySourceX = 67;
+        public const int CanopySourceY = 2;
+
+        private readonly Dictionary<TreePartType, TreePartDefinition> parts = new();
+
+        public TreePartAtlas()
+        {
+            Add(TreePartType.TrunkStraight, 1, 1, new Point(1, 1), isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+            Add(TreePartType.TrunkBaseRightRootSocket, 1, 3, new Point(1, 1), isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, TreePartType.RootLeft);
+            Add(TreePartType.TrunkBaseLeftRootSocket, 4, 3, new Point(1, 1), isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, TreePartType.RootRight);
+            Add(TreePartType.RootLeft, 2, 3, new Point(1, 1), isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, TreePartType.TrunkBaseRightRootSocket);
+            Add(TreePartType.RootRight, 3, 3, new Point(1, 1), isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, TreePartType.TrunkBaseLeftRootSocket);
+            Add(TreePartType.RootBothSocket, 5, 3, new Point(1, 1), isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+            Add(TreePartType.BranchSocketRight, 5, 1, new Point(1, 1), isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, TreePartType.BranchRight);
+            Add(TreePartType.BranchSocketLeft, 5, 2, new Point(1, 1), isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, TreePartType.BranchLeft);
+            Add(TreePartType.BranchRight, 6, 1, new Point(1, 1), isBase: false, isRoot: false, isBranch: true, canReceiveBranch: false, canContinueVertically: false, TreePartType.BranchSocketRight);
+            Add(TreePartType.BranchLeft, 6, 2, new Point(1, 1), isBase: false, isRoot: false, isBranch: true, canReceiveBranch: false, canContinueVertically: false, TreePartType.BranchSocketLeft);
+            Add(TreePartType.TrunkCutSupport, 4, 1, new Point(1, 1), isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+            Add(TreePartType.TrunkContinuation, 6, 3, new Point(1, 1), isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+
+            parts[TreePartType.Canopy] = new TreePartDefinition(
+                TreePartType.Canopy,
+                new Rectangle(CanopySourceX, CanopySourceY, CanopyPixelWidth, CanopyPixelHeight),
+                new Point(6, 6),
+                IsBase: false,
+                IsRoot: false,
+                IsBranch: false,
+                CanReceiveBranch: false,
+                CanContinueVertically: false);
+        }
+
+        public TreePartDefinition Get(TreePartType partType)
+        {
+            return parts[partType];
+        }
+
+        public Rectangle GetSourceRectangle(TreePartType partType)
+        {
+            return parts[partType].SourceRectangle;
+        }
+
+        public Rectangle GetSourceRectangle(TreeInstance tree, TreePartType partType, int placementIndex)
+        {
+            int rootLine = tree.RootStyleRow == 4 ? 4 : 3;
+
+            return partType switch
+            {
+                TreePartType.TrunkStraight => GetStraightTrunkSource(tree.Seed, placementIndex),
+                TreePartType.TrunkBaseRightRootSocket => GetSmallCell(1, rootLine),
+                TreePartType.TrunkBaseLeftRootSocket => GetSmallCell(4, rootLine),
+                TreePartType.RootLeft => GetSmallCell(2, rootLine),
+                TreePartType.RootRight => GetSmallCell(3, rootLine),
+                TreePartType.RootBothSocket => GetSmallCell(5, rootLine),
+                _ => GetSourceRectangle(partType)
+            };
+        }
+
+        private void Add(
+            TreePartType type,
+            int column,
+            int line,
+            Point tileSize,
+            bool isBase,
+            bool isRoot,
+            bool isBranch,
+            bool canReceiveBranch,
+            bool canContinueVertically,
+            TreePartType? complementaryPartType = null)
+        {
+            parts[type] = new TreePartDefinition(
+                type,
+                GetSmallCell(column, line),
+                tileSize,
+                isBase,
+                isRoot,
+                isBranch,
+                canReceiveBranch,
+                canContinueVertically,
+                complementaryPartType);
+        }
+
+        public static Rectangle GetSmallCell(int column, int line)
+        {
+            int x = SmallGridStartX + (column - 1) * (SmallPartPixelSize + SmallPartSpacing);
+            int y = SmallGridStartY + (line - 1) * (SmallPartPixelSize + SmallPartSpacing);
+
+            return new Rectangle(x, y, SmallPartPixelSize, SmallPartPixelSize);
+        }
+
+        private static Rectangle GetStraightTrunkSource(int seed, int placementIndex)
+        {
+            int variant = System.Math.Abs(seed + (placementIndex * 37)) % 6;
+            int column = 1 + (variant % 3);
+            int line = 1 + (variant / 3);
+            return GetSmallCell(column, line);
+        }
+    }
+}

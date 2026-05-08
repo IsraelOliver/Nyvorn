@@ -73,6 +73,7 @@ namespace Nyvorn.Source.Game.States
 
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            WorldMap.DrawDecorations(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
         }
 
