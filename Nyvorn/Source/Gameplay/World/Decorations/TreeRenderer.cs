@@ -8,8 +8,6 @@ namespace Nyvorn.Source.World.Decorations
     {
         private readonly TreePartAtlas atlas = new();
 
-        private const int TreeCellPixelSize = TreePartAtlas.SmallPartPixelSize;
-
         public void Draw(
             SpriteBatch spriteBatch,
             Texture2D texture,
@@ -24,15 +22,21 @@ namespace Nyvorn.Source.World.Decorations
 
             Rectangle visibleTiles = new(
                 Math.Min(startTileX, endTileX) - 8,
-                Math.Min(startTileY, endTileY) - 12,
+                Math.Min(startTileY, endTileY) - 16,
                 Math.Abs(endTileX - startTileX) + 17,
-                Math.Abs(endTileY - startTileY) + 24);
+                Math.Abs(endTileY - startTileY) + 32);
+
+            Rectangle visiblePixels = new(
+                visibleTiles.Left * worldMap.TileSize,
+                visibleTiles.Top * worldMap.TileSize,
+                visibleTiles.Width * worldMap.TileSize,
+                visibleTiles.Height * worldMap.TileSize);
 
             for (int i = 0; i < worldMap.Trees.Count; i++)
             {
                 TreeInstance tree = worldMap.Trees[i];
 
-                if (!visibleTiles.Contains(tree.BaseTile))
+                if (!GetTreePixelBounds(worldMap, tree).Intersects(visiblePixels))
                     continue;
 
                 DrawTree(spriteBatch, texture, worldMap, tree);
@@ -44,12 +48,14 @@ namespace Nyvorn.Source.World.Decorations
             for (int i = 0; i < tree.Parts.Count; i++)
             {
                 TreePartPlacement placement = tree.Parts[i];
+                TreePartDefinition definition = atlas.Get(placement.PartType);
                 Rectangle source = atlas.GetSourceRectangle(tree, placement.PartType, i);
 
                 Rectangle destination = GetPixelPerfectDestination(
                     worldMap,
                     tree.BaseTile,
                     placement.OffsetTiles,
+                    definition.DrawOffsetPixels,
                     source.Width,
                     source.Height);
 
@@ -62,31 +68,61 @@ namespace Nyvorn.Source.World.Decorations
                 worldMap,
                 tree.BaseTile,
                 tree.Canopy.OffsetTiles,
+                canopy.DrawOffsetPixels,
                 canopy.SourceRectangle.Width,
                 canopy.SourceRectangle.Height);
 
             spriteBatch.Draw(texture, canopyDestination, canopy.SourceRectangle, Color.White);
         }
 
+        private Rectangle GetTreePixelBounds(WorldMap worldMap, TreeInstance tree)
+        {
+            Rectangle bounds = Rectangle.Empty;
+            bool hasBounds = false;
+
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                TreePartPlacement placement = tree.Parts[i];
+                TreePartDefinition definition = atlas.Get(placement.PartType);
+                Rectangle source = atlas.GetSourceRectangle(tree, placement.PartType, i);
+                Rectangle destination = GetPixelPerfectDestination(
+                    worldMap,
+                    tree.BaseTile,
+                    placement.OffsetTiles,
+                    definition.DrawOffsetPixels,
+                    source.Width,
+                    source.Height);
+
+                bounds = hasBounds ? Rectangle.Union(bounds, destination) : destination;
+                hasBounds = true;
+            }
+
+            TreePartDefinition canopy = atlas.Get(TreePartType.Canopy);
+            Rectangle canopyDestination = GetPixelPerfectDestination(
+                worldMap,
+                tree.BaseTile,
+                tree.Canopy.OffsetTiles,
+                canopy.DrawOffsetPixels,
+                canopy.SourceRectangle.Width,
+                canopy.SourceRectangle.Height);
+
+            return hasBounds ? Rectangle.Union(bounds, canopyDestination) : canopyDestination;
+        }
+
         private static Rectangle GetPixelPerfectDestination(
             WorldMap worldMap,
             Point baseTile,
-            Point offsetCells,
+            Point offsetTiles,
+            Point drawOffsetPixels,
             int sourceWidth,
             int sourceHeight)
         {
-            int basePixelX = baseTile.X * worldMap.TileSize;
-            int basePixelY = baseTile.Y * worldMap.TileSize;
-
-            // Centraliza a árvore no tile de base, porque o tile do mundo é 8px e a peça da árvore é 10px.
-            int centerOffsetX = (worldMap.TileSize - TreeCellPixelSize) / 2;
-
-            int x = basePixelX + centerOffsetX + offsetCells.X * TreeCellPixelSize;
-            int y = basePixelY + offsetCells.Y * TreeCellPixelSize;
+            int anchorX = (baseTile.X + offsetTiles.X) * worldMap.TileSize;
+            int anchorY = (baseTile.Y + offsetTiles.Y) * worldMap.TileSize;
 
             return new Rectangle(
-                x,
-                y,
+                anchorX + drawOffsetPixels.X,
+                anchorY + drawOffsetPixels.Y,
                 sourceWidth,
                 sourceHeight);
         }

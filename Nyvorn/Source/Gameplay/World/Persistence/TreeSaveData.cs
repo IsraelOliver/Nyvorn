@@ -57,7 +57,7 @@ namespace Nyvorn.Source.World.Persistence
                 BranchDirection = BranchDirection,
                 Seed = Seed,
                 Parts = parts,
-                Canopy = Canopy != null ? ToPlacement(Canopy) : new TreePartPlacement(TreePartType.Canopy, new Point(-2, -Height - 2))
+                Canopy = Canopy != null ? ToPlacement(Canopy) : new TreePartPlacement(TreePartType.Canopy, new Point(-2, -Height - 4))
             };
         }
 

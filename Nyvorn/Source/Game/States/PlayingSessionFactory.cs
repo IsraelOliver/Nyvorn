@@ -386,10 +386,40 @@ namespace Nyvorn.Source.Game.States
             {
                 TreeSaveData savedTree = savedTrees[i];
                 if (savedTree != null)
-                    trees.Add(savedTree.ToTree());
+                    trees.Add(MigrateLegacyTreeBase(build.WorldMap, savedTree, savedTree.ToTree()));
             }
 
             build.WorldMap.SetTrees(trees);
+        }
+
+        private static TreeInstance MigrateLegacyTreeBase(WorldMap worldMap, TreeSaveData savedTree, TreeInstance tree)
+        {
+            bool hasLegacyCanopyOffset = savedTree.Canopy == null ||
+                (savedTree.Canopy.OffsetX == -2 && savedTree.Canopy.OffsetY == -tree.Height - 2);
+            if (!hasLegacyCanopyOffset)
+                return tree;
+
+            if (worldMap.GetTile(tree.BaseTile.X, tree.BaseTile.Y) != TileType.Grass)
+                return tree;
+
+            int migratedBaseY = tree.BaseTile.Y - 1;
+            if (!worldMap.InBounds(tree.BaseTile.X, migratedBaseY) || worldMap.IsSolidAt(tree.BaseTile.X, migratedBaseY))
+                return tree;
+
+            return new TreeInstance
+            {
+                BaseTile = new Point(tree.BaseTile.X, migratedBaseY),
+                Height = tree.Height,
+                Variant = tree.Variant,
+                RootStyleRow = tree.RootStyleRow,
+                BranchHeight = tree.BranchHeight,
+                BranchDirection = tree.BranchDirection,
+                Seed = tree.Seed,
+                Parts = tree.Parts,
+                Canopy = tree.Canopy.PartType == TreePartType.Canopy
+                    ? new TreePartPlacement(TreePartType.Canopy, new Point(-2, -tree.Height - 4))
+                    : tree.Canopy
+            };
         }
 
         private void LoadGameplayAssets(BuildContext build)

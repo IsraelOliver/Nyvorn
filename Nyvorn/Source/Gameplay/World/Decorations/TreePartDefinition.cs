@@ -5,7 +5,8 @@ namespace Nyvorn.Source.World.Decorations
     public sealed record TreePartDefinition(
         TreePartType Type,
         Rectangle SourceRectangle,
-        Point TileSize,
+        Point LogicalTileSize,
+        Point DrawOffsetPixels,
         bool IsBase,
         bool IsRoot,
         bool IsBranch,

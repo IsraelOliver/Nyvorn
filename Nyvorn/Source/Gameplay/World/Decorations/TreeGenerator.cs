@@ -35,16 +35,18 @@ namespace Nyvorn.Source.World.Decorations
                 if (groundY < 0)
                     continue;
 
+                // The logical base is the air tile above the supporting grass tile.
+                int baseY = groundY - 1;
                 int height = random.Next(settings.MinTreeHeight, settings.MaxTreeHeight + 1);
                 TreeVariant variant = PickVariant(random);
                 int rootStyleRow = random.Next(0, 2) == 0 ? 3 : 4;
                 int branchDirection = random.Next(0, 2) == 0 ? -1 : 1;
                 int branchHeight = variant == TreeVariant.Branch ? random.Next(1, Math.Max(2, height - 1)) : -1;
 
-                if (!CanPlaceTree(worldMap, x, groundY, height, variant, branchDirection, branchHeight, trees))
+                if (!CanPlaceTree(worldMap, x, groundY, baseY, height, variant, branchDirection, branchHeight, trees))
                     continue;
 
-                trees.Add(CreateTree(x, groundY, height, variant, rootStyleRow, branchDirection, branchHeight, random.Next()));
+                trees.Add(CreateTree(x, baseY, height, variant, rootStyleRow, branchDirection, branchHeight, random.Next()));
             }
 
             return trees;
@@ -54,6 +56,7 @@ namespace Nyvorn.Source.World.Decorations
             WorldMap worldMap,
             int baseX,
             int groundY,
+            int baseY,
             int height,
             TreeVariant variant,
             int branchDirection,
@@ -63,10 +66,10 @@ namespace Nyvorn.Source.World.Decorations
             if (worldMap.GetTile(baseX, groundY) != TileType.Grass)
                 return false;
 
-            if (groundY <= height + settings.CanopyClearanceTiles)
+            if (!worldMap.InBounds(baseX, baseY) || worldMap.IsSolidAt(baseX, baseY))
                 return false;
 
-            if (worldMap.IsSolidAt(baseX, groundY - 1))
+            if (baseY <= height + settings.CanopyClearanceTiles)
                 return false;
 
             if (IsTooClose(baseX, existingTrees))
@@ -74,8 +77,8 @@ namespace Nyvorn.Source.World.Decorations
 
             int minClearX = baseX - 2;
             int maxClearX = baseX + 2;
-            int topY = groundY - height - settings.CanopyClearanceTiles;
-            for (int y = topY; y <= groundY - 1; y++)
+            int topY = baseY - height - settings.CanopyClearanceTiles;
+            for (int y = topY; y <= baseY; y++)
             {
                 for (int x = minClearX; x <= maxClearX; x++)
                 {
@@ -93,7 +96,7 @@ namespace Nyvorn.Source.World.Decorations
             if (variant == TreeVariant.Branch && branchHeight > 0)
             {
                 int branchX = baseX + branchDirection;
-                int branchY = groundY - branchHeight;
+                int branchY = baseY - branchHeight;
                 if (worldMap.IsSolidAt(branchX, branchY))
                     return false;
             }
@@ -105,10 +108,13 @@ namespace Nyvorn.Source.World.Decorations
         {
             if (variant == TreeVariant.DoubleRoot)
                 return worldMap.GetTile(baseX - 1, groundY) == TileType.Grass
-                    && worldMap.GetTile(baseX + 1, groundY) == TileType.Grass;
+                    && worldMap.GetTile(baseX + 1, groundY) == TileType.Grass
+                    && !worldMap.IsSolidAt(baseX - 1, groundY - 1)
+                    && !worldMap.IsSolidAt(baseX + 1, groundY - 1);
 
             int rootX = baseX + (rootDirection < 0 ? -1 : 1);
-            return worldMap.GetTile(rootX, groundY) == TileType.Grass;
+            return worldMap.GetTile(rootX, groundY) == TileType.Grass
+                && !worldMap.IsSolidAt(rootX, groundY - 1);
         }
 
         private bool IsTooClose(int baseX, IReadOnlyList<TreeInstance> existingTrees)
@@ -167,10 +173,11 @@ namespace Nyvorn.Source.World.Decorations
             int seed)
         {
             List<TreePartPlacement> parts = new();
+            // For SingleRoot, branchDirection is the root side: -1 places the root left, +1 places it right.
             TreePartType basePart = variant switch
             {
-                TreeVariant.SingleRoot when branchDirection < 0 => TreePartType.TrunkBaseRightRootSocket,
-                TreeVariant.SingleRoot => TreePartType.TrunkBaseLeftRootSocket,
+                TreeVariant.SingleRoot when branchDirection < 0 => TreePartType.TrunkBaseLeftRootSocket,
+                TreeVariant.SingleRoot => TreePartType.TrunkBaseRightRootSocket,
                 TreeVariant.DoubleRoot => TreePartType.RootBothSocket,
                 _ => TreePartType.TrunkStraight
             };
@@ -217,7 +224,7 @@ namespace Nyvorn.Source.World.Decorations
                 BranchHeight = branchHeight,
                 Seed = seed,
                 Parts = parts,
-                Canopy = new TreePartPlacement(TreePartType.Canopy, new Point(-2, -height - 2))
+                Canopy = new TreePartPlacement(TreePartType.Canopy, new Point(-2, -height - 4))
             };
         }
     }
