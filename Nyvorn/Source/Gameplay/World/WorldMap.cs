@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Tissue;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
@@ -28,11 +29,13 @@ namespace Nyvorn.Source.World
         public int ChunkTileSize => DefaultChunkTileSize;
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
         public int ChunkCountY => (Height + ChunkTileSize - 1) / ChunkTileSize;
+        public IReadOnlyList<TreeInstance> Trees => _trees;
 
         private Texture2D _dirt;
         private Texture2D _grass;
         private Texture2D _sand;
         private Texture2D _stone;
+        private Texture2D _treeTexture;
         private TissueField _tissueField;
         private TissueAnalysisResult _tissueAnalysis;
         private int _persistedTileRevision;
@@ -41,6 +44,8 @@ namespace Nyvorn.Source.World
 
         private readonly TileType[,] _tiles;
         private readonly byte[,] _autoTileVariants;
+        private readonly List<TreeInstance> _trees = new();
+        private readonly TreeRenderer _treeRenderer = new();
         private readonly Dictionary<WorldChunkCoord, ChunkRenderCache> _chunkCaches = new();
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
         private readonly Dictionary<long, WorldTileChange> _trackedTileChanges = new();
@@ -530,6 +535,60 @@ namespace Nyvorn.Source.World
             MarkAllChunkCachesDirty();
         }
 
+        public void SetTreeTexture(Texture2D treeTexture)
+        {
+            _treeTexture = treeTexture;
+        }
+
+        public void SetTrees(IEnumerable<TreeInstance> trees)
+        {
+            _trees.Clear();
+            if (trees != null)
+                _trees.AddRange(trees);
+        }
+
+        public bool TryGetTreeAtBaseTile(Point tile, out TreeInstance tree)
+        {
+            tree = null;
+
+            if (!InBounds(tile.X, tile.Y))
+                return false;
+
+            int wrappedTileX = WrapTileX(tile.X);
+            for (int treeIndex = 0; treeIndex < _trees.Count; treeIndex++)
+            {
+                TreeInstance candidate = _trees[treeIndex];
+                for (int partIndex = 0; partIndex < candidate.Parts.Count; partIndex++)
+                {
+                    TreePartPlacement placement = candidate.Parts[partIndex];
+                    if (placement.OffsetTiles.Y != 0)
+                        continue;
+
+                    int partX = WrapTileX(candidate.BaseTile.X + placement.OffsetTiles.X);
+                    int partY = candidate.BaseTile.Y + placement.OffsetTiles.Y;
+                    if (partX != wrappedTileX || partY != tile.Y)
+                        continue;
+
+                    tree = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool TryRemoveTree(TreeInstance tree)
+        {
+            if (tree == null)
+                return false;
+
+            if (!_trees.Remove(tree))
+                return false;
+
+            TileRevision++;
+            return true;
+        }
+
         public void Draw(SpriteBatch spriteBatch)
         {
             Draw(spriteBatch, 0, Width - 1, 0, Height - 1);
@@ -552,6 +611,11 @@ namespace Nyvorn.Source.World
             }
 
             DrawTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY, 0, 0);
+        }
+
+        public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer)
+        {
+            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer);
         }
 
         public void PrepareVisibleChunkCache(GraphicsDevice graphicsDevice, int startTileX, int endTileX, int startTileY, int endTileY)

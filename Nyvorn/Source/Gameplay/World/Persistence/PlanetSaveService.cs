@@ -98,6 +98,9 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = session.PlanetMetadata,
                 SavedAtUtc = DateTime.UtcNow,
                 TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
+                Trees = session.WorldMap.Trees
+                    .Select(TreeSaveData.FromTree)
+                    .ToList(),
                 WorldItems = session.WorldItems
                     .Select(item => new WorldItemSaveData
                     {
@@ -170,6 +173,7 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
+                Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 SandSnapshot = CompressBytes(saveData.SandSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
@@ -186,6 +190,7 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
+                Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 SandSnapshot = DecompressBytes(saveData.SandSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),

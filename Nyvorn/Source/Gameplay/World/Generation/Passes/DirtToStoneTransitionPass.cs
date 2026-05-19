@@ -17,7 +17,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         public void Apply(WorldGenContext context)
         {
-            context.ProgressReporter?.Begin(Name, "Misturando terra e pedra em bolsões");
+            context.ProgressReporter?.Begin(Name, "Misturando terra e pedra em bolsoes");
 
             int dirtCount = 0;
             int stoneCount = 0;
@@ -62,7 +62,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                 }
 
                 if ((x & 31) == 0 || x == context.WorldMap.Width - 1)
-                    context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Misturando terra e pedra em bolsões");
+                    context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Misturando terra e pedra em bolsoes");
             }
 
             context.DebugStats["DirtToStoneTransition.DirtTiles"] = dirtCount.ToString();

@@ -10,6 +10,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
@@ -322,13 +323,16 @@ namespace Nyvorn.Source.Game.States
             build.GrassTexture = content.Load<Texture2D>("blocks/grass_spritesheet");
             build.SandTexture = content.Load<Texture2D>("blocks/sand_spritesheet");
             build.StoneTexture = content.Load<Texture2D>("blocks/stone_spritesheet");
+            build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
 
             build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.Seed);
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
             build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture);
+            build.WorldMap.SetTreeTexture(build.TreeTexture);
             build.WorldGenerator = new WorldGenerator();
             build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
             build.GenerationProgress = new WorldGenProgressReporter(WorldGenerator.GetOrderedPasses());
+            build.GenerationContext.ProgressReporter = build.GenerationProgress;
         }
 
         private static void PrepareWorld(BuildContext build, IReadOnlyCollection<WorldTileChange> tileChanges)
@@ -352,6 +356,7 @@ namespace Nyvorn.Source.Game.States
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
+            RestoreTrees(build, saveData.Trees);
 
             if (build.WorldMap.TissueField != null)
             {
@@ -369,6 +374,52 @@ namespace Nyvorn.Source.Game.States
 
             int wrapped = tileX % worldWidth;
             return wrapped < 0 ? wrapped + worldWidth : wrapped;
+        }
+
+        private static void RestoreTrees(BuildContext build, IReadOnlyList<TreeSaveData> savedTrees)
+        {
+            if (savedTrees == null || savedTrees.Count == 0)
+                return;
+
+            List<TreeInstance> trees = new(savedTrees.Count);
+            for (int i = 0; i < savedTrees.Count; i++)
+            {
+                TreeSaveData savedTree = savedTrees[i];
+                if (savedTree != null)
+                    trees.Add(MigrateLegacyTreeBase(build.WorldMap, savedTree, savedTree.ToTree()));
+            }
+
+            build.WorldMap.SetTrees(trees);
+        }
+
+        private static TreeInstance MigrateLegacyTreeBase(WorldMap worldMap, TreeSaveData savedTree, TreeInstance tree)
+        {
+            bool hasLegacyCanopyOffset = savedTree.Canopy == null ||
+                (savedTree.Canopy.OffsetX == -2 && savedTree.Canopy.OffsetY == -tree.Height - 2);
+            if (!hasLegacyCanopyOffset)
+                return tree;
+
+            if (worldMap.GetTile(tree.BaseTile.X, tree.BaseTile.Y) != TileType.Grass)
+                return tree;
+
+            int migratedBaseY = tree.BaseTile.Y - 1;
+            if (!worldMap.InBounds(tree.BaseTile.X, migratedBaseY) || worldMap.IsSolidAt(tree.BaseTile.X, migratedBaseY))
+                return tree;
+
+            return new TreeInstance
+            {
+                BaseTile = new Point(tree.BaseTile.X, migratedBaseY),
+                Height = tree.Height,
+                Variant = tree.Variant,
+                RootStyleRow = tree.RootStyleRow,
+                BranchHeight = tree.BranchHeight,
+                BranchDirection = tree.BranchDirection,
+                Seed = tree.Seed,
+                Parts = tree.Parts,
+                Canopy = tree.Canopy.PartType == TreePartType.Canopy
+                    ? new TreePartPlacement(TreePartType.Canopy, new Point(-2, -tree.Height - 4))
+                    : tree.Canopy
+            };
         }
 
         private void LoadGameplayAssets(BuildContext build)
@@ -440,32 +491,100 @@ namespace Nyvorn.Source.Game.States
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
             GiveStarterSandBlocks(build.PlayerSaveData, hotbar, inventory);
             List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
-
-            PlayingSession session = new PlayingSession
+            Camera2D camera = CreateCamera();
+            SessionRuntimeContext runtimeContext = new SessionRuntimeContext
             {
-                PlanetMetadata = planetMetadata,
                 WorldMap = build.WorldMap,
                 Player = player,
                 Enemies = enemies,
                 WorldItems = worldItems,
                 Hotbar = hotbar,
                 Inventory = inventory,
-                ItemTextures = build.ItemTextures,
-                Weapons = build.Weapons,
+                Camera = camera
+            };
+            WorldItemRuntimeSystem worldItemRuntimeSystem = new WorldItemRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                WorldItems = worldItems,
+                Hotbar = hotbar,
+                Inventory = inventory,
+                ItemTextures = build.ItemTextures
+            };
+            PlayingSessionEntityRuntimeSystem entityRuntimeSystem = new PlayingSessionEntityRuntimeSystem
+            {
+                RuntimeContext = runtimeContext,
+                WorldItemRuntimeSystem = worldItemRuntimeSystem,
+                EnemyRespawnController = enemyRespawnController
+            };
+            TissueNetwork tissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed);
+            HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
+            PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                TissueNetwork = tissueNetwork,
+                TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
+                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
+                ActivatedTissueHubKeys = activatedTissueHubKeys
+            };
+            PlayingSessionBlockInteractionSystem blockInteractionSystem = new PlayingSessionBlockInteractionSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                WorldItemRuntimeSystem = worldItemRuntimeSystem
+            };
+            PlayingSessionInputRouter inputRouter = new PlayingSessionInputRouter
+            {
+                Hotbar = hotbar
+            };
+            PlayingSessionWorldWrapSystem worldWrapSystem = new PlayingSessionWorldWrapSystem
+            {
+                RuntimeContext = runtimeContext
+            };
+            PlayingSessionViewCoordinator viewCoordinator = new PlayingSessionViewCoordinator
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Enemies = enemies,
+                WorldItems = worldItems,
+                Camera = runtimeContext.Camera,
                 DebugPixel = CreateDebugPixelTexture(),
-                EnemyRespawnController = enemyRespawnController,
-                Camera = CreateCamera(),
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
                 HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
-                CombatSystem = new CombatSystem(),
-                WorldTickSystem = new WorldTickSystem(),
-                TissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed),
-                TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
-                TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
-                ActivatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData)
+                TissueNetwork = tissueNetwork,
+                ActivatedTissueHubKeys = activatedTissueHubKeys
+            };
+            PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
+            {
+                WorldMap = build.WorldMap,
+                ViewCoordinator = viewCoordinator,
+                WorldTickSystem = new WorldTickSystem()
+            };
+            PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
+            {
+                RuntimeContext = runtimeContext,
+                Weapons = build.Weapons,
+                CombatSystem = new CombatSystem()
+            };
+
+            PlayingSession session = new PlayingSession
+            {
+                PlanetMetadata = planetMetadata,
+                RuntimeContext = runtimeContext,
+                WorldItemRuntimeSystem = worldItemRuntimeSystem,
+                EntityRuntimeSystem = entityRuntimeSystem,
+                BlockInteractionSystem = blockInteractionSystem,
+                ViewCoordinator = viewCoordinator,
+                TissueSystem = tissueSystem,
+                InputRouter = inputRouter,
+                WorldWrapSystem = worldWrapSystem,
+                WorldTickCoordinator = worldTickCoordinator,
+                CombatCoordinator = combatCoordinator,
             };
 
             session.InitializeSandSystem();
@@ -636,6 +755,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D GrassTexture { get; set; }
             public Texture2D SandTexture { get; set; }
             public Texture2D StoneTexture { get; set; }
+            public Texture2D TreeTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
             public Texture2D PickaxeTexture { get; set; }

@@ -6,6 +6,7 @@ namespace Nyvorn.Source.Gameplay.Items
         Pickaxe = 2,
         DirtBlock = 3,
         StoneBlock = 4,
-        SandBlock = 5
+        SandBlock = 5,
+        RawWood = 6
     }
 }
