@@ -19,8 +19,7 @@ namespace Nyvorn.Source.World.Decorations
         private readonly Dictionary<TreePartType, TreePartDefinition> parts = new();
 
         private static readonly Point SingleTile = new(1, 1);
-        private static readonly Point SmallPartDrawOffset = new(-1, -2);
-        private static readonly Point CanopyDrawOffset = new(-1, 0);
+        private static readonly Point NoDrawOffset = Point.Zero;
 
         public TreePartAtlas()
         {
@@ -29,8 +28,8 @@ namespace Nyvorn.Source.World.Decorations
             // SocketRight/Left describe the side of the trunk socket. RootLeft/Right describe placement around the trunk.
             Add(TreePartType.TrunkBaseRightRootSocket, 1, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootRight);
             Add(TreePartType.TrunkBaseLeftRootSocket, 4, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootLeft);
-            Add(TreePartType.RootLeft, 2, 3, isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.TrunkBaseLeftRootSocket);
-            Add(TreePartType.RootRight, 3, 3, isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.TrunkBaseRightRootSocket);
+            Add(TreePartType.RootLeft, 3, 3, isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.TrunkBaseLeftRootSocket);
+            Add(TreePartType.RootRight, 2, 3, isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.TrunkBaseRightRootSocket);
             Add(TreePartType.RootBothSocket, 5, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
             Add(TreePartType.BranchSocketRight, 5, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, complementaryPartType: TreePartType.BranchRight);
             Add(TreePartType.BranchSocketLeft, 5, 2, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, complementaryPartType: TreePartType.BranchLeft);
@@ -43,7 +42,7 @@ namespace Nyvorn.Source.World.Decorations
                 TreePartType.Canopy,
                 new Rectangle(CanopySourceX, CanopySourceY, CanopyPixelWidth, CanopyPixelHeight),
                 new Point(6, 6),
-                CanopyDrawOffset,
+                NoDrawOffset,
                 IsBase: false,
                 IsRoot: false,
                 IsBranch: false,
@@ -70,8 +69,8 @@ namespace Nyvorn.Source.World.Decorations
                 TreePartType.TrunkStraight => GetStraightTrunkSource(tree.Seed, placementIndex),
                 TreePartType.TrunkBaseRightRootSocket => GetSmallCell(1, rootLine),
                 TreePartType.TrunkBaseLeftRootSocket => GetSmallCell(4, rootLine),
-                TreePartType.RootLeft => GetSmallCell(2, rootLine),
-                TreePartType.RootRight => GetSmallCell(3, rootLine),
+                TreePartType.RootLeft => GetSmallCell(3, rootLine),
+                TreePartType.RootRight => GetSmallCell(2, rootLine),
                 TreePartType.RootBothSocket => GetSmallCell(5, rootLine),
                 _ => GetSourceRectangle(partType)
             };
@@ -93,7 +92,7 @@ namespace Nyvorn.Source.World.Decorations
                 type,
                 GetSmallCell(column, line),
                 SingleTile,
-                drawOffsetPixels ?? SmallPartDrawOffset,
+                drawOffsetPixels ?? NoDrawOffset,
                 isBase,
                 isRoot,
                 isBranch,
@@ -112,6 +111,12 @@ namespace Nyvorn.Source.World.Decorations
 
         private static Rectangle GetStraightTrunkSource(int seed, int placementIndex)
         {
+            if (placementIndex == 0)
+            {
+                int baseLine = 1 + (System.Math.Abs(seed) % 2);
+                return GetSmallCell(1, baseLine);
+            }
+
             int variant = System.Math.Abs(seed + (placementIndex * 37)) % 6;
             int column = 1 + (variant % 3);
             int line = 1 + (variant / 3);

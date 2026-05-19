@@ -5,15 +5,21 @@ using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 
 namespace Nyvorn.Source.Game.States
 {
     public sealed class PlayingSessionBlockInteractionSystem
     {
         private const float BlockPlaceInterval = 0.08f;
+        private const float TreeChopDurationSeconds = 3f;
+        private const float PickaxeTreeChopStepSeconds = 0.3f;
 
         private int lastBlockBreakAttackSequence = -1;
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
+        private int lastTreeChopAttackSequence = -1;
+        private TreeInstance choppingTree;
+        private float treeChopProgressSeconds;
         private float blockPlaceCooldownTimer;
 
         public required WorldMap WorldMap { get; init; }
@@ -56,6 +62,14 @@ namespace Nyvorn.Source.Game.States
                                 !HoveredTileBounds.Intersects(Player.Hurtbox);
 
                 HoveredTileState = canPlace ? WorldTilePreviewState.PlaceValid : WorldTilePreviewState.PlaceInvalid;
+                return;
+            }
+
+            if (IsPickaxeSelected(selectedSlot) && WorldMap.TryGetTreeAtBaseTile(tile, out _))
+            {
+                HoveredTileState = inBreakRange
+                    ? WorldTilePreviewState.BreakValid
+                    : WorldTilePreviewState.BreakInvalid;
                 return;
             }
 
@@ -111,12 +125,15 @@ namespace Nyvorn.Source.Game.States
             blockPlaceCooldownTimer = BlockPlaceInterval;
         }
 
-        public void TryBreakTargetBlock(Vector2 mouseWorld)
+        public void TryBreakTargetBlock(Vector2 mouseWorld, int selectedHotbarIndex)
         {
             if (!Player.HasActiveAttackHitbox)
                 return;
 
             Point tile = WorldMap.WorldToTile(mouseWorld);
+            if (TryChopTree(tile, selectedHotbarIndex))
+                return;
+
             if (Player.AttackSequence == lastBlockBreakAttackSequence && tile == lastBrokenBlockTile)
                 return;
 
@@ -135,6 +152,56 @@ namespace Nyvorn.Source.Game.States
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);
             lastBlockBreakAttackSequence = Player.AttackSequence;
             lastBrokenBlockTile = tile;
+        }
+
+        private bool TryChopTree(Point tile, int selectedHotbarIndex)
+        {
+            InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
+            if (!IsPickaxeSelected(selectedSlot))
+                return false;
+
+            if (!WorldMap.TryGetTreeAtBaseTile(tile, out TreeInstance tree))
+                return false;
+
+            Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
+            if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldBreakRange)
+                return true;
+
+            if (Player.AttackSequence == lastTreeChopAttackSequence)
+                return true;
+
+            if (!ReferenceEquals(choppingTree, tree))
+            {
+                choppingTree = tree;
+                treeChopProgressSeconds = 0f;
+            }
+
+            treeChopProgressSeconds += PickaxeTreeChopStepSeconds;
+            lastTreeChopAttackSequence = Player.AttackSequence;
+
+            if (treeChopProgressSeconds < TreeChopDurationSeconds)
+                return true;
+
+            int woodQuantity = System.Math.Max(1, tree.Height);
+            Vector2 dropPosition = WorldMap.GetTileCenter(tree.BaseTile.X, tree.BaseTile.Y);
+
+            if (WorldMap.TryRemoveTree(tree))
+                WorldItemRuntimeSystem.SpawnItemDrops(ItemId.RawWood, woodQuantity, dropPosition);
+
+            ResetTreeChopProgress();
+            return true;
+        }
+
+        private void ResetTreeChopProgress()
+        {
+            choppingTree = null;
+            treeChopProgressSeconds = 0f;
+            lastTreeChopAttackSequence = -1;
+        }
+
+        private static bool IsPickaxeSelected(InventorySlot slot)
+        {
+            return !slot.IsEmpty && slot.ItemId == ItemId.Pickaxe;
         }
 
         private void TryPlaceSandPixel(InventorySlot selectedSlot, Vector2 mouseWorld)

@@ -61,22 +61,36 @@ namespace Nyvorn.Source.Gameplay.Items
             if (!TileItemMapper.TryGetItemId(removedTile, out ItemId itemId))
                 return;
 
+            SpawnItemDrops(itemId, 1, tileCenter);
+        }
+
+        public void SpawnItemDrops(ItemId itemId, int quantity, Vector2 position)
+        {
+            if (quantity <= 0)
+                return;
+
             if (!ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
                 return;
 
             if (!TryGetItemTexture(itemId, out Texture2D texture))
                 return;
 
-            float horizontalDirection = Random.Shared.Next(2) == 0 ? -1f : 1f;
-            float horizontalVelocity = horizontalDirection * 28f;
-            const float verticalVelocity = -105f;
-            SpawnWorldItem(
-                definition,
-                texture,
-                tileCenter,
-                pickupDelay: 0.15f,
-                initialVelocityX: horizontalVelocity,
-                initialVelocityY: verticalVelocity);
+            for (int i = 0; i < quantity; i++)
+            {
+                float horizontalDirection = Random.Shared.Next(2) == 0 ? -1f : 1f;
+                float horizontalSpeed = 22f + Random.Shared.NextSingle() * 22f;
+                float horizontalVelocity = horizontalDirection * horizontalSpeed;
+                float verticalVelocity = -95f - Random.Shared.NextSingle() * 35f;
+                Vector2 spawnPosition = position + new Vector2((i - ((quantity - 1) * 0.5f)) * 2f, 0f);
+
+                SpawnWorldItem(
+                    definition,
+                    texture,
+                    spawnPosition,
+                    pickupDelay: 0.15f,
+                    initialVelocityX: horizontalVelocity,
+                    initialVelocityY: verticalVelocity);
+            }
         }
 
         public bool TryGetItemTexture(ItemId itemId, out Texture2D texture)

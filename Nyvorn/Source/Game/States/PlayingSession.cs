@@ -9,6 +9,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
@@ -98,7 +99,7 @@ namespace Nyvorn.Source.Game.States
             Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             TissueSystem.Update(dt, input);
-            BlockInteractionSystem.TryBreakTargetBlock(mouseWorld);
+            BlockInteractionSystem.TryBreakTargetBlock(mouseWorld, SelectedHotbarIndex);
             EntityRuntimeSystem.Update(dt);
 
             CombatCoordinator.ResolveCombat();
@@ -118,6 +119,11 @@ namespace Nyvorn.Source.Game.States
                 worldOffsetX,
                 BlockInteractionSystem.HoveredTileBounds,
                 BlockInteractionSystem.HoveredTileState);
+        }
+
+        public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
+        {
+            ViewCoordinator.DrawTreeDecorations(spriteBatch, screenWidth, screenHeight, worldOffsetX, layer);
         }
 
         public void PrepareTerrainRender(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight, float worldOffsetX)

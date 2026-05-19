@@ -71,6 +71,22 @@ namespace Nyvorn.Source.Gameplay.Items
                     SpriteSheetCell = new Point(0, 0),
                     WorldCollisionRect = new Rectangle(0, 0, 8, 8)
                 }
+            },
+            {
+                ItemId.RawWood,
+                new ItemDefinition
+                {
+                    Id = ItemId.RawWood,
+                    Name = "Raw Wood",
+                    TexturePath = "blocks/raw_wood",
+                    Stackable = true,
+                    MaxStack = 999,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(16, 16),
+                    WorldPivot = new Point(8, 16),
+                    SpriteSheetCell = new Point(0, 0),
+                    WorldCollisionRect = new Rectangle(3, 10, 10, 6)
+                }
             }
         };
 

@@ -6,6 +6,7 @@ using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Game;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Persistence;
 using System.Collections.Generic;
 using System.Globalization;
@@ -195,6 +196,7 @@ namespace Nyvorn.Source.Game.States
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
@@ -202,6 +204,17 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
             session.DrawEntities(spriteBatch);
             spriteBatch.End();
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front);
+                spriteBatch.End();
+            }
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {

@@ -15,7 +15,8 @@ namespace Nyvorn.Source.World.Decorations
             int startTileX,
             int endTileX,
             int startTileY,
-            int endTileY)
+            int endTileY,
+            TreeRenderLayer layer)
         {
             if (texture == null || worldMap.Trees.Count == 0)
                 return;
@@ -36,10 +37,24 @@ namespace Nyvorn.Source.World.Decorations
             {
                 TreeInstance tree = worldMap.Trees[i];
 
+                if (GetTreeRenderLayer(tree) != layer)
+                    continue;
+
                 if (!GetTreePixelBounds(worldMap, tree).Intersects(visiblePixels))
                     continue;
 
                 DrawTree(spriteBatch, texture, worldMap, tree);
+            }
+        }
+
+        private static TreeRenderLayer GetTreeRenderLayer(TreeInstance tree)
+        {
+            unchecked
+            {
+                uint hash = (uint)tree.Seed;
+                hash ^= (uint)(tree.BaseTile.X * 73856093);
+                hash ^= (uint)(tree.BaseTile.Y * 19349663);
+                return hash % 4 == 0 ? TreeRenderLayer.Front : TreeRenderLayer.Back;
             }
         }
 

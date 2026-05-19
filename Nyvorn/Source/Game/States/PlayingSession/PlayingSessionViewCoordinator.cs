@@ -9,6 +9,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Tissue;
 using System.Collections.Generic;
 
@@ -73,8 +74,13 @@ namespace Nyvorn.Source.Game.States
 
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
-            WorldMap.DrawDecorations(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
+        }
+
+        public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
+        {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+            WorldMap.DrawDecorations(spriteBatch, startTileX, endTileX, startTileY, endTileY, layer);
         }
 
         public void PrepareTerrainRender(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight, float worldOffsetX)

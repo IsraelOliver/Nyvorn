@@ -543,10 +543,50 @@ namespace Nyvorn.Source.World
         public void SetTrees(IEnumerable<TreeInstance> trees)
         {
             _trees.Clear();
-            if (trees == null)
-                return;
+            if (trees != null)
+                _trees.AddRange(trees);
+        }
 
-            _trees.AddRange(trees);
+        public bool TryGetTreeAtBaseTile(Point tile, out TreeInstance tree)
+        {
+            tree = null;
+
+            if (!InBounds(tile.X, tile.Y))
+                return false;
+
+            int wrappedTileX = WrapTileX(tile.X);
+            for (int treeIndex = 0; treeIndex < _trees.Count; treeIndex++)
+            {
+                TreeInstance candidate = _trees[treeIndex];
+                for (int partIndex = 0; partIndex < candidate.Parts.Count; partIndex++)
+                {
+                    TreePartPlacement placement = candidate.Parts[partIndex];
+                    if (placement.OffsetTiles.Y != 0)
+                        continue;
+
+                    int partX = WrapTileX(candidate.BaseTile.X + placement.OffsetTiles.X);
+                    int partY = candidate.BaseTile.Y + placement.OffsetTiles.Y;
+                    if (partX != wrappedTileX || partY != tile.Y)
+                        continue;
+
+                    tree = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool TryRemoveTree(TreeInstance tree)
+        {
+            if (tree == null)
+                return false;
+
+            if (!_trees.Remove(tree))
+                return false;
+
+            TileRevision++;
+            return true;
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -573,9 +613,9 @@ namespace Nyvorn.Source.World
             DrawTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY, 0, 0);
         }
 
-        public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY)
+        public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer)
         {
-            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY);
+            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer);
         }
 
         public void PrepareVisibleChunkCache(GraphicsDevice graphicsDevice, int startTileX, int endTileX, int startTileY, int endTileY)
