@@ -73,6 +73,18 @@
 /processorParam:TextureFormat=Color
 /build:blocks/raw_wood.png
 
+#begin blocks/worktable-sheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:blocks/worktable-sheet.png
+
 #begin trees/tree_modular_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor

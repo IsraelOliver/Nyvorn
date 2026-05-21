@@ -35,6 +35,38 @@ namespace Nyvorn.Source.Gameplay.Items
             return false;
         }
 
+        public int CountItem(ItemId itemId)
+        {
+            if (itemId == ItemId.None)
+                return 0;
+
+            int count = 0;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (!slots[i].IsEmpty && slots[i].ItemId == itemId)
+                    count += slots[i].Quantity;
+            }
+
+            return count;
+        }
+
+        public bool TryRemove(ItemId itemId, int amount)
+        {
+            if (itemId == ItemId.None || amount <= 0 || CountItem(itemId) < amount)
+                return false;
+
+            int remaining = amount;
+            for (int i = 0; i < slots.Length && remaining > 0; i++)
+            {
+                if (slots[i].IsEmpty || slots[i].ItemId != itemId)
+                    continue;
+
+                remaining -= slots[i].RemoveUpTo(remaining);
+            }
+
+            return true;
+        }
+
         public int AddToExistingStacks(ItemDefinition definition, int amount)
         {
             if (definition == null || amount <= 0 || !definition.Stackable)

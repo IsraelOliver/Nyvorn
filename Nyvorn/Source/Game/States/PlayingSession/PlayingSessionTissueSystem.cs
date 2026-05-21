@@ -41,7 +41,12 @@ namespace Nyvorn.Source.Game.States
         {
             ambientTissuePresenceTimer -= dt;
             TryActivateTouchedTissueHub();
-            TissueRevealController.Update(dt, input, Player.Position);
+            TissueRevealController.Update(dt, Player.Position);
+        }
+
+        public void TriggerReveal()
+        {
+            TissueRevealController.Trigger();
         }
 
         public void EnsureCurrentTissueHubActivated()

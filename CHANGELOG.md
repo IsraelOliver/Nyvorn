@@ -2,6 +2,25 @@
 
 Todas as mudancas importantes do projeto serao registradas aqui.
 
+## v0.4.5 - 2026-05-21
+
+### Adicionado
+- Workbench craftavel, colocavel, com preview de posicionamento e persistencia no save do mundo.
+- Player Hub como overlay de gameplay para inventario e crafting contextual.
+- Receita contextual da picareta na workbench.
+- Sistema de interacao por `F` com suporte inicial para workbench.
+- Sistema inicial de poderes separado da hotbar, com tissue reveal como poder ativo no mouse direito.
+- HUD inicial de poder com cooldown.
+
+### Alterado
+- Inventario e crafting deixam de ser `GameState` e passam a rodar como overlays dentro do gameplay.
+- Mapa, debug e Player Hub seguem prioridade de input unificada no `PlayingState`.
+- `Esc` fecha overlays antes de abrir pausa.
+- Rolar/dash voltou para `Ctrl`.
+
+### Removido
+- Estados dedicados de inventario e crafting durante gameplay.
+
 ## v0.3.0 - 2026-04-27
 
 ### Adicionado

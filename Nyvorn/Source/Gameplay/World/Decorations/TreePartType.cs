@@ -16,6 +16,10 @@ namespace Nyvorn.Source.World.Decorations
         BranchLeft,
         TrunkCutSupport,
         TrunkContinuation,
-        Canopy
+        Canopy,
+        TrunkBaseCut,
+        TrunkUpperCut,
+        TrunkBareBase,
+        TrunkBaseRightRootCutSocket
     }
 }

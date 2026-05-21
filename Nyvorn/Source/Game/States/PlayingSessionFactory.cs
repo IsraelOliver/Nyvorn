@@ -4,9 +4,11 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Gameplay.Combat;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
+using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
@@ -259,6 +261,9 @@ namespace Nyvorn.Source.Game.States
             build.SavedWorldItems = saveData != null && saveData.Version >= 5 && saveData.WorldItems != null
                 ? new List<WorldItemSaveData>(saveData.WorldItems)
                 : null;
+            build.SavedWorkbenches = saveData != null && saveData.Version >= 8 && saveData.Workbenches != null
+                ? new List<WorkbenchSaveData>(saveData.Workbenches)
+                : null;
 
             BuildOperation operation = null;
             List<BuildOperation.BuildStep> steps = new()
@@ -427,6 +432,7 @@ namespace Nyvorn.Source.Game.States
             build.PlayerDownTexture = content.Load<Texture2D>("entities/player/playerDown_sheet");
             build.PlayerUpTexture = content.Load<Texture2D>("entities/player/playerUp_sheet");
             build.PickaxeTexture = content.Load<Texture2D>("weapons/pickaxe_sheet");
+            build.WorkbenchTexture = content.Load<Texture2D>("blocks/worktable-sheet");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
@@ -490,6 +496,7 @@ namespace Nyvorn.Source.Game.States
             int selectedHotbarIndex = 0;
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
             GiveStarterSandBlocks(build.PlayerSaveData, hotbar, inventory);
+            GiveStarterPickaxe(build.PlayerSaveData, hotbar, inventory);
             List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
             Camera2D camera = CreateCamera();
             SessionRuntimeContext runtimeContext = new SessionRuntimeContext
@@ -528,6 +535,8 @@ namespace Nyvorn.Source.Game.States
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys
             };
+            PlayerPowerSystem powerSystem = new PlayerPowerSystem();
+            powerSystem.AddPower(new TissueRevealPower(tissueSystem));
             PlayingSessionBlockInteractionSystem blockInteractionSystem = new PlayingSessionBlockInteractionSystem
             {
                 WorldMap = build.WorldMap,
@@ -535,6 +544,14 @@ namespace Nyvorn.Source.Game.States
                 Hotbar = hotbar,
                 WorldItemRuntimeSystem = worldItemRuntimeSystem
             };
+            WorkbenchRuntimeSystem workbenchRuntimeSystem = new WorkbenchRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.WorkbenchTexture
+            };
+            workbenchRuntimeSystem.Restore(build.SavedWorkbenches);
             PlayingSessionInputRouter inputRouter = new PlayingSessionInputRouter
             {
                 Hotbar = hotbar
@@ -556,8 +573,10 @@ namespace Nyvorn.Source.Game.States
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
+                PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
-                ActivatedTissueHubKeys = activatedTissueHubKeys
+                ActivatedTissueHubKeys = activatedTissueHubKeys,
+                WorkbenchRuntimeSystem = workbenchRuntimeSystem
             };
             PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
             {
@@ -585,6 +604,8 @@ namespace Nyvorn.Source.Game.States
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
                 CombatCoordinator = combatCoordinator,
+                WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                PowerSystem = powerSystem
             };
 
             session.InitializeSandSystem();
@@ -610,8 +631,18 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             ItemDefinition sandDefinition = ItemDefinitions.Get(ItemId.SandBlock);
-            if (!hotbar.TryAdd(sandDefinition, 2000))
-                inventory.TryAdd(sandDefinition, 2000);
+            if (!hotbar.TryAdd(sandDefinition, 100))
+                inventory.TryAdd(sandDefinition, 100);
+        }
+
+        private static void GiveStarterPickaxe(PlayerSaveData playerSaveData, Hotbar hotbar, Inventory inventory)
+        {
+            if (hotbar.ContainsItem(ItemId.Pickaxe) || inventory.ContainsItem(ItemId.Pickaxe))
+            return;
+
+            ItemDefinition pickaxeDefinition = ItemDefinitions.Get(ItemId.Pickaxe);
+            if (!hotbar.TryAdd(pickaxeDefinition, 1))
+                inventory.TryAdd(pickaxeDefinition, 1);
         }
 
         private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
@@ -759,6 +790,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
             public Texture2D PickaxeTexture { get; set; }
+            public Texture2D WorkbenchTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
             public SpriteFont UiFont { get; set; }
@@ -774,6 +806,7 @@ namespace Nyvorn.Source.Game.States
             public PlayerSaveData PlayerSaveData { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
+            public List<WorkbenchSaveData> SavedWorkbenches { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
             public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;

@@ -3,9 +3,11 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
@@ -31,6 +33,8 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
+        public required WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
+        public required PlayerPowerSystem PowerSystem { get; init; }
         public int SelectedHotbarIndex => InputRouter.SelectedHotbarIndex;
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => ViewCoordinator.ActiveSimulationChunks;
         public int LastRandomTileSampleCount => WorldTickCoordinator.LastRandomTileSampleCount;
@@ -41,6 +45,7 @@ namespace Nyvorn.Source.Game.States
         public long MediumTickCount => WorldTickCoordinator.MediumTickCount;
         public long SlowTickCount => WorldTickCoordinator.SlowTickCount;
         public WorldMap WorldMap => RuntimeContext.WorldMap;
+        public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges || WorkbenchRuntimeSystem.HasUnsavedChanges;
         public Player Player => RuntimeContext.Player;
         public List<Enemy> Enemies => RuntimeContext.Enemies;
         public List<WorldItem> WorldItems => RuntimeContext.WorldItems;
@@ -91,14 +96,17 @@ namespace Nyvorn.Source.Game.States
         private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)
         {
             BlockInteractionSystem.Update(dt);
+            WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
             InputState worldInput = InputRouter.RouteFrameInput(input);
 
             CombatCoordinator.SyncEquippedWeapon(SelectedHotbarIndex);
             BlockInteractionSystem.UpdateTilePreview(SelectedHotbarIndex, mouseWorld);
-            BlockInteractionSystem.TryPlaceSelectedBlock(worldInput, SelectedHotbarIndex, mouseWorld);
+            if (!WorkbenchRuntimeSystem.TryPlaceSelectedWorkbench(worldInput, SelectedHotbarIndex, mouseWorld))
+                BlockInteractionSystem.TryPlaceSelectedBlock(worldInput, SelectedHotbarIndex, mouseWorld);
             Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             TissueSystem.Update(dt, input);
+            PowerSystem.Update(dt);
             BlockInteractionSystem.TryBreakTargetBlock(mouseWorld, SelectedHotbarIndex);
             EntityRuntimeSystem.Update(dt);
 
@@ -155,6 +163,7 @@ namespace Nyvorn.Source.Game.States
         public void DrawHud(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
             ViewCoordinator.DrawHud(spriteBatch, Hotbar, SelectedHotbarIndex, screenWidth, screenHeight);
+            ViewCoordinator.DrawPowerHud(spriteBatch, PowerSystem, screenWidth, screenHeight);
         }
 
         public void SetSelectedHotbarIndex(int index)
@@ -222,6 +231,27 @@ namespace Nyvorn.Source.Game.States
         public bool TryStoreItem(ItemId itemId, int quantity, bool preferInventory)
         {
             return WorldItemRuntimeSystem.TryStoreItem(itemId, quantity, preferInventory);
+        }
+
+        public int CountItem(ItemId itemId)
+        {
+            return Hotbar.CountItem(itemId) + Inventory.CountItem(itemId);
+        }
+
+        public bool TryConsumeItem(ItemId itemId, int quantity)
+        {
+            if (quantity <= 0 || CountItem(itemId) < quantity)
+                return false;
+
+            int fromInventory = System.Math.Min(Inventory.CountItem(itemId), quantity);
+            if (fromInventory > 0)
+                Inventory.TryRemove(itemId, fromInventory);
+
+            int remaining = quantity - fromInventory;
+            if (remaining > 0)
+                Hotbar.TryRemove(itemId, remaining);
+
+            return true;
         }
 
         public void FollowCamera(int screenWidth, int screenHeight)

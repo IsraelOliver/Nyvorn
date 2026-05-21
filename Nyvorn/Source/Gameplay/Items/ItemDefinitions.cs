@@ -87,6 +87,22 @@ namespace Nyvorn.Source.Gameplay.Items
                     SpriteSheetCell = new Point(0, 0),
                     WorldCollisionRect = new Rectangle(3, 10, 10, 6)
                 }
+            },
+            {
+                ItemId.Workbench,
+                new ItemDefinition
+                {
+                    Id = ItemId.Workbench,
+                    Name = "Workbench",
+                    TexturePath = "blocks/worktable-sheet",
+                    Stackable = true,
+                    MaxStack = 99,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(32, 16),
+                    WorldPivot = new Point(16, 16),
+                    SpriteSheetCell = new Point(0, 0),
+                    WorldCollisionRect = new Rectangle(2, 10, 28, 6)
+                }
             }
         };
 

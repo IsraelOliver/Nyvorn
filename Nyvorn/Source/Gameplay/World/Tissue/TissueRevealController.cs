@@ -1,5 +1,4 @@
 using Microsoft.Xna.Framework;
-using Nyvorn.Source.Engine.Input;
 using System;
 
 namespace Nyvorn.Source.World.Tissue
@@ -28,15 +27,15 @@ namespace Nyvorn.Source.World.Tissue
         public float WaveProgress { get; private set; }
         public bool IsActive => CurrentStrength > 0.001f;
 
-        public void Update(float dt, InputState input, Vector2 focusPosition)
+        public void Trigger()
+        {
+            revealTimer = activeDuration;
+            waveTimer = 0f;
+        }
+
+        public void Update(float dt, Vector2 focusPosition)
         {
             FocusPosition = focusPosition;
-
-            if (input.TissueRevealPressed)
-            {
-                revealTimer = activeDuration;
-                waveTimer = 0f;
-            }
 
             if (revealTimer > 0f)
                 revealTimer = Math.Max(0f, revealTimer - dt);

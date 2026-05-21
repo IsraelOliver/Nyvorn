@@ -77,6 +77,9 @@ namespace Nyvorn.Source.World.Decorations
                 spriteBatch.Draw(texture, destination, source, Color.White);
             }
 
+            if (!tree.HasCanopy)
+                return;
+
             TreePartDefinition canopy = atlas.Get(TreePartType.Canopy);
 
             Rectangle canopyDestination = GetPixelPerfectDestination(
@@ -111,6 +114,9 @@ namespace Nyvorn.Source.World.Decorations
                 bounds = hasBounds ? Rectangle.Union(bounds, destination) : destination;
                 hasBounds = true;
             }
+
+            if (!tree.HasCanopy)
+                return bounds;
 
             TreePartDefinition canopy = atlas.Get(TreePartType.Canopy);
             Rectangle canopyDestination = GetPixelPerfectDestination(

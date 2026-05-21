@@ -19,6 +19,7 @@ namespace Nyvorn.Source.Game.States
         private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
         private int lastTreeChopAttackSequence = -1;
         private TreeInstance choppingTree;
+        private Point choppingTreeTile = new Point(int.MinValue, int.MinValue);
         private float treeChopProgressSeconds;
         private float blockPlaceCooldownTimer;
 
@@ -65,7 +66,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (IsPickaxeSelected(selectedSlot) && WorldMap.TryGetTreeAtBaseTile(tile, out _))
+            if (IsPickaxeSelected(selectedSlot) && WorldMap.TryGetTreeAtTile(tile, out _))
             {
                 HoveredTileState = inBreakRange
                     ? WorldTilePreviewState.BreakValid
@@ -160,7 +161,7 @@ namespace Nyvorn.Source.Game.States
             if (!IsPickaxeSelected(selectedSlot))
                 return false;
 
-            if (!WorldMap.TryGetTreeAtBaseTile(tile, out TreeInstance tree))
+            if (!WorldMap.TryGetTreeAtTile(tile, out TreeInstance tree))
                 return false;
 
             Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
@@ -170,9 +171,10 @@ namespace Nyvorn.Source.Game.States
             if (Player.AttackSequence == lastTreeChopAttackSequence)
                 return true;
 
-            if (!ReferenceEquals(choppingTree, tree))
+            if (!ReferenceEquals(choppingTree, tree) || choppingTreeTile != tile)
             {
                 choppingTree = tree;
+                choppingTreeTile = tile;
                 treeChopProgressSeconds = 0f;
             }
 
@@ -182,10 +184,7 @@ namespace Nyvorn.Source.Game.States
             if (treeChopProgressSeconds < TreeChopDurationSeconds)
                 return true;
 
-            int woodQuantity = System.Math.Max(1, tree.Height);
-            Vector2 dropPosition = WorldMap.GetTileCenter(tree.BaseTile.X, tree.BaseTile.Y);
-
-            if (WorldMap.TryRemoveTree(tree))
+            if (WorldMap.TryChopTreeAtTile(tile, out int woodQuantity, out Vector2 dropPosition))
                 WorldItemRuntimeSystem.SpawnItemDrops(ItemId.RawWood, woodQuantity, dropPosition);
 
             ResetTreeChopProgress();
@@ -195,8 +194,8 @@ namespace Nyvorn.Source.Game.States
         private void ResetTreeChopProgress()
         {
             choppingTree = null;
+            choppingTreeTile = new Point(int.MinValue, int.MinValue);
             treeChopProgressSeconds = 0f;
-            lastTreeChopAttackSequence = -1;
         }
 
         private static bool IsPickaxeSelected(InventorySlot slot)

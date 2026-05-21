@@ -14,5 +14,6 @@ namespace Nyvorn.Source.World.Decorations
         public int Seed { get; init; }
         public List<TreePartPlacement> Parts { get; init; } = new();
         public TreePartPlacement Canopy { get; init; }
+        public bool HasCanopy { get; set; } = true;
     }
 }

@@ -7,6 +7,7 @@ namespace Nyvorn.Source.Gameplay.Items
         DirtBlock = 3,
         StoneBlock = 4,
         SandBlock = 5,
-        RawWood = 6
+        RawWood = 6,
+        Workbench = 7
     }
 }

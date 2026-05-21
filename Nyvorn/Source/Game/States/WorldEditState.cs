@@ -220,13 +220,13 @@ namespace Nyvorn.Source.Game.States
         {
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
-            return new Rectangle((screenW - 520) / 2, (screenH - 280) / 2, 520, 280);
+            return new Rectangle((screenW - 520) / 2, (screenH - 320) / 2, 520, 320);
         }
 
         private Rectangle GetPlanetNameBounds()
         {
             Rectangle panel = GetPanelBounds();
-            return new Rectangle(panel.X + 28, panel.Y + 96, panel.Width - 56, 42);
+            return new Rectangle(panel.X + 28, panel.Y + 96, panel.Width - 56, 56);
         }
 
         private Rectangle GetSaveButtonBounds()

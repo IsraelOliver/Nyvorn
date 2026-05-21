@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Game;
+using Nyvorn.Source.Gameplay.Crafting;
+using Nyvorn.Source.Gameplay.Interaction;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Decorations;
@@ -27,6 +29,7 @@ namespace Nyvorn.Source.Game.States
         private readonly InputService inputService = new();
         private readonly SpriteFont consoleFont;
         private readonly Texture2D consolePixel;
+        private readonly PlayerHubUI playerHubUI;
         private bool deathStatePushed;
         private bool minimapVisible;
         private bool minimapTissueMode;
@@ -59,6 +62,7 @@ namespace Nyvorn.Source.Game.States
             consoleFont = content.Load<SpriteFont>("ui/UIFont");
             consolePixel = new Texture2D(graphicsDevice, 1, 1);
             consolePixel.SetData(new[] { Color.White });
+            playerHubUI = new PlayerHubUI(graphicsDevice, session);
             autoSaveTimer = AutoSaveInterval;
         }
 
@@ -80,12 +84,17 @@ namespace Nyvorn.Source.Game.States
             KeyboardState keyboard = Keyboard.GetState();
             bool handledConsoleThisFrame = false;
 
-            if (!consoleOpen && IsNewConsoleKeyPress(keyboard, Keys.T))
+            if (input.ToggleDebugPressed)
             {
-                consoleOpen = true;
-                consoleInput = string.Empty;
-                consoleMessage = string.Empty;
+                consoleOpen = !consoleOpen;
+                if (consoleOpen)
+                {
+                    consoleInput = string.Empty;
+                    consoleMessage = string.Empty;
+                }
+
                 previousConsoleKeyboard = keyboard;
+                input = input.ConsumeGameplayInput();
                 handledConsoleThisFrame = true;
             }
 
@@ -93,19 +102,41 @@ namespace Nyvorn.Source.Game.States
             {
                 HandleConsoleInput(keyboard);
                 previousConsoleKeyboard = keyboard;
-                input = CreateConsoleGameplayInput(input);
+                input = input.ConsumeGameplayInput();
                 handledConsoleThisFrame = true;
             }
 
             session.EnsureCurrentTissueHubActivated();
 
-            if (input.ToggleMinimapPressed)
-                minimapVisible = !minimapVisible;
-            if (input.TissueRevealPressed && session.IsPlayerOnActivatedTissueHub)
+            if (!handledConsoleThisFrame && input.CancelPressed)
             {
-                minimapVisible = true;
-                minimapTissueMode = true;
+                if (playerHubUI.IsOpen)
+                {
+                    playerHubUI.Close();
+                    previousConsoleKeyboard = keyboard;
+                    input = input.ConsumeGameplayInput();
+                    handledConsoleThisFrame = true;
+                }
+                else if (minimapVisible)
+                {
+                    minimapVisible = false;
+                    previousConsoleKeyboard = keyboard;
+                    input = input.ConsumeGameplayInput();
+                    handledConsoleThisFrame = true;
+                }
+                else
+                {
+                    previousConsoleKeyboard = keyboard;
+                    stateMachine.PushState(new PauseMenuState(graphicsDevice, content, stateMachine, session));
+                    return;
+                }
             }
+
+            if (!handledConsoleThisFrame && input.TogglePlayerHubPressed)
+                playerHubUI.Toggle();
+
+            if (!handledConsoleThisFrame && input.ToggleMapPressed)
+                minimapVisible = !minimapVisible;
 
             if (minimapVisible)
             {
@@ -129,29 +160,34 @@ namespace Nyvorn.Source.Game.States
                     input = input.ConsumeWorldMouseInput();
             }
 
-            if (!handledConsoleThisFrame && IsNewConsoleKeyPress(keyboard, Keys.Escape))
-            {
-                previousConsoleKeyboard = keyboard;
-                stateMachine.PushState(new PauseMenuState(graphicsDevice, content, stateMachine, session));
-                return;
-            }
-
-            if (input.OpenInventoryPressed && stateMachine.CurrentState is not InventoryState)
-                stateMachine.PushState(new InventoryState(graphicsDevice, stateMachine, session));
-
-            if (stateMachine.CurrentState is InventoryState inventoryState &&
-                inventoryState.ContainsMouse(Mouse.GetState().Position))
-            {
-                input = input.ConsumeWorldMouseInput();
-            }
-
             Vector2 mouseWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
+            session.WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
+
+            CraftTier craftTier = session.WorkbenchRuntimeSystem.GetNearbyCraftTier();
+            playerHubUI.Update(input, craftTier);
+            if (playerHubUI.IsOpen && playerHubUI.ContainsMouse(input.MouseScreenPosition.ToPoint(), craftTier))
+                input = input.ConsumeWorldMouseInput();
+
+            if (!handledConsoleThisFrame && input.InteractPressed &&
+                session.WorkbenchRuntimeSystem.TryInteract(session.Player, out InteractionResult interactionResult) &&
+                interactionResult.OpenPlayerHub)
+            {
+                playerHubUI.Open();
+                craftTier = interactionResult.CraftTier;
+            }
+
+            if (!handledConsoleThisFrame && input.CyclePowerPressed)
+                session.PowerSystem.CycleNextPower();
+
+            if (!handledConsoleThisFrame && input.ActivePowerJustPressed)
+                session.PowerSystem.TryActivateCurrentPower();
+
             session.UpdateSimulationViewport(screenW, screenH);
             session.Update(dt, input, mouseWorld);
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
-                if (session.WorldMap.HasUnsavedChanges)
+                if (session.HasUnsavedWorldChanges)
                     saveService.Save(session);
                 else
                     saveService.SavePlayerOnly(session);
@@ -242,6 +278,7 @@ namespace Nyvorn.Source.Game.States
             session.DrawHud(spriteBatch, screenW, screenH);
             if (minimapVisible)
                 session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier());
             if (consoleOpen)
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
@@ -349,24 +386,6 @@ namespace Nyvorn.Source.Game.States
             consoleHistory.Add(line);
             while (consoleHistory.Count > MaxConsoleHistoryLines)
                 consoleHistory.RemoveAt(0);
-        }
-
-        private static InputState CreateConsoleGameplayInput(InputState input)
-        {
-            return new InputState(
-                0,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                -1,
-                false,
-                0,
-                input.MouseScreenPosition,
-                0);
         }
 
         private bool TryExecuteTickCommand(string command)
@@ -525,11 +544,6 @@ namespace Nyvorn.Source.Game.States
 
             string prompt = "> " + consoleInput + "_";
             spriteBatch.DrawString(consoleFont, prompt, new Vector2(10, inputBounds.Y + 5), Color.White);
-        }
-
-        private bool IsNewConsoleKeyPress(KeyboardState keyboard, Keys key)
-        {
-            return keyboard.IsKeyDown(key) && !previousConsoleKeyboard.IsKeyDown(key);
         }
 
         private static bool TryGetConsoleCharacter(KeyboardState keyboard, Keys key, out char character)

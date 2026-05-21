@@ -24,6 +24,9 @@ namespace Nyvorn.Source.Game.States
         private readonly Texture2D pixel;
         private readonly Texture2D backgroundTexture;
 
+        private const int WorldEntryMinHeight = 88;
+        private const int WorldEntryGap = 10;
+
         private MouseState previousMouse;
         private KeyboardState previousKeyboard;
         private IReadOnlyList<PlanetSaveSummary> worlds = new List<PlanetSaveSummary>();
@@ -195,14 +198,17 @@ namespace Nyvorn.Source.Game.States
             string subtitle = $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {summary.Metadata.Seed}";
             string saveInfo = $"Salvo em {summary.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}";
 
-            float textWidth = editButton.X - bounds.X - 28;
+            float textWidth = GetWorldEntryTextWidth(bounds);
             string wrappedTitle = TextLayout.WrapText(font, title, textWidth);
             string wrappedSubtitle = TextLayout.WrapText(font, subtitle, textWidth);
             string wrappedSaveInfo = TextLayout.WrapText(font, saveInfo, textWidth);
 
-            spriteBatch.DrawString(font, wrappedTitle, new Vector2(bounds.X + 14, bounds.Y + 10), Color.White);
-            spriteBatch.DrawString(font, wrappedSubtitle, new Vector2(bounds.X + 14, bounds.Y + 10 + font.LineSpacing), new Color(168, 230, 207));
-            spriteBatch.DrawString(font, wrappedSaveInfo, new Vector2(bounds.X + 14, bounds.Y + 10 + (font.LineSpacing * 2)), new Color(255, 241, 193));
+            Vector2 textPos = new Vector2(bounds.X + 14, bounds.Y + 10);
+            spriteBatch.DrawString(font, wrappedTitle, textPos, Color.White);
+            textPos.Y += TextLayout.GetWrappedHeight(font, wrappedTitle);
+            spriteBatch.DrawString(font, wrappedSubtitle, textPos, new Color(168, 230, 207));
+            textPos.Y += TextLayout.GetWrappedHeight(font, wrappedSubtitle);
+            spriteBatch.DrawString(font, wrappedSaveInfo, textPos, new Color(255, 241, 193));
 
             spriteBatch.Draw(pixel, new Rectangle(editButton.X - 2, editButton.Y - 2, editButton.Width + 4, editButton.Height + 4), new Color(143, 211, 255, 150));
             spriteBatch.Draw(pixel, editButton, editHovered ? new Color(190, 238, 255) : new Color(143, 211, 255));
@@ -226,32 +232,64 @@ namespace Nyvorn.Source.Game.States
         private IEnumerable<(PlanetSaveSummary Summary, Rectangle Bounds)> GetWorldEntryBounds()
         {
             Rectangle listBounds = GetWorldListBounds();
-            int entryHeight = 88;
-            int gap = 10;
+            int y = listBounds.Y + 16 - listScrollOffset;
 
             for (int i = 0; i < worlds.Count; i++)
             {
+                int entryHeight = GetWorldEntryHeight(worlds[i]);
                 Rectangle bounds = new Rectangle(
                     listBounds.X + 16,
-                    listBounds.Y + 16 + (i * (entryHeight + gap)) - listScrollOffset,
+                    y,
                     listBounds.Width - 32,
                     entryHeight);
 
                 yield return (worlds[i], bounds);
+                y += entryHeight + WorldEntryGap;
             }
         }
 
         private int GetMaxScrollOffset()
         {
-            const int entryHeight = 88;
-            const int gap = 10;
-
             Rectangle listBounds = GetWorldListBounds();
-            int contentHeight = worlds.Count == 0
-                ? 0
-                : 16 + (worlds.Count * entryHeight) + ((worlds.Count - 1) * gap) + 16;
+            int contentHeight = 0;
+            if (worlds.Count > 0)
+            {
+                contentHeight = 16 + 16;
+                for (int i = 0; i < worlds.Count; i++)
+                {
+                    contentHeight += GetWorldEntryHeight(worlds[i]);
+                    if (i < worlds.Count - 1)
+                        contentHeight += WorldEntryGap;
+                }
+            }
 
             return Math.Max(0, contentHeight - listBounds.Height);
+        }
+
+        private int GetWorldEntryHeight(PlanetSaveSummary summary)
+        {
+            Rectangle listBounds = GetWorldListBounds();
+            int entryWidth = listBounds.Width - 32;
+            float textWidth = GetWorldEntryTextWidth(entryWidth);
+
+            string wrappedTitle = TextLayout.WrapText(font, summary.Metadata.PlanetName, textWidth);
+            string wrappedSubtitle = TextLayout.WrapText(font, $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {summary.Metadata.Seed}", textWidth);
+            string wrappedSaveInfo = TextLayout.WrapText(font, $"Salvo em {summary.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}", textWidth);
+            int lineCount = TextLayout.CountLines(wrappedTitle) +
+                            TextLayout.CountLines(wrappedSubtitle) +
+                            TextLayout.CountLines(wrappedSaveInfo);
+
+            return Math.Max(WorldEntryMinHeight, 20 + (lineCount * font.LineSpacing));
+        }
+
+        private float GetWorldEntryTextWidth(Rectangle entryBounds)
+        {
+            return GetWorldEntryTextWidth(entryBounds.Width);
+        }
+
+        private float GetWorldEntryTextWidth(int entryWidth)
+        {
+            return Math.Max(48f, entryWidth - 146f);
         }
 
         private void DrawScrollHint(SpriteBatch spriteBatch, Rectangle listBounds)

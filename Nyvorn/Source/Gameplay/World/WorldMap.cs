@@ -577,6 +577,104 @@ namespace Nyvorn.Source.World
             return false;
         }
 
+        public bool TryGetTreeAtTile(Point tile, out TreeInstance tree)
+        {
+            return TryGetTreePartAtTile(tile, out tree, out _);
+        }
+
+        public bool TryChopTreeAtTile(Point tile, out int woodQuantity, out Vector2 dropPosition)
+        {
+            woodQuantity = 0;
+            dropPosition = Vector2.Zero;
+
+            if (!TryGetTreePartAtTile(tile, out TreeInstance tree, out TreePartPlacement cutPart))
+                return false;
+
+            if (!tree.HasCanopy)
+            {
+                _trees.Remove(tree);
+                TileRevision++;
+                return true;
+            }
+
+            if (cutPart.PartType == TreePartType.RootLeft || cutPart.PartType == TreePartType.RootRight)
+            {
+                ChopTreeRoot(tree, cutPart.PartType);
+                woodQuantity = 1;
+                dropPosition = GetTileCenter(tile.X, tile.Y);
+                TileRevision++;
+                return true;
+            }
+
+            int cutOffsetY = System.Math.Min(0, cutPart.OffsetTiles.Y);
+            if (cutOffsetY == 0)
+            {
+                woodQuantity = System.Math.Max(1, tree.Height);
+                dropPosition = GetTileCenter(tree.BaseTile.X, tree.BaseTile.Y);
+                _trees.Remove(tree);
+                TileRevision++;
+                return true;
+            }
+
+            if (cutOffsetY == -1)
+            {
+                woodQuantity = CountChoppedWood(tree, cutOffsetY);
+                dropPosition = GetTileCenter(tile.X, tile.Y);
+
+                tree.Parts.Clear();
+                tree.Parts.Add(new TreePartPlacement(TreePartType.TrunkBaseCut, Point.Zero));
+                tree.HasCanopy = false;
+                TileRevision++;
+                return true;
+            }
+
+            int stumpOffsetY = cutOffsetY + 1;
+
+            List<TreePartPlacement> remainingParts = new();
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                TreePartPlacement placement = tree.Parts[i];
+                if (placement.OffsetTiles.Y > cutOffsetY)
+                    remainingParts.Add(placement);
+            }
+
+            remainingParts.RemoveAll(part => part.OffsetTiles.Y == stumpOffsetY);
+            remainingParts.Add(new TreePartPlacement(TreePartType.TrunkUpperCut, new Point(0, stumpOffsetY)));
+            remainingParts.Sort(CompareTreePartPlacementForRendering);
+
+            woodQuantity = CountChoppedWood(tree, cutOffsetY);
+            dropPosition = GetTileCenter(tile.X, tile.Y);
+
+            tree.Parts.Clear();
+            tree.Parts.AddRange(remainingParts);
+            tree.HasCanopy = false;
+            TileRevision++;
+            return true;
+        }
+
+        private static void ChopTreeRoot(TreeInstance tree, TreePartType rootPartType)
+        {
+            bool cuttingLeftRoot = rootPartType == TreePartType.RootLeft;
+            bool hasOtherRoot = HasTreePart(
+                tree,
+                cuttingLeftRoot ? TreePartType.RootRight : TreePartType.RootLeft);
+
+            tree.Parts.RemoveAll(part =>
+                part.PartType == rootPartType ||
+                part.OffsetTiles == Point.Zero);
+
+            TreePartType basePartType = TreePartType.TrunkBareBase;
+            if (hasOtherRoot)
+            {
+                basePartType = cuttingLeftRoot
+                    ? TreePartType.TrunkBaseRightRootCutSocket
+                    : TreePartType.TrunkBaseLeftRootSocket;
+            }
+
+            tree.Parts.Add(new TreePartPlacement(basePartType, Point.Zero));
+            tree.Parts.Sort(CompareTreePartPlacementForRendering);
+        }
+
         public bool TryRemoveTree(TreeInstance tree)
         {
             if (tree == null)
@@ -587,6 +685,61 @@ namespace Nyvorn.Source.World
 
             TileRevision++;
             return true;
+        }
+
+        private static bool HasTreePart(TreeInstance tree, TreePartType partType)
+        {
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                if (tree.Parts[i].PartType == partType)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetTreePartAtTile(Point tile, out TreeInstance tree, out TreePartPlacement part)
+        {
+            tree = null;
+            part = default;
+
+            if (!InBounds(tile.X, tile.Y))
+                return false;
+
+            int wrappedTileX = WrapTileX(tile.X);
+            for (int treeIndex = 0; treeIndex < _trees.Count; treeIndex++)
+            {
+                TreeInstance candidate = _trees[treeIndex];
+                for (int partIndex = 0; partIndex < candidate.Parts.Count; partIndex++)
+                {
+                    TreePartPlacement placement = candidate.Parts[partIndex];
+                    int partX = WrapTileX(candidate.BaseTile.X + placement.OffsetTiles.X);
+                    int partY = candidate.BaseTile.Y + placement.OffsetTiles.Y;
+                    if (partX != wrappedTileX || partY != tile.Y)
+                        continue;
+
+                    tree = candidate;
+                    part = placement;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int CountChoppedWood(TreeInstance tree, int cutOffsetY)
+        {
+            int removedHeight = tree.Height + cutOffsetY;
+            return System.Math.Max(1, removedHeight);
+        }
+
+        private static int CompareTreePartPlacementForRendering(TreePartPlacement left, TreePartPlacement right)
+        {
+            int yComparison = right.OffsetTiles.Y.CompareTo(left.OffsetTiles.Y);
+            if (yComparison != 0)
+                return yComparison;
+
+            return left.OffsetTiles.X.CompareTo(right.OffsetTiles.X);
         }
 
         public void Draw(SpriteBatch spriteBatch)

@@ -3,9 +3,11 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
@@ -36,8 +38,10 @@ namespace Nyvorn.Source.Game.States
         public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
         public required ElyraSkyRenderer ElyraSkyRenderer { get; init; }
         public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
+        public required PowerHUD PowerHUD { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
         public required IReadOnlySet<int> ActivatedTissueHubKeys { get; init; }
+        public WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
 
@@ -119,6 +123,8 @@ namespace Nyvorn.Source.Game.States
 
                 worldItem.Draw(spriteBatch);
             }
+
+            WorkbenchRuntimeSystem?.Draw(spriteBatch);
         }
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
@@ -129,6 +135,11 @@ namespace Nyvorn.Source.Game.States
         public void DrawHud(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int screenWidth, int screenHeight)
         {
             HudRenderer.Draw(spriteBatch, hotbar, selectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight);
+        }
+
+        public void DrawPowerHud(SpriteBatch spriteBatch, PlayerPowerSystem powerSystem, int screenWidth, int screenHeight)
+        {
+            PowerHUD.Draw(spriteBatch, powerSystem, screenWidth, screenHeight);
         }
 
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)

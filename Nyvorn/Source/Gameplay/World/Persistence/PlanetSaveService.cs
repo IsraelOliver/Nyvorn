@@ -112,6 +112,13 @@ namespace Nyvorn.Source.World.Persistence
                         PickupDelayRemaining = item.PickupDelayRemaining
                     })
                     .ToList(),
+                Workbenches = session.WorkbenchRuntimeSystem.Workbenches
+                    .Select(workbench => new WorkbenchSaveData
+                    {
+                        PositionX = workbench.Position.X,
+                        PositionY = workbench.Position.Y
+                    })
+                    .ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 SandSnapshot = session.SandSystem?.ExportSnapshot(),
                 TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
@@ -120,6 +127,7 @@ namespace Nyvorn.Source.World.Persistence
 
             playerSaveService.Save(session);
             session.WorldMap.MarkPersisted();
+            session.WorkbenchRuntimeSystem.MarkPersisted();
         }
 
         public void SavePlayerOnly(PlayingSession session)
@@ -173,6 +181,7 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
+                Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 SandSnapshot = CompressBytes(saveData.SandSnapshot),
@@ -190,6 +199,7 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
+                Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 SandSnapshot = DecompressBytes(saveData.SandSnapshot),
