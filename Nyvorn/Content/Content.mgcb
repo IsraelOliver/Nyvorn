@@ -164,7 +164,7 @@
 /processorParam:TextureFormat=Compressed
 /build:ui/UIFont.spritefont
 
-#begin weapons/pickaxe_sheet.png
+#begin weapons/iron-pickaxe_sheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -174,5 +174,28 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:weapons/pickaxe_sheet.png
+/build:weapons/iron-pickaxe_sheet.png
 
+#begin weapons/stone-pickaxe_sheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:weapons/stone-pickaxe_sheet.png
+
+#begin weapons/wood-pickaxe_sheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:weapons/wood-pickaxe_sheet.png

@@ -42,6 +42,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool UsesAttackHandPose => equippedWeapon != null && equippedWeapon.UsesAttackHandPose;
         public bool UsesPlayerAttackUpperPose => equippedWeapon != null && equippedWeapon.UsesPlayerAttackUpperPose;
         public float? WorldBreakRangeOverride => equippedWeapon?.WorldBreakRangeOverride;
+        public int MiningPower => equippedWeapon?.MiningPower ?? 0;
+        public float MiningSpeed => equippedWeapon?.MiningSpeed ?? 0f;
         public int HitDamage => equippedWeapon?.HitDamage ?? 1;
         public float HitKnockbackX => equippedWeapon?.HitKnockbackX ?? 80f;
         public float HitKnockbackY => equippedWeapon?.HitKnockbackY ?? -35f;

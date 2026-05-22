@@ -12,7 +12,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
 {
     public sealed class WorkbenchRuntimeSystem
     {
-        public const int WorkbenchWidth = 32;
+        public const int WorkbenchWidth = 24;
         public const int WorkbenchHeight = 16;
         private const int HoverPadding = 8;
 

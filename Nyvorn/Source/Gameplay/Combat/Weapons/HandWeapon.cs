@@ -1,6 +1,5 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Combat.Weapons
 {
@@ -13,6 +12,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 
         public override bool IsVisibleInHand => false;
         public override bool UsesAttackHandPose => true;
+        public override ToolType ToolType => ToolType.Hand;
+        public override int MiningPower => 0;
+        public override float MiningSpeed => 0.5f;
         public override int HitDamage => 3;
         public override float HitKnockbackX => 90f;
         public override float HitKnockbackY => -35f;
@@ -39,11 +41,6 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 
         public override void Draw(SpriteBatch spriteBatch, Vector2 handWorld, bool facingRight)
         {
-        }
-
-        public override bool CanBreakTile(TileType tileType)
-        {
-            return tileType == TileType.Dirt || tileType == TileType.Grass || tileType == TileType.Sand;
         }
     }
 }

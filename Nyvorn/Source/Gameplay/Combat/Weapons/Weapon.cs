@@ -35,6 +35,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual Texture2D PlayerUpperBodyTexture => texture;
         public virtual float? WorldBreakRangeOverride => null;
         public virtual int PowerTier => 1;
+        public virtual ToolType ToolType => ToolType.None;
+        public virtual int MiningPower => 0;
+        public virtual float MiningSpeed => 0f;
         public virtual int HitDamage => 1;
         public virtual float HitKnockbackX => 80f;
         public virtual float HitKnockbackY => -35f;
@@ -44,7 +47,14 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual void SetWalk() { }
         public virtual void SetAttackFrame(int frameIndex) { }
         public virtual bool IsActiveFrame(int frameIndex) => false;
-        public virtual bool CanBreakTile(TileType tileType) => false;
+
+        public virtual bool CanBreakTile(TileType tileType)
+        {
+            TileMiningDefinition miningDefinition = TileMiningDefinitions.Get(tileType);
+            return MiningSpeed > 0f &&
+                   miningDefinition.IsMineable &&
+                   MiningPower >= miningDefinition.RequiredMiningPower;
+        }
 
         public virtual AnimFrame GetPlayerUpperBodyFrame(
             AnimationState movementState,

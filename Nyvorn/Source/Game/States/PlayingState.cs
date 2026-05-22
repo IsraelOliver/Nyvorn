@@ -329,16 +329,34 @@ namespace Nyvorn.Source.Game.States
             string normalized = command.ToLowerInvariant();
             if (normalized == "/help" || normalized == "help")
             {
-                SetConsoleMessage("Comandos: /help, spawn pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
+                SetConsoleMessage("Comandos: /help, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
                 consoleInput = string.Empty;
                 return;
             }
 
-            if (normalized == "spawn pickaxe" || normalized == "spawn picareta")
+            if (normalized == "spawn pickaxe" || normalized == "spawn picareta" || normalized == "spawn wood pickaxe")
             {
-                SetConsoleMessage(session.TryDropItem(ItemId.Pickaxe)
-                    ? "Spawned: pickaxe"
-                    : "Falha ao spawnar pickaxe");
+                SetConsoleMessage(session.TryDropItem(ItemId.WoodPickaxe)
+                    ? "Spawned: wood pickaxe"
+                    : "Falha ao spawnar wood pickaxe");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "spawn stone pickaxe")
+            {
+                SetConsoleMessage(session.TryDropItem(ItemId.StonePickaxe)
+                    ? "Spawned: stone pickaxe"
+                    : "Falha ao spawnar stone pickaxe");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "spawn iron pickaxe")
+            {
+                SetConsoleMessage(session.TryDropItem(ItemId.IronPickaxe)
+                    ? "Spawned: iron pickaxe"
+                    : "Falha ao spawnar iron pickaxe");
                 consoleInput = string.Empty;
                 return;
             }

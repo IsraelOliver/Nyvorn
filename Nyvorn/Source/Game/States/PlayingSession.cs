@@ -107,7 +107,7 @@ namespace Nyvorn.Source.Game.States
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             TissueSystem.Update(dt, input);
             PowerSystem.Update(dt);
-            BlockInteractionSystem.TryBreakTargetBlock(mouseWorld, SelectedHotbarIndex);
+            BlockInteractionSystem.TryBreakTargetBlock(dt, worldInput, mouseWorld, SelectedHotbarIndex);
             EntityRuntimeSystem.Update(dt);
 
             CombatCoordinator.ResolveCombat();

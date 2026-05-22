@@ -12,11 +12,14 @@ namespace Nyvorn.Source.Game.States
     public sealed class PlayingSessionBlockInteractionSystem
     {
         private const float BlockPlaceInterval = 0.08f;
+        private const float MinimumMiningDurationSeconds = 0.15f;
         private const float TreeChopDurationSeconds = 3f;
         private const float PickaxeTreeChopStepSeconds = 0.3f;
 
-        private int lastBlockBreakAttackSequence = -1;
-        private Point lastBrokenBlockTile = new Point(int.MinValue, int.MinValue);
+        private Point miningTile = new Point(int.MinValue, int.MinValue);
+        private TileType miningTileType = TileType.Empty;
+        private ItemId miningToolItemId = ItemId.None;
+        private float miningProgressSeconds;
         private int lastTreeChopAttackSequence = -1;
         private TreeInstance choppingTree;
         private Point choppingTreeTile = new Point(int.MinValue, int.MinValue);
@@ -31,6 +34,12 @@ namespace Nyvorn.Source.Game.States
 
         public Rectangle HoveredTileBounds { get; private set; }
         public WorldTilePreviewState HoveredTileState { get; private set; } = WorldTilePreviewState.Hidden;
+        public Point ActiveMiningTile => miningTile;
+        public float MiningProgressSeconds => miningProgressSeconds;
+        public float MiningDurationSeconds { get; private set; }
+        public float MiningProgressRatio => MiningDurationSeconds <= 0f
+            ? 0f
+            : MathHelper.Clamp(miningProgressSeconds / MiningDurationSeconds, 0f, 1f);
 
         public void Update(float dt)
         {
@@ -43,7 +52,7 @@ namespace Nyvorn.Source.Game.States
             HoveredTileState = WorldTilePreviewState.Hidden;
 
             InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (!selectedSlot.IsEmpty && selectedSlot.ItemId == ItemId.SandBlock)
+            if (!selectedSlot.IsEmpty && (selectedSlot.ItemId == ItemId.SandBlock || selectedSlot.ItemId == ItemId.Workbench))
                 return;
 
             Point tile = WorldMap.WorldToTile(mouseWorld);
@@ -126,33 +135,67 @@ namespace Nyvorn.Source.Game.States
             blockPlaceCooldownTimer = BlockPlaceInterval;
         }
 
-        public void TryBreakTargetBlock(Vector2 mouseWorld, int selectedHotbarIndex)
+        public void TryBreakTargetBlock(float dt, InputState input, Vector2 mouseWorld, int selectedHotbarIndex)
         {
-            if (!Player.HasActiveAttackHitbox)
-                return;
-
             Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (TryChopTree(tile, selectedHotbarIndex))
+            if (Player.HasActiveAttackHitbox && TryChopTree(tile, selectedHotbarIndex))
                 return;
 
-            if (Player.AttackSequence == lastBlockBreakAttackSequence && tile == lastBrokenBlockTile)
+            InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
+            if (CanUseSelectedSlotForMining(selectedSlot))
+            {
+                TryMineTargetBlock(dt, input, selectedSlot.ItemId, tile);
                 return;
+            }
+
+            ResetMiningProgress();
+        }
+
+        private void TryMineTargetBlock(float dt, InputState input, ItemId toolItemId, Point tile)
+        {
+            if (!input.AttackPressed)
+            {
+                ResetMiningProgress();
+                return;
+            }
 
             TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
-            if (!Player.CanBreakTile(targetTile))
+            TileMiningDefinition miningDefinition = TileMiningDefinitions.Get(targetTile);
+            if (!miningDefinition.IsMineable || !Player.CanBreakTile(targetTile))
+            {
+                ResetMiningProgress();
                 return;
+            }
 
             Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
             if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldBreakRange)
+            {
+                ResetMiningProgress();
+                return;
+            }
+
+            if (miningTile != tile || miningTileType != targetTile || miningToolItemId != toolItemId)
+            {
+                miningTile = tile;
+                miningTileType = targetTile;
+                miningToolItemId = toolItemId;
+                miningProgressSeconds = 0f;
+            }
+
+            MiningDurationSeconds = GetMiningDuration(miningDefinition);
+            miningProgressSeconds += dt;
+            if (miningProgressSeconds < MiningDurationSeconds)
                 return;
 
             if (!WorldMap.TryBreakTile(tile.X, tile.Y, out TileType removedTile))
+            {
+                ResetMiningProgress();
                 return;
+            }
 
             SandSystem?.WakeAreaAboveTile(tile.X, tile.Y);
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);
-            lastBlockBreakAttackSequence = Player.AttackSequence;
-            lastBrokenBlockTile = tile;
+            ResetMiningProgress();
         }
 
         private bool TryChopTree(Point tile, int selectedHotbarIndex)
@@ -191,6 +234,17 @@ namespace Nyvorn.Source.Game.States
             return true;
         }
 
+        private static bool CanUseSelectedSlotForMining(InventorySlot slot)
+        {
+            if (slot.IsEmpty)
+                return true;
+
+            if (slot.ItemId == ItemId.SandBlock || slot.ItemId == ItemId.Workbench)
+                return false;
+
+            return !TileItemMapper.TryGetTileType(slot.ItemId, out _);
+        }
+
         private void ResetTreeChopProgress()
         {
             choppingTree = null;
@@ -200,7 +254,29 @@ namespace Nyvorn.Source.Game.States
 
         private static bool IsPickaxeSelected(InventorySlot slot)
         {
-            return !slot.IsEmpty && slot.ItemId == ItemId.Pickaxe;
+            return !slot.IsEmpty && IsPickaxe(slot.ItemId);
+        }
+
+        private static bool IsPickaxe(ItemId itemId)
+        {
+            return itemId == ItemId.WoodPickaxe ||
+                   itemId == ItemId.StonePickaxe ||
+                   itemId == ItemId.IronPickaxe;
+        }
+
+        private float GetMiningDuration(TileMiningDefinition miningDefinition)
+        {
+            float miningSpeed = System.MathF.Max(0.001f, Player.MiningSpeed);
+            return System.MathF.Max(MinimumMiningDurationSeconds, miningDefinition.Hardness / miningSpeed);
+        }
+
+        private void ResetMiningProgress()
+        {
+            miningTile = new Point(int.MinValue, int.MinValue);
+            miningTileType = TileType.Empty;
+            miningToolItemId = ItemId.None;
+            miningProgressSeconds = 0f;
+            MiningDurationSeconds = 0f;
         }
 
         private void TryPlaceSandPixel(InventorySlot selectedSlot, Vector2 mouseWorld)

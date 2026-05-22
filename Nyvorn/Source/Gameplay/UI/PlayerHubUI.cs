@@ -11,8 +11,9 @@ namespace Nyvorn.Source.Gameplay.UI
     public sealed class PlayerHubUI
     {
         private const int WorkbenchWoodCost = 10;
-        private const int PickaxeWoodCost = 6;
-        private const int PickaxeStoneCost = 4;
+        private const int WoodPickaxeWoodCost = 10;
+        private const int StonePickaxeWoodCost = 7;
+        private const int StonePickaxeStoneCost = 4;
 
         private readonly GraphicsDevice graphicsDevice;
         private readonly PlayingSession session;
@@ -96,9 +97,15 @@ namespace Nyvorn.Source.Gameplay.UI
                 return true;
             }
 
-            if (CanCraftPickaxe(craftTier) && GetPickaxeRecipeBounds().Contains(mousePosition))
+            if (CanCraftWoodPickaxe() && GetWoodPickaxeRecipeBounds().Contains(mousePosition))
             {
-                CraftPickaxe();
+                CraftWoodPickaxe();
+                return true;
+            }
+
+            if (CanCraftStonePickaxe(craftTier) && GetStonePickaxeRecipeBounds().Contains(mousePosition))
+            {
+                CraftStonePickaxe();
                 return true;
             }
 
@@ -157,8 +164,11 @@ namespace Nyvorn.Source.Gameplay.UI
             if (CanCraftWorkbench())
                 DrawRecipe(spriteBatch, GetWorkbenchRecipeBounds(), ItemId.Workbench, "Workbench", "10 Raw Wood");
 
-            if (CanCraftPickaxe(craftTier))
-                DrawRecipe(spriteBatch, GetPickaxeRecipeBounds(), ItemId.Pickaxe, "Pickaxe", "6 Raw Wood + 4 Stone");
+            if (CanCraftWoodPickaxe())
+                DrawRecipe(spriteBatch, GetWoodPickaxeRecipeBounds(), ItemId.WoodPickaxe, "Wood Pickaxe", "10 Raw Wood");
+
+            if (CanCraftStonePickaxe(craftTier))
+                DrawRecipe(spriteBatch, GetStonePickaxeRecipeBounds(), ItemId.StonePickaxe, "Stone Pickaxe", "7 Raw Wood + 4 Stone");
         }
 
         private void DrawRecipe(SpriteBatch spriteBatch, Rectangle bounds, ItemId itemId, string name, string cost)
@@ -172,7 +182,7 @@ namespace Nyvorn.Source.Gameplay.UI
                 ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
             {
                 Rectangle iconRect = itemId == ItemId.Workbench
-                    ? new Rectangle(bounds.X + 4, bounds.Y + 12, 32, 16)
+                    ? new Rectangle(bounds.X + 8, bounds.Y + 12, 24, 16)
                     : new Rectangle(bounds.X + 4, bounds.Y + 4, 32, 32);
                 spriteBatch.Draw(texture, iconRect, definition.SourceRectangle, Color.White);
             }
@@ -196,11 +206,16 @@ namespace Nyvorn.Source.Gameplay.UI
             return session.CountItem(ItemId.RawWood) >= WorkbenchWoodCost;
         }
 
-        private bool CanCraftPickaxe(CraftTier craftTier)
+        private bool CanCraftWoodPickaxe()
+        {
+            return session.CountItem(ItemId.RawWood) >= WoodPickaxeWoodCost;
+        }
+
+        private bool CanCraftStonePickaxe(CraftTier craftTier)
         {
             return craftTier >= CraftTier.Workbench &&
-                   session.CountItem(ItemId.RawWood) >= PickaxeWoodCost &&
-                   session.CountItem(ItemId.StoneBlock) >= PickaxeStoneCost;
+                   session.CountItem(ItemId.RawWood) >= StonePickaxeWoodCost &&
+                   session.CountItem(ItemId.StoneBlock) >= StonePickaxeStoneCost;
         }
 
         private void CraftWorkbench()
@@ -212,26 +227,35 @@ namespace Nyvorn.Source.Gameplay.UI
                 session.TryDropItem(ItemId.Workbench);
         }
 
-        private void CraftPickaxe()
+        private void CraftWoodPickaxe()
         {
-            if (!session.TryConsumeItem(ItemId.RawWood, PickaxeWoodCost))
+            if (!session.TryConsumeItem(ItemId.RawWood, WoodPickaxeWoodCost))
                 return;
 
-            if (!session.TryConsumeItem(ItemId.StoneBlock, PickaxeStoneCost))
+            if (!session.TryStoreItem(ItemId.WoodPickaxe, 1, preferInventory: true))
+                session.TryDropItem(ItemId.WoodPickaxe);
+        }
+
+        private void CraftStonePickaxe()
+        {
+            if (!session.TryConsumeItem(ItemId.RawWood, StonePickaxeWoodCost))
+                return;
+
+            if (!session.TryConsumeItem(ItemId.StoneBlock, StonePickaxeStoneCost))
             {
-                session.TryStoreItem(ItemId.RawWood, PickaxeWoodCost, preferInventory: true);
+                session.TryStoreItem(ItemId.RawWood, StonePickaxeWoodCost, preferInventory: true);
                 return;
             }
 
-            if (!session.TryStoreItem(ItemId.Pickaxe, 1, preferInventory: true))
-                session.TryDropItem(ItemId.Pickaxe);
+            if (!session.TryStoreItem(ItemId.StonePickaxe, 1, preferInventory: true))
+                session.TryDropItem(ItemId.StonePickaxe);
         }
 
         private Rectangle GetCraftPanelBounds(int screenWidth, int screenHeight)
         {
             Rectangle inventory = session.GetInventoryPanelBounds(screenWidth, screenHeight);
             const int width = 252;
-            const int height = 150;
+            const int height = 198;
             int x = inventory.Right + 12;
             int y = inventory.Y;
 
@@ -255,12 +279,20 @@ namespace Nyvorn.Source.Gameplay.UI
             return new Rectangle(panel.X + 12, panel.Y + 48, panel.Width - 24, 42);
         }
 
-        private Rectangle GetPickaxeRecipeBounds()
+        private Rectangle GetWoodPickaxeRecipeBounds()
         {
             Rectangle panel = GetCraftPanelBounds(
                 graphicsDevice.PresentationParameters.BackBufferWidth,
                 graphicsDevice.PresentationParameters.BackBufferHeight);
             return new Rectangle(panel.X + 12, panel.Y + 96, panel.Width - 24, 42);
+        }
+
+        private Rectangle GetStonePickaxeRecipeBounds()
+        {
+            Rectangle panel = GetCraftPanelBounds(
+                graphicsDevice.PresentationParameters.BackBufferWidth,
+                graphicsDevice.PresentationParameters.BackBufferHeight);
+            return new Rectangle(panel.X + 12, panel.Y + 144, panel.Width - 24, 42);
         }
 
         private void ReturnHeldItem()

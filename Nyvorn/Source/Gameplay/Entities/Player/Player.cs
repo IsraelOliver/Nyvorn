@@ -33,6 +33,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool IsInvincible => combat.IsInvincible;
         public float WorldInteractionRange => config.WorldInteractionRange;
         public float WorldBreakRange => combat.WorldBreakRangeOverride ?? config.WorldInteractionRange;
+        public int MiningPower => combat.MiningPower;
+        public float MiningSpeed => combat.MiningSpeed;
 
         public const int SpriteW = 32;
         public const int SpriteH = 32;
