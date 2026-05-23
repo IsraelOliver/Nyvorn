@@ -13,6 +13,7 @@ namespace Nyvorn.Source.Engine.Input
         public bool ActivePowerJustPressed { get; }
         public bool TogglePlayerHubPressed { get; }
         public bool ToggleMapPressed { get; }
+        public bool ToggleConstructionModePressed { get; }
         public bool InteractPressed { get; }
         public bool CyclePowerPressed { get; }
         public bool ToggleDebugPressed { get; }
@@ -33,6 +34,7 @@ namespace Nyvorn.Source.Engine.Input
             bool activePowerJustPressed,
             bool togglePlayerHubPressed,
             bool toggleMapPressed,
+            bool toggleConstructionModePressed,
             bool interactPressed,
             bool cyclePowerPressed,
             bool toggleDebugPressed,
@@ -52,6 +54,7 @@ namespace Nyvorn.Source.Engine.Input
             ActivePowerJustPressed = activePowerJustPressed;
             TogglePlayerHubPressed = togglePlayerHubPressed;
             ToggleMapPressed = toggleMapPressed;
+            ToggleConstructionModePressed = toggleConstructionModePressed;
             InteractPressed = interactPressed;
             CyclePowerPressed = cyclePowerPressed;
             ToggleDebugPressed = toggleDebugPressed;
@@ -75,6 +78,7 @@ namespace Nyvorn.Source.Engine.Input
                 false,
                 TogglePlayerHubPressed,
                 ToggleMapPressed,
+                ToggleConstructionModePressed,
                 InteractPressed,
                 CyclePowerPressed,
                 ToggleDebugPressed,
@@ -90,6 +94,7 @@ namespace Nyvorn.Source.Engine.Input
         {
             return new InputState(
                 0,
+                false,
                 false,
                 false,
                 false,

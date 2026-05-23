@@ -14,6 +14,7 @@ namespace Nyvorn.Source.Gameplay.UI
         private const int WoodPickaxeWoodCost = 10;
         private const int StonePickaxeWoodCost = 7;
         private const int StonePickaxeStoneCost = 4;
+        private const int WoodDoorWoodCost = 12;
 
         private readonly GraphicsDevice graphicsDevice;
         private readonly PlayingSession session;
@@ -109,6 +110,12 @@ namespace Nyvorn.Source.Gameplay.UI
                 return true;
             }
 
+            if (CanCraftWoodDoor(craftTier) && GetWoodDoorRecipeBounds().Contains(mousePosition))
+            {
+                CraftWoodDoor();
+                return true;
+            }
+
             return false;
         }
 
@@ -169,6 +176,9 @@ namespace Nyvorn.Source.Gameplay.UI
 
             if (CanCraftStonePickaxe(craftTier))
                 DrawRecipe(spriteBatch, GetStonePickaxeRecipeBounds(), ItemId.StonePickaxe, "Stone Pickaxe", "7 Raw Wood + 4 Stone");
+
+            if (CanCraftWoodDoor(craftTier))
+                DrawRecipe(spriteBatch, GetWoodDoorRecipeBounds(), ItemId.WoodDoor, "Wood Door", "12 Raw Wood");
         }
 
         private void DrawRecipe(SpriteBatch spriteBatch, Rectangle bounds, ItemId itemId, string name, string cost)
@@ -181,9 +191,12 @@ namespace Nyvorn.Source.Gameplay.UI
             if (session.TryGetItemTexture(itemId, out Texture2D texture) &&
                 ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
             {
-                Rectangle iconRect = itemId == ItemId.Workbench
-                    ? new Rectangle(bounds.X + 8, bounds.Y + 12, 24, 16)
-                    : new Rectangle(bounds.X + 4, bounds.Y + 4, 32, 32);
+                Rectangle iconRect = itemId switch
+                {
+                    ItemId.Workbench => new Rectangle(bounds.X + 8, bounds.Y + 12, 24, 16),
+                    ItemId.WoodDoor => new Rectangle(bounds.X + 15, bounds.Y + 5, 10, 30),
+                    _ => new Rectangle(bounds.X + 4, bounds.Y + 4, 32, 32)
+                };
                 spriteBatch.Draw(texture, iconRect, definition.SourceRectangle, Color.White);
             }
 
@@ -216,6 +229,12 @@ namespace Nyvorn.Source.Gameplay.UI
             return craftTier >= CraftTier.Workbench &&
                    session.CountItem(ItemId.RawWood) >= StonePickaxeWoodCost &&
                    session.CountItem(ItemId.StoneBlock) >= StonePickaxeStoneCost;
+        }
+
+        private bool CanCraftWoodDoor(CraftTier craftTier)
+        {
+            return craftTier >= CraftTier.Workbench &&
+                   session.CountItem(ItemId.RawWood) >= WoodDoorWoodCost;
         }
 
         private void CraftWorkbench()
@@ -251,11 +270,20 @@ namespace Nyvorn.Source.Gameplay.UI
                 session.TryDropItem(ItemId.StonePickaxe);
         }
 
+        private void CraftWoodDoor()
+        {
+            if (!session.TryConsumeItem(ItemId.RawWood, WoodDoorWoodCost))
+                return;
+
+            if (!session.TryStoreItem(ItemId.WoodDoor, 1, preferInventory: true))
+                session.TryDropItem(ItemId.WoodDoor);
+        }
+
         private Rectangle GetCraftPanelBounds(int screenWidth, int screenHeight)
         {
             Rectangle inventory = session.GetInventoryPanelBounds(screenWidth, screenHeight);
             const int width = 252;
-            const int height = 198;
+            const int height = 246;
             int x = inventory.Right + 12;
             int y = inventory.Y;
 
@@ -293,6 +321,14 @@ namespace Nyvorn.Source.Gameplay.UI
                 graphicsDevice.PresentationParameters.BackBufferWidth,
                 graphicsDevice.PresentationParameters.BackBufferHeight);
             return new Rectangle(panel.X + 12, panel.Y + 144, panel.Width - 24, 42);
+        }
+
+        private Rectangle GetWoodDoorRecipeBounds()
+        {
+            Rectangle panel = GetCraftPanelBounds(
+                graphicsDevice.PresentationParameters.BackBufferWidth,
+                graphicsDevice.PresentationParameters.BackBufferHeight);
+            return new Rectangle(panel.X + 12, panel.Y + 192, panel.Width - 24, 42);
         }
 
         private void ReturnHeldItem()

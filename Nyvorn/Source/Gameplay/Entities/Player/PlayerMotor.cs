@@ -244,7 +244,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
             int tileYAbove = tileYBottom - 1;
 
-            if (!worldMap.IsSolidAt(tileX, tileYBottom) || worldMap.IsSolidAt(tileX, tileYAbove))
+            if (!worldMap.IsMovementBlockedAt(tileX, tileYBottom) || worldMap.IsMovementBlockedAt(tileX, tileYAbove))
                 return false;
 
             float originalY = position.Y;
@@ -369,7 +369,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {
                 for (int x = tileXLeft; x <= tileXRight; x++)
                 {
-                    if (worldMap.IsSolidAt(x, y))
+                    if (worldMap.IsMovementBlockedAt(x, y))
                         return false;
                 }
             }
@@ -389,7 +389,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {
                 for (int x = tileXLeft; x <= tileXRight; x++)
                 {
-                    if (worldMap.IsSolidAt(x, y))
+                    if (worldMap.IsMovementBlockedAt(x, y))
                         return true;
                 }
             }
@@ -401,7 +401,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             for (int y = tileYTop; y <= tileYBottom; y++)
             {
-                if (worldMap.IsSolidAt(tileX, y))
+                if (worldMap.IsMovementBlockedAt(tileX, y))
                     return true;
             }
 
@@ -412,7 +412,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             for (int x = tileXLeft; x <= tileXRight; x++)
             {
-                if (worldMap.IsSolidAt(x, tileY))
+                if (worldMap.IsMovementBlockedAt(x, tileY))
                     return true;
             }
 

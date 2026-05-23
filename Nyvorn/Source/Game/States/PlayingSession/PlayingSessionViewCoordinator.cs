@@ -9,6 +9,9 @@ using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Interiors;
+using Nyvorn.Source.Gameplay.World.Objects;
+using Nyvorn.Source.Gameplay.World.Particles;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Decorations;
@@ -21,10 +24,21 @@ namespace Nyvorn.Source.Game.States
     {
         private const float EntityDrawPaddingPixels = 48f;
         private const int SimulationChunkBorder = 1;
+        private const float DefaultCameraZoom = 2f;
+        private const float InteriorCameraZoom = 2.18f;
+        private const float CameraZoomInLerpSpeed = 4.5f;
+        private const float CameraZoomOutLerpSpeed = 2.1f;
+        private const float CameraFocusLerpSpeed = 2.8f;
+        private const float CameraReturnFocusLerpSpeed = 3.6f;
+        private const float CameraReturnSnapDistance = 1.25f;
         private static readonly Color SandPixelColor = new Color(214, 196, 150);
         private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
+        private Vector2 smoothedCameraTarget;
+        private bool hasSmoothedCameraTarget;
+        private bool wasFocusingInterior;
+        private bool returningFromInterior;
 
         public required WorldMap WorldMap { get; init; }
         public SandSystem SandSystem { get; set; }
@@ -41,7 +55,10 @@ namespace Nyvorn.Source.Game.States
         public required PowerHUD PowerHUD { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
         public required IReadOnlySet<int> ActivatedTissueHubKeys { get; init; }
+        public required InteriorFocusSystem InteriorFocusSystem { get; init; }
+        public required BlockParticleSystem BlockParticleSystem { get; init; }
         public WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
+        public DoorRuntimeSystem DoorRuntimeSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
 
@@ -67,9 +84,60 @@ namespace Nyvorn.Source.Game.States
                 activeSimulationChunks);
         }
 
-        public void FollowPlayer(int screenWidth, int screenHeight)
+        public void FollowPlayer(float dt, int screenWidth, int screenHeight)
         {
-            Camera.Follow(Player.Position + new Vector2(8f, 12f), screenWidth, screenHeight);
+            Vector2 playerTarget = Player.Position + new Vector2(8f, 12f);
+            Vector2 target = playerTarget;
+            float targetZoom = DefaultCameraZoom;
+
+            bool focusingInterior = InteriorFocusSystem.TryGetCameraFocus(out Vector2 roomFocus);
+            if (focusingInterior)
+            {
+                target = roomFocus;
+                targetZoom = InteriorCameraZoom;
+            }
+
+            if (!hasSmoothedCameraTarget || !focusingInterior)
+            {
+                smoothedCameraTarget = target;
+                hasSmoothedCameraTarget = true;
+            }
+
+            if (focusingInterior)
+            {
+                returningFromInterior = false;
+                smoothedCameraTarget = Vector2.Lerp(
+                    smoothedCameraTarget,
+                    target,
+                    MathHelper.Clamp(dt * CameraFocusLerpSpeed, 0f, 1f));
+            }
+            else if (wasFocusingInterior || returningFromInterior)
+            {
+                returningFromInterior = true;
+                smoothedCameraTarget = Vector2.Lerp(
+                    smoothedCameraTarget,
+                    playerTarget,
+                    MathHelper.Clamp(dt * CameraReturnFocusLerpSpeed, 0f, 1f));
+
+                if (Vector2.DistanceSquared(smoothedCameraTarget, playerTarget) <= CameraReturnSnapDistance * CameraReturnSnapDistance)
+                {
+                    smoothedCameraTarget = playerTarget;
+                    returningFromInterior = false;
+                }
+            }
+            else
+            {
+                smoothedCameraTarget = playerTarget;
+            }
+
+            float zoomLerpSpeed = focusingInterior ? CameraZoomInLerpSpeed : CameraZoomOutLerpSpeed;
+            Camera.Zoom = MathHelper.Lerp(
+                Camera.Zoom,
+                targetZoom,
+                MathHelper.Clamp(dt * zoomLerpSpeed, 0f, 1f));
+
+            wasFocusingInterior = focusingInterior;
+            Camera.Follow(smoothedCameraTarget, screenWidth, screenHeight);
         }
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Rectangle hoveredTileBounds, WorldTilePreviewState hoveredTileState)
@@ -100,6 +168,9 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+            WorldMap.DrawBackground(spriteBatch, startTileX, endTileX, startTileY, endTileY);
+
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
             float localLeft = Camera.Position.X - worldOffsetX - EntityDrawPaddingPixels;
@@ -124,7 +195,9 @@ namespace Nyvorn.Source.Game.States
                 worldItem.Draw(spriteBatch);
             }
 
+            BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
             WorkbenchRuntimeSystem?.Draw(spriteBatch);
+            DoorRuntimeSystem?.Draw(spriteBatch);
         }
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
@@ -137,9 +210,14 @@ namespace Nyvorn.Source.Game.States
             HudRenderer.Draw(spriteBatch, hotbar, selectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight);
         }
 
-        public void DrawPowerHud(SpriteBatch spriteBatch, PlayerPowerSystem powerSystem, int screenWidth, int screenHeight)
+        public void DrawPowerHud(SpriteBatch spriteBatch, PlayerPowerSystem powerSystem, int screenWidth, int screenHeight, bool constructionMode)
         {
-            PowerHUD.Draw(spriteBatch, powerSystem, screenWidth, screenHeight);
+            PowerHUD.Draw(spriteBatch, powerSystem, screenWidth, screenHeight, constructionMode);
+        }
+
+        public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            InteriorFocusSystem.Draw(spriteBatch, Camera, DebugPixel, screenWidth, screenHeight, worldOffsetX);
         }
 
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)

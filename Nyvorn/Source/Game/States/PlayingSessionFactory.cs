@@ -10,6 +10,9 @@ using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Interiors;
+using Nyvorn.Source.Gameplay.World.Objects;
+using Nyvorn.Source.Gameplay.World.Particles;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Decorations;
@@ -258,11 +261,17 @@ namespace Nyvorn.Source.Game.States
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
+            build.SavedBackgroundTileSnapshot = saveData != null && saveData.Version >= 10
+                ? saveData.BackgroundTileSnapshot
+                : null;
             build.SavedWorldItems = saveData != null && saveData.Version >= 5 && saveData.WorldItems != null
                 ? new List<WorldItemSaveData>(saveData.WorldItems)
                 : null;
             build.SavedWorkbenches = saveData != null && saveData.Version >= 8 && saveData.Workbenches != null
                 ? new List<WorkbenchSaveData>(saveData.Workbenches)
+                : null;
+            build.SavedDoors = saveData != null && saveData.Version >= 9 && saveData.Doors != null
+                ? new List<DoorSaveData>(saveData.Doors)
                 : null;
 
             BuildOperation operation = null;
@@ -360,6 +369,7 @@ namespace Nyvorn.Source.Game.States
         private static void LoadWorldSnapshot(BuildContext build, PlanetSaveData saveData)
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
+            build.WorldMap.ImportBackgroundTileSnapshot(build.SavedBackgroundTileSnapshot);
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
             RestoreTrees(build, saveData.Trees);
 
@@ -432,6 +442,7 @@ namespace Nyvorn.Source.Game.States
             build.PlayerDownTexture = content.Load<Texture2D>("entities/player/playerDown_sheet");
             build.PlayerUpTexture = content.Load<Texture2D>("entities/player/playerUp_sheet");
             build.WorkbenchTexture = content.Load<Texture2D>("blocks/worktable-sheet");
+            build.DoorTexture = content.Load<Texture2D>("blocks/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
@@ -553,6 +564,29 @@ namespace Nyvorn.Source.Game.States
                 Texture = build.WorkbenchTexture
             };
             workbenchRuntimeSystem.Restore(build.SavedWorkbenches);
+            DoorRuntimeSystem doorRuntimeSystem = new DoorRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.DoorTexture
+            };
+            doorRuntimeSystem.Restore(build.SavedDoors);
+            blockInteractionSystem.DoorRuntimeSystem = doorRuntimeSystem;
+            build.WorldMap.SetObjectCollisionQueries(
+                (tileX, tileY) => workbenchRuntimeSystem.IsObjectOccupyingTile(tileX, tileY) || doorRuntimeSystem.IsObjectOccupyingTile(tileX, tileY),
+                doorRuntimeSystem.IsMovementBlockingTile);
+            InteriorFocusSystem interiorFocusSystem = new InteriorFocusSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                DoorRuntimeSystem = doorRuntimeSystem
+            };
+            BlockParticleSystem blockParticleSystem = new BlockParticleSystem
+            {
+                WorldMap = build.WorldMap
+            };
+            blockInteractionSystem.BlockParticleSystem = blockParticleSystem;
             PlayingSessionInputRouter inputRouter = new PlayingSessionInputRouter
             {
                 Hotbar = hotbar
@@ -577,7 +611,10 @@ namespace Nyvorn.Source.Game.States
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
                 ActivatedTissueHubKeys = activatedTissueHubKeys,
-                WorkbenchRuntimeSystem = workbenchRuntimeSystem
+                InteriorFocusSystem = interiorFocusSystem,
+                BlockParticleSystem = blockParticleSystem,
+                WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                DoorRuntimeSystem = doorRuntimeSystem
             };
             PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
             {
@@ -606,6 +643,9 @@ namespace Nyvorn.Source.Game.States
                 WorldTickCoordinator = worldTickCoordinator,
                 CombatCoordinator = combatCoordinator,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                DoorRuntimeSystem = doorRuntimeSystem,
+                InteriorFocusSystem = interiorFocusSystem,
+                BlockParticleSystem = blockParticleSystem,
                 PowerSystem = powerSystem
             };
 
@@ -798,6 +838,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
             public Texture2D WorkbenchTexture { get; set; }
+            public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
             public SpriteFont UiFont { get; set; }
@@ -812,8 +853,10 @@ namespace Nyvorn.Source.Game.States
             public TissueNetwork TissueNetwork { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
+            public byte[] SavedBackgroundTileSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public List<WorkbenchSaveData> SavedWorkbenches { get; set; }
+            public List<DoorSaveData> SavedDoors { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
             public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;

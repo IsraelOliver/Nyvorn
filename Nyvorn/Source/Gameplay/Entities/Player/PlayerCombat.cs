@@ -19,6 +19,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private int dodgeDir;
         private int health;
         private Rectangle attackHitbox;
+        private bool attackHitboxEnabled;
 
         public PlayerCombat(Weapon equippedWeapon, PlayerConfig config)
         {
@@ -30,6 +31,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             dodgeDir = 1;
             health = config.MaxHealth;
             attackHitbox = Rectangle.Empty;
+            attackHitboxEnabled = false;
         }
 
         public Weapon EquippedWeapon => equippedWeapon;
@@ -72,7 +74,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (!CanStartAttack())
                 return false;
 
-            StartAttack();
+            StartAttack(enableHitbox: true);
+            attackSequence++;
+            return true;
+        }
+
+        public bool TryStartVisualAttack(Vector2 playerPosition, Vector2 mouseWorld, out bool attackFacingRight)
+        {
+            attackFacingRight = mouseWorld.X >= playerPosition.X;
+
+            if (!CanStartAttack())
+                return false;
+
+            StartAttack(enableHitbox: false);
             return true;
         }
 
@@ -158,11 +172,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return !isDodging && !isAttacking;
         }
 
-        private void StartAttack()
+        private void StartAttack(bool enableHitbox)
         {
             isAttacking = true;
             attackTimer = equippedWeapon.AttackDuration;
-            attackSequence++;
+            attackHitboxEnabled = enableHitbox;
             attackAnimation.Reset();
             attackHitbox = Rectangle.Empty;
         }
@@ -172,6 +186,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             isAttacking = false;
             attackTimer = 0f;
             attackHitbox = Rectangle.Empty;
+            attackHitboxEnabled = false;
 
             if (moveDir != 0)
                 facingRight = moveDir > 0;
@@ -179,7 +194,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private bool CanUseAttackHitbox()
         {
-            if (isDodging || !isAttacking || equippedWeapon == null)
+            if (isDodging || !isAttacking || !attackHitboxEnabled || equippedWeapon == null)
                 return false;
 
             return equippedWeapon.IsActiveFrame(attackAnimation.CurrentFrameIndex);

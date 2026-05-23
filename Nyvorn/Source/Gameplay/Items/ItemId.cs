@@ -10,6 +10,7 @@ namespace Nyvorn.Source.Gameplay.Items
         RawWood = 6,
         Workbench = 7,
         WoodPickaxe = 8,
-        StonePickaxe = 9
+        StonePickaxe = 9,
+        WoodDoor = 10
     }
 }

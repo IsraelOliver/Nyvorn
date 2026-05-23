@@ -135,6 +135,21 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 spriteBatch.Draw(Texture, previewBounds, NormalSource, previewValid ? ValidPreviewTint : InvalidPreviewTint);
         }
 
+        public bool IsObjectOccupyingTile(int tileX, int tileY)
+        {
+            if (!WorldMap.InBounds(tileX, tileY))
+                return false;
+
+            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tileX), tileY);
+            for (int i = 0; i < workbenches.Count; i++)
+            {
+                if (workbenches[i].Bounds.Intersects(tileBounds))
+                    return true;
+            }
+
+            return false;
+        }
+
         private Rectangle GetSnappedPlacementBounds(Point tile)
         {
             int x = WorldMap.WrapTileX(tile.X) * WorldMap.TileSize;
@@ -187,7 +202,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
                 for (int x = startTileX; x <= endTileX; x++)
                 {
-                    if (WorldMap.IsSolidAt(x, y))
+                    if (WorldMap.IsSolidAt(x, y) || WorldMap.IsObjectOccupiedAt(x, y))
                         return false;
                 }
             }

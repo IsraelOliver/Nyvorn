@@ -157,6 +157,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return combat.EquippedWeapon.CanBreakTile(tileType);
         }
 
+        public void TryStartToolUseAnimation(Vector2 mouseWorld)
+        {
+            if (combat.TryStartVisualAttack(Position, mouseWorld, out bool attackFacingRight))
+                playerAnimator.SetFacing(attackFacingRight);
+        }
+
         public void ApplyKnockback(float forceX, float forceY = -60f)
         {
             motor.ApplyKnockback(forceX, forceY);

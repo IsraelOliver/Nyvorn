@@ -25,6 +25,7 @@ namespace Nyvorn.Source.Engine.Input
             bool activePowerJustPressed = mouse.RightButton == ButtonState.Pressed && _prevMouse.RightButton != ButtonState.Pressed;
             bool togglePlayerHubPressed = IsNewKeyPress(keyboard, Keys.E);
             bool toggleMapPressed = IsNewKeyPress(keyboard, Keys.M);
+            bool toggleConstructionModePressed = IsNewKeyPress(keyboard, Keys.LeftAlt) || IsNewKeyPress(keyboard, Keys.RightAlt);
             bool interactPressed = IsNewKeyPress(keyboard, Keys.F);
             bool cyclePowerPressed = IsNewKeyPress(keyboard, Keys.Q);
             bool toggleDebugPressed = IsNewKeyPress(keyboard, Keys.F3);
@@ -49,6 +50,7 @@ namespace Nyvorn.Source.Engine.Input
                 activePowerJustPressed,
                 togglePlayerHubPressed,
                 toggleMapPressed,
+                toggleConstructionModePressed,
                 interactPressed,
                 cyclePowerPressed,
                 toggleDebugPressed,

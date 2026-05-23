@@ -135,6 +135,22 @@ namespace Nyvorn.Source.Gameplay.Items
                     SpriteSheetCell = new Point(0, 0),
                     WorldCollisionRect = new Rectangle(2, 10, 20, 6)
                 }
+            },
+            {
+                ItemId.WoodDoor,
+                new ItemDefinition
+                {
+                    Id = ItemId.WoodDoor,
+                    Name = "Wood Door",
+                    TexturePath = "blocks/wood_door",
+                    Stackable = true,
+                    MaxStack = 99,
+                    GravityScale = 1.0f,
+                    WorldSize = new Point(8, 24),
+                    WorldPivot = new Point(4, 24),
+                    SpriteSheetCell = new Point(0, 0),
+                    WorldCollisionRect = new Rectangle(0, 16, 8, 8)
+                }
             }
         };
 

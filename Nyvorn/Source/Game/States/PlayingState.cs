@@ -138,6 +138,9 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && input.ToggleMapPressed)
                 minimapVisible = !minimapVisible;
 
+            if (!handledConsoleThisFrame && input.ToggleConstructionModePressed)
+                session.ToggleConstructionMode();
+
             if (minimapVisible)
             {
                 WorldMinimapInteractionResult minimapInteraction = session.UpdateMinimapInteraction(
@@ -168,18 +171,22 @@ namespace Nyvorn.Source.Game.States
             if (playerHubUI.IsOpen && playerHubUI.ContainsMouse(input.MouseScreenPosition.ToPoint(), craftTier))
                 input = input.ConsumeWorldMouseInput();
 
-            if (!handledConsoleThisFrame && input.InteractPressed &&
-                session.WorkbenchRuntimeSystem.TryInteract(session.Player, out InteractionResult interactionResult) &&
-                interactionResult.OpenPlayerHub)
+            if (!handledConsoleThisFrame && input.InteractPressed)
             {
-                playerHubUI.Open();
-                craftTier = interactionResult.CraftTier;
+                bool interactedWithDoor = session.DoorRuntimeSystem.TryInteract(session.Player);
+                if (!interactedWithDoor &&
+                    session.WorkbenchRuntimeSystem.TryInteract(session.Player, out InteractionResult interactionResult) &&
+                    interactionResult.OpenPlayerHub)
+                {
+                    playerHubUI.Open();
+                    craftTier = interactionResult.CraftTier;
+                }
             }
 
             if (!handledConsoleThisFrame && input.CyclePowerPressed)
                 session.PowerSystem.CycleNextPower();
 
-            if (!handledConsoleThisFrame && input.ActivePowerJustPressed)
+            if (!handledConsoleThisFrame && !session.IsConstructionMode && input.ActivePowerJustPressed)
                 session.PowerSystem.TryActivateCurrentPower();
 
             session.UpdateSimulationViewport(screenW, screenH);
@@ -203,7 +210,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            session.FollowCamera(screenW, screenH);
+            session.FollowCamera(dt, screenW, screenH);
             previousConsoleKeyboard = keyboard;
         }
 
@@ -260,6 +267,17 @@ namespace Nyvorn.Source.Game.States
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTerrain(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawInteriorFocusOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
 
