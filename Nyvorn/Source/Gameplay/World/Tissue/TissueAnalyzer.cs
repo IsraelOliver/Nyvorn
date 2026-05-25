@@ -32,7 +32,8 @@ namespace Nyvorn.Source.World.Tissue
             {
                 for (int x = 0; x < field.Width; x++)
                 {
-                    if (!field.HasTissue(x, y))
+                    TissueCellState state = field.GetState(x, y);
+                    if (!state.HasBiologicalPresence)
                     {
                         result.SetLocalType(x, y, TissueLocalType.None);
                         result.SetNeighborCount(x, y, 0);
@@ -120,7 +121,7 @@ namespace Nyvorn.Source.World.Tissue
                     if (x == centerX && y == centerY)
                         continue;
 
-                    if (field.HasTissue(x, y))
+                    if (field.GetState(x, y).HasBiologicalPresence)
                         count++;
                 }
             }
@@ -390,7 +391,8 @@ namespace Nyvorn.Source.World.Tissue
 
         private static List<Point> FindPathThroughTissue(TissueField field, Point start, Point end)
         {
-            if (!field.HasTissue(start.X, start.Y) || !field.HasTissue(end.X, end.Y))
+            if (!field.GetState(start.X, start.Y).HasBiologicalPresence ||
+                !field.GetState(end.X, end.Y).HasBiologicalPresence)
                 return null;
 
             int width = field.Width;
@@ -433,7 +435,7 @@ namespace Nyvorn.Source.World.Tissue
                     if (nx < 0 || nx >= width || ny < 0 || ny >= height)
                         continue;
 
-                    if (!field.HasTissue(nx, ny))
+                    if (!field.GetState(nx, ny).HasBiologicalPresence)
                         continue;
 
                     int nextIndex = (ny * width) + nx;

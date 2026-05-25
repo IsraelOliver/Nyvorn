@@ -182,6 +182,8 @@ namespace Nyvorn.Source.World
             if (_tissueField == null)
                 return null;
 
+            // Snapshot legado: preserva apenas presenca para compatibilidade com
+            // saves atuais. O novo modelo biologico devera ganhar formato proprio.
             byte[] snapshot = new byte[Width * Height];
             int index = 0;
 
@@ -208,6 +210,7 @@ namespace Nyvorn.Source.World
             TissueField field = new TissueField(Width, Height);
             int index = 0;
 
+            // Snapshot legado booleano: true entra como presenca/vitalidade basica.
             for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)

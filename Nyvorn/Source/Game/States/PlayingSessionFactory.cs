@@ -27,6 +27,8 @@ namespace Nyvorn.Source.Game.States
 {
     public sealed class PlayingSessionFactory
     {
+        private const int EnemySpawnOffsetTilesFromPlayer = 8;
+
         private readonly GraphicsDevice graphicsDevice;
         private readonly ContentManager content;
         private readonly PlayerSaveService playerSaveService = new();
@@ -319,7 +321,11 @@ namespace Nyvorn.Source.Game.States
                 steps.Add(new BuildOperation.BuildStep("Preparando tecido do planeta", () =>
                 {
                     if (build.WorldMap.TissueField == null)
+                    {
+                        build.WorldMap.SetTissueField(new TissueField(build.WorldMap.Width, build.WorldMap.Height));
+                        build.WorldMap.RebuildTissueAnalysis();
                         build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
+                    }
                 }, weight: 8f, runInBackground: true));
             }
 
@@ -481,11 +487,6 @@ namespace Nyvorn.Source.Game.States
                 build.PlayerSpawnTileX,
                 tilesAboveSurface: 2);
             Vector2 playerSpawn = ResolvePlayerSpawn(build, defaultPlayerSpawn);
-            Vector2 enemySpawn = build.WorldGenerator.GetLayerSpawnPosition(
-                build.WorldMap,
-                build.WorldGenConfig,
-                WorldLayerType.DeepCavern,
-                build.EnemySpawnTileX);
             Vector2 pickaxeSpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,
                 build.WorldGenConfig,
@@ -500,7 +501,10 @@ namespace Nyvorn.Source.Game.States
                 build.PlayerConfig);
 
             List<Enemy> enemies = new();
-            EnemyRespawnController enemyRespawnController = new(build.EnemyTexture, enemySpawn, build.EnemyConfig);
+            EnemyRespawnController enemyRespawnController = new(
+                build.EnemyTexture,
+                () => ResolveEnemySpawnNearPlayer(build.WorldMap, player.Position),
+                build.EnemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
 
             Hotbar hotbar = new(9);
@@ -793,6 +797,47 @@ namespace Nyvorn.Source.Game.States
             {
                 new WorldItem(ItemDefinitions.Get(ItemId.IronPickaxe), build.ItemTextures[ItemId.IronPickaxe], pickaxeSpawn)
             };
+        }
+
+        private static Vector2 ResolveEnemySpawnNearPlayer(WorldMap worldMap, Vector2 playerPosition)
+        {
+            int playerTileX = worldMap.WrapTileX((int)MathF.Floor(playerPosition.X / worldMap.TileSize));
+            int spawnTileX = worldMap.WrapTileX(playerTileX + EnemySpawnOffsetTilesFromPlayer);
+
+            for (int offset = 0; offset <= EnemySpawnOffsetTilesFromPlayer; offset++)
+            {
+                int candidateTileX = worldMap.WrapTileX(spawnTileX + GetAlternatingOffset(offset));
+                if (TryGetSurfaceSpawnPosition(worldMap, candidateTileX, out Vector2 spawnPosition))
+                    return spawnPosition;
+            }
+
+            return new Vector2(playerPosition.X + (EnemySpawnOffsetTilesFromPlayer * worldMap.TileSize), playerPosition.Y);
+        }
+
+        private static bool TryGetSurfaceSpawnPosition(WorldMap worldMap, int tileX, out Vector2 spawnPosition)
+        {
+            int wrappedX = worldMap.WrapTileX(tileX);
+
+            for (int y = 1; y < worldMap.Height; y++)
+            {
+                if (!worldMap.IsSolidAt(wrappedX, y) || worldMap.IsSolidAt(wrappedX, y - 1))
+                    continue;
+
+                spawnPosition = new Vector2(worldMap.GetTileCenter(wrappedX, y).X, y * worldMap.TileSize);
+                return true;
+            }
+
+            spawnPosition = Vector2.Zero;
+            return false;
+        }
+
+        private static int GetAlternatingOffset(int step)
+        {
+            if (step <= 0)
+                return 0;
+
+            int magnitude = (step + 1) / 2;
+            return (step & 1) == 1 ? magnitude : -magnitude;
         }
 
         private static Camera2D CreateCamera()

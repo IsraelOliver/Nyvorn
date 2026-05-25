@@ -130,13 +130,14 @@ namespace Nyvorn.Source.Game.States
 
                 for (int x = centerTile.X - radiusTiles; x <= centerTile.X + radiusTiles; x++)
                 {
-                    if (!tissueField.HasTissue(x, y))
+                    TissueCellState tissueState = tissueField.GetState(x, y);
+                    if (!tissueState.HasBiologicalPresence)
                         continue;
 
                     Vector2 tileCenter = WorldMap.GetTileCenter(x, y);
                     float distance = Vector2.Distance(tileCenter, Player.Position);
                     float normalized = 1f - MathHelper.Clamp(distance / (radiusTiles * WorldMap.TileSize), 0f, 1f);
-                    bestLinkSignal = System.MathF.Max(bestLinkSignal, normalized);
+                    bestLinkSignal = System.MathF.Max(bestLinkSignal, normalized * tissueState.Presence);
                 }
             }
 

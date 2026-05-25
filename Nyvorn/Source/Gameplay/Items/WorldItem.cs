@@ -8,6 +8,7 @@ namespace Nyvorn.Source.Gameplay.Items
     public sealed class WorldItem
     {
         private readonly Texture2D texture;
+        private readonly KinematicBodyMotor kinematicMotor;
         private Vector2 position;
         private float velocityX;
         private float velocityY;
@@ -24,6 +25,7 @@ namespace Nyvorn.Source.Gameplay.Items
             Definition = definition;
             this.texture = texture;
             position = startPosition;
+            kinematicMotor = new KinematicBodyMotor(startPosition);
             velocityX = initialVelocityX;
             velocityY = initialVelocityY;
             pickupDelayTimer = pickupDelay;
@@ -52,8 +54,7 @@ namespace Nyvorn.Source.Gameplay.Items
 
         public void Update(float dt, WorldMap worldMap)
         {
-            float prevBottom = Bottom;
-            float prevTop = Top;
+            WorldCollisionQuery collision = WorldCollisionQuery.SolidTiles(worldMap);
 
             if (pickupDelayTimer > 0f)
                 pickupDelayTimer -= dt;
@@ -62,9 +63,7 @@ namespace Nyvorn.Source.Gameplay.Items
             velocityX *= 0.88f;
 
             velocityY += PhysicsSettings.WorldGravity * Definition.GravityScale * dt;
-            position.Y += velocityY * dt;
-
-            ResolveWorldCollisionsY(worldMap, prevBottom, prevTop);
+            MoveVertically(collision, velocityY * dt);
         }
 
         public void PullToward(Vector2 targetPosition, float dt, float pullStrength)
@@ -84,6 +83,7 @@ namespace Nyvorn.Source.Gameplay.Items
         public void ShiftX(float deltaX)
         {
             position.X += deltaX;
+            kinematicMotor.Position = position;
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -99,46 +99,42 @@ namespace Nyvorn.Source.Gameplay.Items
                 Color.White);
         }
 
-        private void ResolveWorldCollisionsY(WorldMap worldMap, float prevBottom, float prevTop)
+        private void MoveVertically(WorldCollisionQuery collision, float amount)
         {
-            int ts = worldMap.TileSize;
-            float left = Left + 1f;
-            float right = Right - 1f;
+            kinematicMotor.Position = position;
+
+            kinematicMotor.MoveY(
+                amount,
+                (candidatePosition, axis, direction) => HasVerticalSolidCollisionAt(collision, candidatePosition, direction),
+                hit =>
+                {
+                    velocityY = 0f;
+                    return false;
+                });
+
+            position = kinematicMotor.Position;
+        }
+
+        private bool HasVerticalSolidCollisionAt(WorldCollisionQuery collision, Vector2 candidatePosition, int direction)
+        {
+            int ts = collision.TileSize;
+            float left = GetLeft(candidatePosition) + 1f;
+            float right = GetRight(candidatePosition) - 1f;
             int tileXLeft = (int)System.MathF.Floor(left / ts);
             int tileXRight = (int)System.MathF.Floor(right / ts);
+            float edge = direction > 0
+                ? GetBottom(candidatePosition) - 1f
+                : GetTop(candidatePosition);
+            int tileY = (int)System.MathF.Floor(edge / ts);
 
-            if (velocityY > 0f)
-            {
-                int fromY = (int)(prevBottom / ts);
-                int toY = (int)(Bottom / ts);
-
-                for (int y = fromY; y <= toY; y++)
-                {
-                    if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
-                    {
-                        float tileTop = y * ts;
-                        position.Y = tileTop - Definition.WorldCollisionRect.Bottom + Definition.WorldPivot.Y;
-                        velocityY = 0f;
-                        return;
-                    }
-                }
-            }
-            else if (velocityY < 0f)
-            {
-                int fromY = (int)(prevTop / ts);
-                int toY = (int)(Top / ts);
-
-                for (int y = fromY; y >= toY; y--)
-                {
-                    if (worldMap.IsSolidAt(tileXLeft, y) || worldMap.IsSolidAt(tileXRight, y))
-                    {
-                        float tileBottom = y * ts + ts;
-                        position.Y = tileBottom - Definition.WorldCollisionRect.Y + Definition.WorldPivot.Y;
-                        velocityY = 0f;
-                        return;
-                    }
-                }
-            }
+            return collision.IsBlockedAt(tileXLeft, tileY) || collision.IsBlockedAt(tileXRight, tileY);
         }
+
+        private float GetFrameLeft(Vector2 candidatePosition) => candidatePosition.X - Definition.WorldPivot.X;
+        private float GetFrameTop(Vector2 candidatePosition) => candidatePosition.Y - Definition.WorldPivot.Y;
+        private float GetLeft(Vector2 candidatePosition) => GetFrameLeft(candidatePosition) + Definition.WorldCollisionRect.X;
+        private float GetRight(Vector2 candidatePosition) => GetLeft(candidatePosition) + Definition.WorldCollisionRect.Width - 1f;
+        private float GetTop(Vector2 candidatePosition) => GetFrameTop(candidatePosition) + Definition.WorldCollisionRect.Y;
+        private float GetBottom(Vector2 candidatePosition) => GetTop(candidatePosition) + Definition.WorldCollisionRect.Height;
     }
 }

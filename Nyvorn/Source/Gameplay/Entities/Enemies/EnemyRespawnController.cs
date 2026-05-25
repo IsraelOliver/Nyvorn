@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using System;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies
@@ -8,16 +9,21 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
     {
         private readonly EnemyConfig enemyConfig;
         private readonly Texture2D enemyTexture;
-        private readonly Vector2 spawnPosition;
+        private readonly Func<Vector2> spawnPositionProvider;
         private readonly float respawnDelay;
 
         private float respawnTimer = -1f;
 
         public EnemyRespawnController(Texture2D enemyTexture, Vector2 spawnPosition, EnemyConfig enemyConfig = null, float respawnDelay = 3f)
+            : this(enemyTexture, () => spawnPosition, enemyConfig, respawnDelay)
+        {
+        }
+
+        public EnemyRespawnController(Texture2D enemyTexture, Func<Vector2> spawnPositionProvider, EnemyConfig enemyConfig = null, float respawnDelay = 3f)
         {
             this.enemyConfig = enemyConfig ?? EnemyConfig.Default;
             this.enemyTexture = enemyTexture;
-            this.spawnPosition = spawnPosition;
+            this.spawnPositionProvider = spawnPositionProvider ?? throw new ArgumentNullException(nameof(spawnPositionProvider));
             this.respawnDelay = respawnDelay;
         }
 
@@ -54,7 +60,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
         private Enemy CreateEnemy()
         {
-            return new Enemy(enemyTexture, spawnPosition, enemyConfig);
+            return new Enemy(enemyTexture, spawnPositionProvider(), enemyConfig);
         }
     }
 }
