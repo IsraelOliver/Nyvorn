@@ -25,7 +25,8 @@ namespace Nyvorn.Source.Game.States
         private const float EntityDrawPaddingPixels = 48f;
         private const int SimulationChunkBorder = 1;
         private const float DefaultCameraZoom = 2f;
-        private const float InteriorCameraZoom = 2.18f;
+        private const float InteriorCameraZoom = 3f;
+        private const float CameraZoomSnapDistance = 0.01f;
         private const float CameraZoomInLerpSpeed = 4.5f;
         private const float CameraZoomOutLerpSpeed = 2.1f;
         private const float CameraFocusLerpSpeed = 2.8f;
@@ -88,16 +89,14 @@ namespace Nyvorn.Source.Game.States
         {
             Vector2 playerTarget = Player.Position + new Vector2(8f, 12f);
             Vector2 target = playerTarget;
-            float targetZoom = DefaultCameraZoom;
 
             bool focusingInterior = InteriorFocusSystem.TryGetCameraFocus(out Vector2 roomFocus);
             if (focusingInterior)
             {
                 target = roomFocus;
-                targetZoom = InteriorCameraZoom;
             }
 
-            if (!hasSmoothedCameraTarget || !focusingInterior)
+            if (!hasSmoothedCameraTarget)
             {
                 smoothedCameraTarget = target;
                 hasSmoothedCameraTarget = true;
@@ -130,11 +129,30 @@ namespace Nyvorn.Source.Game.States
                 smoothedCameraTarget = playerTarget;
             }
 
-            float zoomLerpSpeed = focusingInterior ? CameraZoomInLerpSpeed : CameraZoomOutLerpSpeed;
-            Camera.Zoom = MathHelper.Lerp(
-                Camera.Zoom,
-                targetZoom,
-                MathHelper.Clamp(dt * zoomLerpSpeed, 0f, 1f));
+            if (focusingInterior)
+            {
+                Camera.Zoom = MathHelper.Lerp(
+                    Camera.Zoom,
+                    InteriorCameraZoom,
+                    MathHelper.Clamp(dt * CameraZoomInLerpSpeed, 0f, 1f));
+            }
+            else if (wasFocusingInterior || returningFromInterior ||
+                     System.MathF.Abs(Camera.Zoom - DefaultCameraZoom) > CameraZoomSnapDistance)
+            {
+                Camera.Zoom = MathHelper.Lerp(
+                    Camera.Zoom,
+                    DefaultCameraZoom,
+                    MathHelper.Clamp(dt * CameraZoomOutLerpSpeed, 0f, 1f));
+
+                if (System.MathF.Abs(Camera.Zoom - DefaultCameraZoom) <= CameraZoomSnapDistance)
+                {
+                    Camera.Zoom = DefaultCameraZoom;
+                }
+            }
+            else
+            {
+                Camera.Zoom = DefaultCameraZoom;
+            }
 
             wasFocusingInterior = focusingInterior;
             Camera.Follow(smoothedCameraTarget, screenWidth, screenHeight);
