@@ -44,6 +44,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public Vector2 Velocity => velocity;
         public Vector2 VisualPosition => position + new Vector2(0f, stepVisualOffsetY);
         public bool IsGrounded { get; private set; }
+        public float LastLandingImpactVelocity { get; private set; }
 
         private float HitLeft => position.X - (currentHurtboxSize.X * 0.5f);
         private float HitRight => HitLeft + currentHurtboxSize.X - 1f;
@@ -56,6 +57,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public void Update(float dt, WorldMap worldMap, SandSystem sandSystem, float desiredVelocityX, bool useDodgeHurtbox)
         {
+            LastLandingImpactVelocity = 0f;
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
             UpdateHurtboxSize(collision, useDodgeHurtbox);
 
@@ -154,6 +156,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {
                 kinematicMotor.Position = new Vector2(kinematicMotor.Position.X, pendingVerticalLandingY);
                 position = kinematicMotor.Position;
+                if (hit.Direction > 0)
+                    LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
                 velocity.Y = 0f;
                 IsGrounded = hit.Direction > 0;
                 return false;
@@ -168,6 +172,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             if (!IsGrounded && velocity.Y >= 0f && HasGroundSupportAtCurrentPosition(collision, sandSystem))
             {
+                LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
                 velocity.Y = 0f;
                 IsGrounded = true;
                 kinematicMotor.ClearRemainderY();

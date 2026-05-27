@@ -19,6 +19,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float HurtCooldown { get; init; } = 0.35f;
         public int MaxHealth { get; init; } = 100;
         public float WorldInteractionRange { get; init; } = 36f;
+        public float FallDamageSafeVelocity { get; init; } = 420f;
+        public float FallDamageFatalVelocity { get; init; } = 900f;
+        public int FallDamageMax { get; init; } = 80;
 
         public float DodgeDuration => DodgeFrames * DodgeFrameTime;
     }

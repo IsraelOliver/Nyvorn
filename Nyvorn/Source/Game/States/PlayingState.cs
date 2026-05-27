@@ -639,15 +639,14 @@ namespace Nyvorn.Source.Game.States
 
         private void RetryFromDeath()
         {
-            stateMachine.Clear();
-            PlanetWorldMetadata metadata = session.PlanetMetadata;
-            PlayingSessionFactory factory = new PlayingSessionFactory(graphicsDevice, content);
-            stateMachine.PushState(new LoadingWorldState(
-                graphicsDevice,
-                content,
-                stateMachine,
-                factory.CreateBuildOperation(metadata.PlanetName, metadata.SizePreset, metadata.Seed),
-                "Regenerando Planeta"));
+            session.RespawnPlayerAtWorldCenter();
+            deathStatePushed = false;
+            int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
+            int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
+            session.Camera.CenterOn(session.Player.Position + new Vector2(8f, 12f), screenW, screenH);
+            saveService.SavePlayerOnly(session);
+            autoSaveTimer = AutoSaveInterval;
+            stateMachine.PopState();
         }
     }
 }

@@ -94,6 +94,17 @@ namespace Nyvorn.Source.Game.States
             IsConstructionMode = !IsConstructionMode;
         }
 
+        public void RespawnPlayerAtWorldCenter()
+        {
+            int centerTileX = WorldMap.Width / 2;
+            Vector2 spawnPosition = new WorldGenerator().GetSurfaceSpawnPosition(
+                WorldMap,
+                centerTileX,
+                tilesAboveSurface: 2);
+
+            Player.RespawnAt(spawnPosition);
+        }
+
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
             UpdateFrame(dt, input, mouseWorld);

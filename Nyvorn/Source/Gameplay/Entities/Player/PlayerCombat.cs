@@ -67,6 +67,20 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 equippedWeapon = weapon;
         }
 
+        public void Respawn()
+        {
+            health = config.MaxHealth;
+            isAttacking = false;
+            isDodging = false;
+            attackTimer = 0f;
+            dodgeTimer = 0f;
+            dodgeCooldownTimer = 0f;
+            hurtCooldownTimer = 0f;
+            attackHitbox = Rectangle.Empty;
+            attackHitboxEnabled = false;
+            attackAnimation.Reset();
+        }
+
         public bool TryStartAttack(Vector2 playerPosition, Vector2 mouseWorld, out bool attackFacingRight)
         {
             attackFacingRight = mouseWorld.X >= playerPosition.X;
@@ -149,6 +163,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool TryReceiveDamage(int damage)
         {
             if (!CanReceiveDamage())
+                return false;
+
+            health = System.Math.Max(0, health - damage);
+            hurtCooldownTimer = config.HurtCooldown;
+            return true;
+        }
+
+        public bool TryReceiveFallDamage(int damage)
+        {
+            if (!IsAlive || damage <= 0)
                 return false;
 
             health = System.Math.Max(0, health - damage);
