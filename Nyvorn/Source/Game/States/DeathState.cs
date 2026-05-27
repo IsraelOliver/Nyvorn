@@ -73,7 +73,7 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(pixel, new Rectangle(retryButton.X - 2, retryButton.Y - 2, retryButton.Width + 4, retryButton.Height + 4), Color.Black * 0.85f);
             spriteBatch.Draw(pixel, retryButton, buttonColor);
 
-            string retryText = "Retry";
+            string retryText = "Respawn";
             Vector2 retrySize = font.MeasureString(retryText);
             Vector2 retryPos = new Vector2(
                 retryButton.X + (retryButton.Width - retrySize.X) * 0.5f,

@@ -21,17 +21,18 @@ namespace Nyvorn.Source.Engine.Input
             bool attackPressed = mouse.LeftButton == ButtonState.Pressed;
             bool attackJustPressed = mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton != ButtonState.Pressed;
             bool placePressed = mouse.LeftButton == ButtonState.Pressed;
-            bool openInventoryPressed = keyboard.IsKeyDown(Keys.E) && !_prevKeyboard.IsKeyDown(Keys.E);
-            bool tissueRevealPressed = keyboard.IsKeyDown(Keys.F) && !_prevKeyboard.IsKeyDown(Keys.F);
-            bool toggleMinimapPressed = keyboard.IsKeyDown(Keys.M) && !_prevKeyboard.IsKeyDown(Keys.M);
+            bool activePowerPressed = mouse.RightButton == ButtonState.Pressed;
+            bool activePowerJustPressed = mouse.RightButton == ButtonState.Pressed && _prevMouse.RightButton != ButtonState.Pressed;
+            bool togglePlayerHubPressed = IsNewKeyPress(keyboard, Keys.E);
+            bool toggleMapPressed = IsNewKeyPress(keyboard, Keys.M);
+            bool toggleConstructionModePressed = IsNewKeyPress(keyboard, Keys.LeftAlt) || IsNewKeyPress(keyboard, Keys.RightAlt);
+            bool interactPressed = IsNewKeyPress(keyboard, Keys.F);
+            bool cyclePowerPressed = IsNewKeyPress(keyboard, Keys.Q);
+            bool toggleDebugPressed = IsNewKeyPress(keyboard, Keys.F3);
+            bool cancelPressed = IsNewKeyPress(keyboard, Keys.Escape);
             int mouseWheelDelta = mouse.ScrollWheelValue - _prevMouse.ScrollWheelValue;
             int hotbarSelectionIndex = GetHotbarSelectionIndex(keyboard);
-            bool ctrlDown = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-            bool prevCtrlDown = _prevKeyboard.IsKeyDown(Keys.LeftControl) || _prevKeyboard.IsKeyDown(Keys.RightControl);
-            bool ctrlJustPressed = ctrlDown && !prevCtrlDown;
-            bool dJustPressed = keyboard.IsKeyDown(Keys.D) && !_prevKeyboard.IsKeyDown(Keys.D);
-            bool aJustPressed = keyboard.IsKeyDown(Keys.A) && !_prevKeyboard.IsKeyDown(Keys.A);
-            bool dodgePressed = ctrlDown && (ctrlJustPressed || dJustPressed || aJustPressed);
+            bool dodgePressed = IsNewKeyPress(keyboard, Keys.LeftControl) || IsNewKeyPress(keyboard, Keys.RightControl);
             int dodgeDir = 0;
             if (keyboard.IsKeyDown(Keys.D)) dodgeDir = 1;
             else if (keyboard.IsKeyDown(Keys.A)) dodgeDir = -1;
@@ -45,9 +46,15 @@ namespace Nyvorn.Source.Engine.Input
                 attackPressed,
                 attackJustPressed,
                 placePressed,
-                openInventoryPressed,
-                tissueRevealPressed,
-                toggleMinimapPressed,
+                activePowerPressed,
+                activePowerJustPressed,
+                togglePlayerHubPressed,
+                toggleMapPressed,
+                toggleConstructionModePressed,
+                interactPressed,
+                cyclePowerPressed,
+                toggleDebugPressed,
+                cancelPressed,
                 hotbarSelectionIndex,
                 dodgePressed,
                 dodgeDir,
@@ -93,6 +100,11 @@ namespace Nyvorn.Source.Engine.Input
             }
 
             return -1;
+        }
+
+        private bool IsNewKeyPress(KeyboardState keyboard, Keys key)
+        {
+            return keyboard.IsKeyDown(key) && !_prevKeyboard.IsKeyDown(key);
         }
     }
 }

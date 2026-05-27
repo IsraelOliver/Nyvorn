@@ -12,17 +12,20 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private const int MinSandTransitionSupportWidth = 3;
         private const int SandSurfaceHeightTolerance = 1;
         private readonly PlayerConfig config;
+        private readonly KinematicBodyMotor kinematicMotor;
 
         private Vector2 position;
         private Vector2 velocity;
         private float knockbackVelocityX;
         private float stepVisualOffsetY;
         private Point currentHurtboxSize;
+        private float pendingVerticalLandingY;
 
         public PlayerMotor(Vector2 startPosition, PlayerConfig config)
         {
             this.config = config;
             position = startPosition;
+            kinematicMotor = new KinematicBodyMotor(startPosition);
             velocity = Vector2.Zero;
             currentHurtboxSize = config.HurtboxSize;
             IsGrounded = false;
@@ -31,12 +34,17 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public Vector2 Position
         {
             get => position;
-            set => position = value;
+            set
+            {
+                position = value;
+                kinematicMotor.Position = value;
+            }
         }
 
         public Vector2 Velocity => velocity;
         public Vector2 VisualPosition => position + new Vector2(0f, stepVisualOffsetY);
         public bool IsGrounded { get; private set; }
+        public float LastLandingImpactVelocity { get; private set; }
 
         private float HitLeft => position.X - (currentHurtboxSize.X * 0.5f);
         private float HitRight => HitLeft + currentHurtboxSize.X - 1f;
@@ -49,25 +57,20 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public void Update(float dt, WorldMap worldMap, SandSystem sandSystem, float desiredVelocityX, bool useDodgeHurtbox)
         {
-            UpdateHurtboxSize(worldMap, useDodgeHurtbox);
+            LastLandingImpactVelocity = 0f;
+            WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
+            UpdateHurtboxSize(collision, useDodgeHurtbox);
 
             bool wasGrounded = IsGrounded;
-            float prevHitBottom = HitBottom;
-            float prevHitTop = HitTop;
 
             velocity.X = desiredVelocityX;
             float totalVelocityX = velocity.X + knockbackVelocityX;
-            position.X += totalVelocityX * dt;
             float yBeforeHorizontalResolution = position.Y;
-            ResolveWorldCollisionsX(worldMap, totalVelocityX);
+            MoveHorizontally(collision, totalVelocityX * dt);
             if (position.Y != yBeforeHorizontalResolution)
-            {
-                prevHitBottom = HitBottom;
-                prevHitTop = HitTop;
                 velocity.Y = 0f;
-            }
 
-            if (wasGrounded && TrySnapToSandSurface(worldMap, sandSystem, totalVelocityX))
+            if (wasGrounded && TrySnapToSandSurface(collision, sandSystem, totalVelocityX))
             {
                 velocity.Y = 0f;
                 IsGrounded = true;
@@ -80,8 +83,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             stepVisualOffsetY = MathHelper.Lerp(stepVisualOffsetY, 0f, MathHelper.Clamp(dt * 20f, 0f, 1f));
 
             ApplyGravity(dt);
-            position.Y += velocity.Y * dt;
-            ResolveWorldCollisionsY(worldMap, sandSystem, prevHitBottom, prevHitTop);
+            MoveVertically(collision, sandSystem, velocity.Y * dt);
         }
 
         public void TryJump()
@@ -103,6 +105,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public void TeleportTo(Vector2 targetPosition)
         {
             position = targetPosition;
+            kinematicMotor.Reset(targetPosition);
             velocity = Vector2.Zero;
             knockbackVelocityX = 0f;
             stepVisualOffsetY = 0f;
@@ -114,96 +117,69 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             velocity.Y += PhysicsSettings.WorldGravity * config.GravityScale * dt;
         }
 
-        private void ResolveWorldCollisionsX(WorldMap worldMap, float velocityX)
+        private void MoveHorizontally(WorldCollisionQuery collision, float amount)
         {
-            int ts = worldMap.TileSize;
-            float top = HitTop + 1;
-            float bottom = HitBottom - 1;
-            int tileYTop = (int)System.MathF.Floor(top / ts);
-            int tileYBottom = (int)System.MathF.Floor(bottom / ts);
+            kinematicMotor.Position = position;
+            bool usedStepUp = false;
 
-            if (velocityX > 0)
+            bool HandleCollision(KinematicCollision hit)
             {
-                float right = HitRight;
-                int tileX = (int)System.MathF.Floor(right / ts);
-
-                if (HasSolidInColumn(worldMap, tileX, tileYTop, tileYBottom))
+                position = kinematicMotor.Position;
+                if (!usedStepUp && TryStepUp(collision, hit.Direction))
                 {
-                    if (TryStepUp(worldMap, 1))
-                        return;
-
-                    float tileLeft = tileX * ts;
-                    float newHitLeft = tileLeft - currentHurtboxSize.X;
-                    position.X = newHitLeft + (currentHurtboxSize.X * 0.5f);
-                    velocity.X = 0f;
-                    knockbackVelocityX = 0f;
+                    usedStepUp = true;
+                    kinematicMotor.Position = position;
+                    return true;
                 }
-            }
-            else if (velocityX < 0)
-            {
-                float left = HitLeft;
-                int tileX = (int)System.MathF.Floor(left / ts);
 
-                if (HasSolidInColumn(worldMap, tileX, tileYTop, tileYBottom))
-                {
-                    if (TryStepUp(worldMap, -1))
-                        return;
-
-                    float tileRight = tileX * ts + ts;
-                    float newHitLeft = tileRight;
-                    position.X = newHitLeft + (currentHurtboxSize.X * 0.5f);
-                    velocity.X = 0f;
-                    knockbackVelocityX = 0f;
-                }
+                velocity.X = 0f;
+                knockbackVelocityX = 0f;
+                return false;
             }
+
+            kinematicMotor.MoveX(
+                amount,
+                (candidatePosition, axis, direction) => HasWorldCollisionAt(collision, candidatePosition, axis, direction),
+                HandleCollision);
+
+            position = kinematicMotor.Position;
         }
 
-        private void ResolveWorldCollisionsY(WorldMap worldMap, SandSystem sandSystem, float prevHitBottom, float prevHitTop)
+        private void MoveVertically(WorldCollisionQuery collision, SandSystem sandSystem, float amount)
         {
             IsGrounded = false;
+            pendingVerticalLandingY = 0f;
 
-            int ts = worldMap.TileSize;
-            float left = HitLeft + 1;
-            float right = HitRight - 1;
-            int tileXLeft = (int)(left / ts);
-            int tileXRight = (int)(right / ts);
+            kinematicMotor.Position = position;
 
-            if (velocity.Y > 0)
+            bool HandleCollision(KinematicCollision hit)
             {
-                bool hasTileLanding = TryGetTileLandingY(worldMap, prevHitBottom, HitBottom, tileXLeft, tileXRight, out float tileLandingY);
-                bool hasSandLanding = TryGetSandLandingY(sandSystem, prevHitBottom, out float sandLandingY);
+                kinematicMotor.Position = new Vector2(kinematicMotor.Position.X, pendingVerticalLandingY);
+                position = kinematicMotor.Position;
+                if (hit.Direction > 0)
+                    LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
+                velocity.Y = 0f;
+                IsGrounded = hit.Direction > 0;
+                return false;
+            }
 
-                if (!hasTileLanding && !hasSandLanding)
-                    return;
+            kinematicMotor.MoveY(
+                amount,
+                (candidatePosition, axis, direction) => HasVerticalWorldCollisionAt(collision, sandSystem, candidatePosition, direction),
+                HandleCollision);
 
-                float landingY = hasTileLanding && hasSandLanding
-                    ? System.MathF.Min(tileLandingY, sandLandingY)
-                    : (hasTileLanding ? tileLandingY : sandLandingY);
+            position = kinematicMotor.Position;
 
-                position.Y = landingY;
+            if (!IsGrounded && velocity.Y >= 0f && HasGroundSupportAtCurrentPosition(collision, sandSystem))
+            {
+                LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
                 velocity.Y = 0f;
                 IsGrounded = true;
-                return;
-            }
-            else if (velocity.Y < 0)
-            {
-                int fromY = (int)(prevHitTop / ts);
-                int toY = (int)(HitTop / ts);
-
-                for (int y = fromY; y >= toY; y--)
-                {
-                    if (HasSolidInRow(worldMap, y, tileXLeft, tileXRight))
-                    {
-                        float tileBottom = y * ts + ts;
-                        position.Y = tileBottom + currentHurtboxSize.Y - 1;
-                        velocity.Y = 0f;
-                        return;
-                    }
-                }
+                kinematicMotor.ClearRemainderY();
             }
         }
 
-        private bool TrySnapToSandSurface(WorldMap worldMap, SandSystem sandSystem, float velocityX)
+        private bool TrySnapToSandSurface(WorldCollisionQuery collision, SandSystem sandSystem, float velocityX)
         {
             if (!IsGrounded || sandSystem == null)
                 return false;
@@ -214,43 +190,51 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             float heightDelta = HitBottom - sandSurfaceY;
             if (heightDelta == 0f)
+            {
+                kinematicMotor.Position = position;
+                kinematicMotor.ClearRemainderY();
                 return true;
+            }
 
             if (heightDelta > 0f)
             {
-                if (!CanOccupyBottomAt(worldMap, sandSurfaceY))
+                if (!CanOccupyBottomAt(collision, sandSurfaceY))
                     return false;
 
                 position.Y = sandSurfaceY;
+                kinematicMotor.Position = position;
+                kinematicMotor.ClearRemainderY();
                 stepVisualOffsetY = System.MathF.Max(stepVisualOffsetY, heightDelta);
                 return true;
             }
 
-            if (!CanOccupyBottomAt(worldMap, sandSurfaceY))
+            if (!CanOccupyBottomAt(collision, sandSurfaceY))
                 return false;
 
             position.Y = sandSurfaceY;
+            kinematicMotor.Position = position;
+            kinematicMotor.ClearRemainderY();
             return true;
         }
 
-        private bool TryStepUp(WorldMap worldMap, int moveDir)
+        private bool TryStepUp(WorldCollisionQuery collision, int moveDir)
         {
             if (!IsGrounded)
                 return false;
 
-            int ts = worldMap.TileSize;
+            int ts = collision.TileSize;
             float frontX = moveDir > 0 ? HitRight + 1f : HitLeft - 1f;
             int tileX = (int)System.MathF.Floor(frontX / ts);
             int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
             int tileYAbove = tileYBottom - 1;
 
-            if (!worldMap.IsSolidAt(tileX, tileYBottom) || worldMap.IsSolidAt(tileX, tileYAbove))
+            if (!collision.IsBlockedAt(tileX, tileYBottom) || collision.IsBlockedAt(tileX, tileYAbove))
                 return false;
 
             float originalY = position.Y;
             position.Y -= ts;
 
-            if (HasSolidOverlap(worldMap))
+            if (HasBlockedOverlap(collision))
             {
                 position.Y = originalY;
                 return false;
@@ -260,34 +244,45 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return true;
         }
 
-        private bool TryGetTileLandingY(WorldMap worldMap, float prevHitBottom, float currentHitBottom, int tileXLeft, int tileXRight, out float landingY)
+        private bool TryGetVerticalTileCollisionY(WorldCollisionQuery collision, Vector2 candidatePosition, int direction, out float landingY)
         {
             landingY = 0f;
+            int ts = collision.TileSize;
+            float left = GetHitLeft(candidatePosition) + 1f;
+            float right = GetHitRight(candidatePosition) - 1f;
+            int tileXLeft = (int)System.MathF.Floor(left / ts);
+            int tileXRight = (int)System.MathF.Floor(right / ts);
+            float edge = direction > 0
+                ? GetHitBottom(candidatePosition)
+                : GetHitTop(candidatePosition);
+            int tileY = (int)System.MathF.Floor(edge / ts);
 
-            int ts = worldMap.TileSize;
-            int fromY = (int)(prevHitBottom / ts);
-            int toY = (int)(currentHitBottom / ts);
-
-            for (int y = fromY; y <= toY; y++)
-            {
-                if (!HasSolidInRow(worldMap, y, tileXLeft, tileXRight))
-                    continue;
-
-                landingY = y * ts;
-                return true;
-            }
-
-            return false;
-        }
-
-        private bool TryGetSandLandingY(SandSystem sandSystem, float prevHitBottom, out float landingY)
-        {
-            landingY = 0f;
-            float fallDistance = System.MathF.Max(1f, HitBottom - prevHitBottom);
-            if (sandSystem == null || !TryGetStableSandSupportY(sandSystem, HitBottom, fallDistance, out float sandSurfaceY))
+            if (!collision.HasBlockedInRow(tileY, tileXLeft, tileXRight))
                 return false;
 
-            if (sandSurfaceY < HitTop || prevHitBottom > sandSurfaceY || HitBottom < sandSurfaceY)
+            landingY = direction > 0
+                ? tileY * ts
+                : (tileY * ts) + ts + currentHurtboxSize.Y - 1f;
+
+            return true;
+        }
+
+        private bool TryGetSandLandingY(SandSystem sandSystem, Vector2 previousPosition, Vector2 candidatePosition, out float landingY)
+        {
+            landingY = 0f;
+            if (sandSystem == null)
+                return false;
+
+            float previousBottom = GetHitBottom(previousPosition);
+            float candidateBottom = GetHitBottom(candidatePosition);
+            if (candidateBottom < previousBottom)
+                return false;
+
+            float fallDistance = System.MathF.Max(1f, candidateBottom - previousBottom);
+            if (!TryGetStableSandSupportY(sandSystem, candidatePosition, candidateBottom, fallDistance, out float sandSurfaceY))
+                return false;
+
+            if (sandSurfaceY < GetHitTop(candidatePosition) || previousBottom > sandSurfaceY || candidateBottom < sandSurfaceY)
                 return false;
 
             landingY = sandSurfaceY;
@@ -295,10 +290,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         }
 
         private bool TryGetStableSandSupportY(SandSystem sandSystem, float referenceBottomY, float maxDistance, out float surfaceY)
+            => TryGetStableSandSupportY(sandSystem, position, referenceBottomY, maxDistance, out surfaceY);
+
+        private bool TryGetStableSandSupportY(SandSystem sandSystem, Vector2 candidatePosition, float referenceBottomY, float maxDistance, out float surfaceY)
         {
             surfaceY = 0f;
-            int minSupportX = (int)System.MathF.Floor(HitLeft + 1f);
-            int maxSupportX = (int)System.MathF.Floor(HitRight - 1f);
+            int minSupportX = (int)System.MathF.Floor(GetHitLeft(candidatePosition) + 1f);
+            int maxSupportX = (int)System.MathF.Floor(GetHitRight(candidatePosition) - 1f);
             if (!sandSystem.TryGetSurfaceSupportY(
                 minSupportX,
                 maxSupportX,
@@ -356,70 +354,103 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             minSupportWidth = MinSandSupportWidth;
         }
 
-        private bool CanOccupyBottomAt(WorldMap worldMap, float targetBottom)
+        private bool CanOccupyBottomAt(WorldCollisionQuery collision, float targetBottom)
         {
-            int ts = worldMap.TileSize;
+            int ts = collision.TileSize;
             float targetTop = targetBottom - currentHurtboxSize.Y + 1f;
             int tileXLeft = (int)System.MathF.Floor((HitLeft + 1f) / ts);
             int tileXRight = (int)System.MathF.Floor((HitRight - 1f) / ts);
             int tileYTop = (int)System.MathF.Floor(targetTop / ts);
             int tileYBottom = (int)System.MathF.Floor((targetBottom - 1f) / ts);
 
-            for (int y = tileYTop; y <= tileYBottom; y++)
-            {
-                for (int x = tileXLeft; x <= tileXRight; x++)
-                {
-                    if (worldMap.IsSolidAt(x, y))
-                        return false;
-                }
-            }
-
-            return true;
+            return !collision.HasBlockedInArea(tileXLeft, tileXRight, tileYTop, tileYBottom);
         }
 
-        private bool HasSolidOverlap(WorldMap worldMap)
+        private bool HasBlockedOverlap(WorldCollisionQuery collision)
         {
-            int ts = worldMap.TileSize;
+            int ts = collision.TileSize;
             int tileXLeft = (int)System.MathF.Floor((HitLeft + 1f) / ts);
             int tileXRight = (int)System.MathF.Floor((HitRight - 1f) / ts);
             int tileYTop = (int)System.MathF.Floor(HitTop / ts);
             int tileYBottom = (int)System.MathF.Floor((HitBottom - 1f) / ts);
 
-            for (int y = tileYTop; y <= tileYBottom; y++)
-            {
-                for (int x = tileXLeft; x <= tileXRight; x++)
-                {
-                    if (worldMap.IsSolidAt(x, y))
-                        return true;
-                }
-            }
-
-            return false;
+            return collision.HasBlockedInArea(tileXLeft, tileXRight, tileYTop, tileYBottom);
         }
 
-        private bool HasSolidInColumn(WorldMap worldMap, int tileX, int tileYTop, int tileYBottom)
+        private bool HasVerticalWorldCollisionAt(WorldCollisionQuery collision, SandSystem sandSystem, Vector2 candidatePosition, int direction)
         {
-            for (int y = tileYTop; y <= tileYBottom; y++)
+            pendingVerticalLandingY = 0f;
+
+            bool hasTileCollision = TryGetVerticalTileCollisionY(collision, candidatePosition, direction, out float tileLandingY);
+            float sandLandingY = 0f;
+            bool hasSandCollision = direction > 0
+                && TryGetSandLandingY(sandSystem, kinematicMotor.Position, candidatePosition, out sandLandingY);
+
+            if (!hasTileCollision && !hasSandCollision)
+                return false;
+
+            if (hasSandCollision && (!hasTileCollision || sandLandingY <= tileLandingY))
             {
-                if (worldMap.IsSolidAt(tileX, y))
-                    return true;
+                pendingVerticalLandingY = sandLandingY;
+                return true;
             }
 
-            return false;
+            pendingVerticalLandingY = tileLandingY;
+            return true;
         }
 
-        private bool HasSolidInRow(WorldMap worldMap, int tileY, int tileXLeft, int tileXRight)
+        private bool HasGroundSupportAtCurrentPosition(WorldCollisionQuery collision, SandSystem sandSystem)
         {
-            for (int x = tileXLeft; x <= tileXRight; x++)
-            {
-                if (worldMap.IsSolidAt(x, tileY))
-                    return true;
-            }
+            Vector2 probePosition = new(position.X, position.Y + 1f);
+            bool hasTileSupport = TryGetVerticalTileCollisionY(collision, probePosition, 1, out float tileLandingY)
+                && System.MathF.Abs(tileLandingY - position.Y) <= 0.001f;
+            bool hasSandSupport = TryGetSandLandingY(sandSystem, position, probePosition, out float sandLandingY)
+                && System.MathF.Abs(sandLandingY - position.Y) <= 0.001f;
 
-            return false;
+            return hasTileSupport || hasSandSupport;
         }
 
-        private void UpdateHurtboxSize(WorldMap worldMap, bool useDodgeHurtbox)
+        private bool HasWorldCollisionAt(WorldCollisionQuery collision, Vector2 candidatePosition, KinematicAxis axis, int direction)
+        {
+            if (axis == KinematicAxis.Horizontal)
+                return HasHorizontalWorldCollisionAt(collision, candidatePosition, direction);
+
+            return HasOverlapAt(collision, candidatePosition);
+        }
+
+        private bool HasHorizontalWorldCollisionAt(WorldCollisionQuery collision, Vector2 candidatePosition, int direction)
+        {
+            int ts = collision.TileSize;
+            float top = GetHitTop(candidatePosition) + 1f;
+            float bottom = GetHitBottom(candidatePosition) - 1f;
+            int tileYTop = (int)System.MathF.Floor(top / ts);
+            int tileYBottom = (int)System.MathF.Floor(bottom / ts);
+
+            float edge = direction > 0
+                ? GetHitRight(candidatePosition)
+                : GetHitLeft(candidatePosition);
+            int tileX = (int)System.MathF.Floor(edge / ts);
+
+            return collision.HasBlockedInColumn(tileX, tileYTop, tileYBottom);
+        }
+
+        private bool HasOverlapAt(WorldCollisionQuery collision, Vector2 candidatePosition)
+        {
+            int ts = collision.TileSize;
+            int tileXLeft = (int)System.MathF.Floor((GetHitLeft(candidatePosition) + 1f) / ts);
+            int tileXRight = (int)System.MathF.Floor((GetHitRight(candidatePosition) - 1f) / ts);
+            int tileYTop = (int)System.MathF.Floor((GetHitTop(candidatePosition) + 1f) / ts);
+            int tileYBottom = (int)System.MathF.Floor((GetHitBottom(candidatePosition) - 1f) / ts);
+
+            return collision.HasBlockedInArea(tileXLeft, tileXRight, tileYTop, tileYBottom);
+        }
+
+        private float GetHitLeft(Vector2 candidatePosition) => candidatePosition.X - (currentHurtboxSize.X * 0.5f);
+        private float GetHitRight(Vector2 candidatePosition) => GetHitLeft(candidatePosition) + currentHurtboxSize.X - 1f;
+        private static float GetHitBottom(Vector2 candidatePosition) => candidatePosition.Y;
+        private float GetHitTop(Vector2 candidatePosition) => GetHitBottom(candidatePosition) - currentHurtboxSize.Y + 1f;
+
+        private void UpdateHurtboxSize(WorldCollisionQuery collision, bool useDodgeHurtbox)
         {
             Point targetSize = useDodgeHurtbox ? config.DodgeHurtboxSize : config.HurtboxSize;
             if (currentHurtboxSize == targetSize)
@@ -431,7 +462,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (useDodgeHurtbox)
                 return;
 
-            if (!HasSolidOverlap(worldMap))
+            if (!HasBlockedOverlap(collision))
                 return;
 
             currentHurtboxSize = previousSize;

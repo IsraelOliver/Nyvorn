@@ -4,10 +4,15 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Gameplay.Combat;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
+using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Interiors;
+using Nyvorn.Source.Gameplay.World.Objects;
+using Nyvorn.Source.Gameplay.World.Particles;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Decorations;
@@ -22,6 +27,8 @@ namespace Nyvorn.Source.Game.States
 {
     public sealed class PlayingSessionFactory
     {
+        private const int EnemySpawnOffsetTilesFromPlayer = 8;
+
         private readonly GraphicsDevice graphicsDevice;
         private readonly ContentManager content;
         private readonly PlayerSaveService playerSaveService = new();
@@ -256,8 +263,17 @@ namespace Nyvorn.Source.Game.States
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
+            build.SavedBackgroundTileSnapshot = saveData != null && saveData.Version >= 10
+                ? saveData.BackgroundTileSnapshot
+                : null;
             build.SavedWorldItems = saveData != null && saveData.Version >= 5 && saveData.WorldItems != null
                 ? new List<WorldItemSaveData>(saveData.WorldItems)
+                : null;
+            build.SavedWorkbenches = saveData != null && saveData.Version >= 8 && saveData.Workbenches != null
+                ? new List<WorkbenchSaveData>(saveData.Workbenches)
+                : null;
+            build.SavedDoors = saveData != null && saveData.Version >= 9 && saveData.Doors != null
+                ? new List<DoorSaveData>(saveData.Doors)
                 : null;
 
             BuildOperation operation = null;
@@ -305,7 +321,11 @@ namespace Nyvorn.Source.Game.States
                 steps.Add(new BuildOperation.BuildStep("Preparando tecido do planeta", () =>
                 {
                     if (build.WorldMap.TissueField == null)
+                    {
+                        build.WorldMap.SetTissueField(new TissueField(build.WorldMap.Width, build.WorldMap.Height));
+                        build.WorldMap.RebuildTissueAnalysis();
                         build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
+                    }
                 }, weight: 8f, runInBackground: true));
             }
 
@@ -355,6 +375,7 @@ namespace Nyvorn.Source.Game.States
         private static void LoadWorldSnapshot(BuildContext build, PlanetSaveData saveData)
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
+            build.WorldMap.ImportBackgroundTileSnapshot(build.SavedBackgroundTileSnapshot);
             build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
             RestoreTrees(build, saveData.Trees);
 
@@ -426,13 +447,14 @@ namespace Nyvorn.Source.Game.States
         {
             build.PlayerDownTexture = content.Load<Texture2D>("entities/player/playerDown_sheet");
             build.PlayerUpTexture = content.Load<Texture2D>("entities/player/playerUp_sheet");
-            build.PickaxeTexture = content.Load<Texture2D>("weapons/pickaxe_sheet");
+            build.WorkbenchTexture = content.Load<Texture2D>("blocks/worktable-sheet");
+            build.DoorTexture = content.Load<Texture2D>("blocks/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
 
             build.ItemTextures = LoadItemTextures();
-            build.Weapons = CreateWeapons(build.PickaxeTexture);
+            build.Weapons = CreateWeapons(build.ItemTextures);
         }
 
         private Dictionary<ItemId, Texture2D> LoadItemTextures()
@@ -444,7 +466,7 @@ namespace Nyvorn.Source.Game.States
             return itemTextures;
         }
 
-        private Dictionary<ItemId, Weapon> CreateWeapons(Texture2D pickaxeTexture)
+        private Dictionary<ItemId, Weapon> CreateWeapons(IReadOnlyDictionary<ItemId, Texture2D> itemTextures)
         {
             Texture2D nullWeaponTexture = new Texture2D(graphicsDevice, 1, 1);
             nullWeaponTexture.SetData(new[] { Color.Transparent });
@@ -452,7 +474,9 @@ namespace Nyvorn.Source.Game.States
             return new Dictionary<ItemId, Weapon>
             {
                 [ItemId.None] = new HandWeapon(nullWeaponTexture),
-                [ItemId.Pickaxe] = new Pickaxe(pickaxeTexture)
+                [ItemId.WoodPickaxe] = new Pickaxe(itemTextures[ItemId.WoodPickaxe], miningPower: 1, miningSpeed: 1.5f, powerTier: 1, hitDamage: 5),
+                [ItemId.StonePickaxe] = new Pickaxe(itemTextures[ItemId.StonePickaxe], miningPower: 2, miningSpeed: 2.2f, powerTier: 2, hitDamage: 7),
+                [ItemId.IronPickaxe] = new Pickaxe(itemTextures[ItemId.IronPickaxe], miningPower: 3, miningSpeed: 3.2f, powerTier: 3, hitDamage: 9)
             };
         }
 
@@ -463,11 +487,6 @@ namespace Nyvorn.Source.Game.States
                 build.PlayerSpawnTileX,
                 tilesAboveSurface: 2);
             Vector2 playerSpawn = ResolvePlayerSpawn(build, defaultPlayerSpawn);
-            Vector2 enemySpawn = build.WorldGenerator.GetLayerSpawnPosition(
-                build.WorldMap,
-                build.WorldGenConfig,
-                WorldLayerType.DeepCavern,
-                build.EnemySpawnTileX);
             Vector2 pickaxeSpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,
                 build.WorldGenConfig,
@@ -482,7 +501,10 @@ namespace Nyvorn.Source.Game.States
                 build.PlayerConfig);
 
             List<Enemy> enemies = new();
-            EnemyRespawnController enemyRespawnController = new(build.EnemyTexture, enemySpawn, build.EnemyConfig);
+            EnemyRespawnController enemyRespawnController = new(
+                build.EnemyTexture,
+                () => ResolveEnemySpawnNearPlayer(build.WorldMap, player.Position),
+                build.EnemyConfig);
             enemyRespawnController.SpawnInitial(enemies);
 
             Hotbar hotbar = new(9);
@@ -490,6 +512,7 @@ namespace Nyvorn.Source.Game.States
             int selectedHotbarIndex = 0;
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
             GiveStarterSandBlocks(build.PlayerSaveData, hotbar, inventory);
+            GiveStarterPickaxe(build.PlayerSaveData, hotbar, inventory);
             List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
             Camera2D camera = CreateCamera();
             SessionRuntimeContext runtimeContext = new SessionRuntimeContext
@@ -528,6 +551,8 @@ namespace Nyvorn.Source.Game.States
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys
             };
+            PlayerPowerSystem powerSystem = new PlayerPowerSystem();
+            powerSystem.AddPower(new TissueRevealPower(tissueSystem));
             PlayingSessionBlockInteractionSystem blockInteractionSystem = new PlayingSessionBlockInteractionSystem
             {
                 WorldMap = build.WorldMap,
@@ -535,6 +560,37 @@ namespace Nyvorn.Source.Game.States
                 Hotbar = hotbar,
                 WorldItemRuntimeSystem = worldItemRuntimeSystem
             };
+            WorkbenchRuntimeSystem workbenchRuntimeSystem = new WorkbenchRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.WorkbenchTexture
+            };
+            workbenchRuntimeSystem.Restore(build.SavedWorkbenches);
+            DoorRuntimeSystem doorRuntimeSystem = new DoorRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.DoorTexture
+            };
+            doorRuntimeSystem.Restore(build.SavedDoors);
+            blockInteractionSystem.DoorRuntimeSystem = doorRuntimeSystem;
+            build.WorldMap.SetObjectCollisionQueries(
+                (tileX, tileY) => workbenchRuntimeSystem.IsObjectOccupyingTile(tileX, tileY) || doorRuntimeSystem.IsObjectOccupyingTile(tileX, tileY),
+                doorRuntimeSystem.IsMovementBlockingTile);
+            InteriorFocusSystem interiorFocusSystem = new InteriorFocusSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                DoorRuntimeSystem = doorRuntimeSystem
+            };
+            BlockParticleSystem blockParticleSystem = new BlockParticleSystem
+            {
+                WorldMap = build.WorldMap
+            };
+            blockInteractionSystem.BlockParticleSystem = blockParticleSystem;
             PlayingSessionInputRouter inputRouter = new PlayingSessionInputRouter
             {
                 Hotbar = hotbar
@@ -556,8 +612,13 @@ namespace Nyvorn.Source.Game.States
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
+                PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
-                ActivatedTissueHubKeys = activatedTissueHubKeys
+                ActivatedTissueHubKeys = activatedTissueHubKeys,
+                InteriorFocusSystem = interiorFocusSystem,
+                BlockParticleSystem = blockParticleSystem,
+                WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                DoorRuntimeSystem = doorRuntimeSystem
             };
             PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
             {
@@ -585,6 +646,11 @@ namespace Nyvorn.Source.Game.States
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
                 CombatCoordinator = combatCoordinator,
+                WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                DoorRuntimeSystem = doorRuntimeSystem,
+                InteriorFocusSystem = interiorFocusSystem,
+                BlockParticleSystem = blockParticleSystem,
+                PowerSystem = powerSystem
             };
 
             session.InitializeSandSystem();
@@ -610,8 +676,25 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             ItemDefinition sandDefinition = ItemDefinitions.Get(ItemId.SandBlock);
-            if (!hotbar.TryAdd(sandDefinition, 2000))
-                inventory.TryAdd(sandDefinition, 2000);
+            if (!hotbar.TryAdd(sandDefinition, 100))
+                inventory.TryAdd(sandDefinition, 100);
+        }
+
+        private static void GiveStarterPickaxe(PlayerSaveData playerSaveData, Hotbar hotbar, Inventory inventory)
+        {
+            if (HasAnyPickaxe(hotbar) || HasAnyPickaxe(inventory))
+                return;
+
+            ItemDefinition pickaxeDefinition = ItemDefinitions.Get(ItemId.WoodPickaxe);
+            if (!hotbar.TryAdd(pickaxeDefinition, 1))
+                inventory.TryAdd(pickaxeDefinition, 1);
+        }
+
+        private static bool HasAnyPickaxe(Inventory inventory)
+        {
+            return inventory.ContainsItem(ItemId.WoodPickaxe) ||
+                   inventory.ContainsItem(ItemId.StonePickaxe) ||
+                   inventory.ContainsItem(ItemId.IronPickaxe);
         }
 
         private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
@@ -712,8 +795,49 @@ namespace Nyvorn.Source.Game.States
 
             return new List<WorldItem>
             {
-                new WorldItem(ItemDefinitions.Get(ItemId.Pickaxe), build.PickaxeTexture, pickaxeSpawn)
+                new WorldItem(ItemDefinitions.Get(ItemId.IronPickaxe), build.ItemTextures[ItemId.IronPickaxe], pickaxeSpawn)
             };
+        }
+
+        private static Vector2 ResolveEnemySpawnNearPlayer(WorldMap worldMap, Vector2 playerPosition)
+        {
+            int playerTileX = worldMap.WrapTileX((int)MathF.Floor(playerPosition.X / worldMap.TileSize));
+            int spawnTileX = worldMap.WrapTileX(playerTileX + EnemySpawnOffsetTilesFromPlayer);
+
+            for (int offset = 0; offset <= EnemySpawnOffsetTilesFromPlayer; offset++)
+            {
+                int candidateTileX = worldMap.WrapTileX(spawnTileX + GetAlternatingOffset(offset));
+                if (TryGetSurfaceSpawnPosition(worldMap, candidateTileX, out Vector2 spawnPosition))
+                    return spawnPosition;
+            }
+
+            return new Vector2(playerPosition.X + (EnemySpawnOffsetTilesFromPlayer * worldMap.TileSize), playerPosition.Y);
+        }
+
+        private static bool TryGetSurfaceSpawnPosition(WorldMap worldMap, int tileX, out Vector2 spawnPosition)
+        {
+            int wrappedX = worldMap.WrapTileX(tileX);
+
+            for (int y = 1; y < worldMap.Height; y++)
+            {
+                if (!worldMap.IsSolidAt(wrappedX, y) || worldMap.IsSolidAt(wrappedX, y - 1))
+                    continue;
+
+                spawnPosition = new Vector2(worldMap.GetTileCenter(wrappedX, y).X, y * worldMap.TileSize);
+                return true;
+            }
+
+            spawnPosition = Vector2.Zero;
+            return false;
+        }
+
+        private static int GetAlternatingOffset(int step)
+        {
+            if (step <= 0)
+                return 0;
+
+            int magnitude = (step + 1) / 2;
+            return (step & 1) == 1 ? magnitude : -magnitude;
         }
 
         private static Camera2D CreateCamera()
@@ -758,7 +882,8 @@ namespace Nyvorn.Source.Game.States
             public Texture2D TreeTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
-            public Texture2D PickaxeTexture { get; set; }
+            public Texture2D WorkbenchTexture { get; set; }
+            public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
             public SpriteFont UiFont { get; set; }
@@ -773,7 +898,10 @@ namespace Nyvorn.Source.Game.States
             public TissueNetwork TissueNetwork { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
+            public byte[] SavedBackgroundTileSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
+            public List<WorkbenchSaveData> SavedWorkbenches { get; set; }
+            public List<DoorSaveData> SavedDoors { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
             public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;

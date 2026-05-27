@@ -37,6 +37,10 @@ namespace Nyvorn.Source.World.Decorations
             Add(TreePartType.BranchLeft, 6, 2, isBase: false, isRoot: false, isBranch: true, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.BranchSocketLeft);
             Add(TreePartType.TrunkCutSupport, 4, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
             Add(TreePartType.TrunkContinuation, 6, 3, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+            Add(TreePartType.TrunkBaseCut, 4, 1, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: false);
+            Add(TreePartType.TrunkUpperCut, 6, 3, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: false);
+            Add(TreePartType.TrunkBareBase, 1, 1, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+            Add(TreePartType.TrunkBaseRightRootCutSocket, 1, 4, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootRight);
 
             parts[TreePartType.Canopy] = new TreePartDefinition(
                 TreePartType.Canopy,
@@ -72,6 +76,10 @@ namespace Nyvorn.Source.World.Decorations
                 TreePartType.RootLeft => GetSmallCell(3, rootLine),
                 TreePartType.RootRight => GetSmallCell(2, rootLine),
                 TreePartType.RootBothSocket => GetSmallCell(5, rootLine),
+                TreePartType.TrunkBaseCut => GetSmallCell(4, 1 + (System.Math.Abs(tree.Seed) % 2)),
+                TreePartType.TrunkUpperCut => GetSmallCell(6, 3 + (System.Math.Abs(tree.Seed) % 2)),
+                TreePartType.TrunkBareBase => GetSmallCell(1, 1 + (System.Math.Abs(tree.Seed) % 2)),
+                TreePartType.TrunkBaseRightRootCutSocket => GetSmallCell(1, 4 + (System.Math.Abs(tree.Seed) % 2)),
                 _ => GetSourceRectangle(partType)
             };
         }

@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Tissue;
 using System.Collections.Generic;
@@ -409,8 +410,54 @@ namespace Nyvorn.Source.Gameplay.UI
                     minimapPixels[(y * targetWidth) + x] = GetTileColor(worldMap.GetTile(x, y));
             }
 
+            DrawTreesOnMinimapTexture(worldMap, targetWidth, targetHeight);
+
             minimapTexture.SetData(minimapPixels);
             cachedTileRevision = worldMap.TileRevision;
+        }
+
+        private void DrawTreesOnMinimapTexture(WorldMap worldMap, int targetWidth, int targetHeight)
+        {
+            for (int treeIndex = 0; treeIndex < worldMap.Trees.Count; treeIndex++)
+            {
+                TreeInstance tree = worldMap.Trees[treeIndex];
+
+                if (tree.HasCanopy)
+                    DrawTreeCanopyOnMinimap(worldMap, tree, targetWidth, targetHeight);
+
+                for (int partIndex = 0; partIndex < tree.Parts.Count; partIndex++)
+                {
+                    TreePartPlacement part = tree.Parts[partIndex];
+                    int x = worldMap.WrapTileX(tree.BaseTile.X + part.OffsetTiles.X);
+                    int y = tree.BaseTile.Y + part.OffsetTiles.Y;
+                    Color color = GetTreePartMinimapColor(part.PartType);
+                    SetMinimapPixel(x, y, color, targetWidth, targetHeight);
+                }
+            }
+        }
+
+        private void DrawTreeCanopyOnMinimap(WorldMap worldMap, TreeInstance tree, int targetWidth, int targetHeight)
+        {
+            const int canopyTileWidth = 6;
+            const int canopyTileHeight = 6;
+
+            for (int y = 0; y < canopyTileHeight; y++)
+            {
+                for (int x = 0; x < canopyTileWidth; x++)
+                {
+                    int tileX = worldMap.WrapTileX(tree.BaseTile.X + tree.Canopy.OffsetTiles.X + x);
+                    int tileY = tree.BaseTile.Y + tree.Canopy.OffsetTiles.Y + y;
+                    SetMinimapPixel(tileX, tileY, GetTreeCanopyMinimapColor(x, y), targetWidth, targetHeight);
+                }
+            }
+        }
+
+        private void SetMinimapPixel(int x, int y, Color color, int targetWidth, int targetHeight)
+        {
+            if (y < 0 || y >= targetHeight)
+                return;
+
+            minimapPixels[(y * targetWidth) + x] = color;
         }
 
         private MinimapLayout GetLayout(WorldMap worldMap, Vector2 playerPosition, int screenWidth, int screenHeight)
@@ -492,6 +539,28 @@ namespace Nyvorn.Source.Gameplay.UI
                 TileType.Stone => new Color(142, 146, 152),
                 TileType.Sand => new Color(192, 172, 108),
                 _ => new Color(126, 92, 72)
+            };
+        }
+
+        private static Color GetTreeCanopyMinimapColor(int x, int y)
+        {
+            return ((x + y) & 1) == 0
+                ? new Color(70, 150, 35)
+                : new Color(47, 111, 44);
+        }
+
+        private static Color GetTreePartMinimapColor(TreePartType partType)
+        {
+            return partType switch
+            {
+                TreePartType.RootLeft or
+                TreePartType.RootRight or
+                TreePartType.RootBothSocket => new Color(94, 62, 42),
+
+                TreePartType.TrunkBaseCut or
+                TreePartType.TrunkUpperCut => new Color(150, 94, 62),
+
+                _ => new Color(122, 76, 50)
             };
         }
 

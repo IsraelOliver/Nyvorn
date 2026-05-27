@@ -19,6 +19,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private int dodgeDir;
         private int health;
         private Rectangle attackHitbox;
+        private bool attackHitboxEnabled;
 
         public PlayerCombat(Weapon equippedWeapon, PlayerConfig config)
         {
@@ -30,6 +31,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             dodgeDir = 1;
             health = config.MaxHealth;
             attackHitbox = Rectangle.Empty;
+            attackHitboxEnabled = false;
         }
 
         public Weapon EquippedWeapon => equippedWeapon;
@@ -42,6 +44,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool UsesAttackHandPose => equippedWeapon != null && equippedWeapon.UsesAttackHandPose;
         public bool UsesPlayerAttackUpperPose => equippedWeapon != null && equippedWeapon.UsesPlayerAttackUpperPose;
         public float? WorldBreakRangeOverride => equippedWeapon?.WorldBreakRangeOverride;
+        public int MiningPower => equippedWeapon?.MiningPower ?? 0;
+        public float MiningSpeed => equippedWeapon?.MiningSpeed ?? 0f;
         public int HitDamage => equippedWeapon?.HitDamage ?? 1;
         public float HitKnockbackX => equippedWeapon?.HitKnockbackX ?? 80f;
         public float HitKnockbackY => equippedWeapon?.HitKnockbackY ?? -35f;
@@ -63,6 +67,20 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 equippedWeapon = weapon;
         }
 
+        public void Respawn()
+        {
+            health = config.MaxHealth;
+            isAttacking = false;
+            isDodging = false;
+            attackTimer = 0f;
+            dodgeTimer = 0f;
+            dodgeCooldownTimer = 0f;
+            hurtCooldownTimer = 0f;
+            attackHitbox = Rectangle.Empty;
+            attackHitboxEnabled = false;
+            attackAnimation.Reset();
+        }
+
         public bool TryStartAttack(Vector2 playerPosition, Vector2 mouseWorld, out bool attackFacingRight)
         {
             attackFacingRight = mouseWorld.X >= playerPosition.X;
@@ -70,7 +88,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (!CanStartAttack())
                 return false;
 
-            StartAttack();
+            StartAttack(enableHitbox: true);
+            attackSequence++;
+            return true;
+        }
+
+        public bool TryStartVisualAttack(Vector2 playerPosition, Vector2 mouseWorld, out bool attackFacingRight)
+        {
+            attackFacingRight = mouseWorld.X >= playerPosition.X;
+
+            if (!CanStartAttack())
+                return false;
+
+            StartAttack(enableHitbox: false);
             return true;
         }
 
@@ -140,6 +170,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return true;
         }
 
+        public bool TryReceiveFallDamage(int damage)
+        {
+            if (!IsAlive || damage <= 0)
+                return false;
+
+            health = System.Math.Max(0, health - damage);
+            hurtCooldownTimer = config.HurtCooldown;
+            return true;
+        }
+
         private void TickCooldowns(float dt)
         {
             if (hurtCooldownTimer > 0f)
@@ -156,11 +196,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return !isDodging && !isAttacking;
         }
 
-        private void StartAttack()
+        private void StartAttack(bool enableHitbox)
         {
             isAttacking = true;
             attackTimer = equippedWeapon.AttackDuration;
-            attackSequence++;
+            attackHitboxEnabled = enableHitbox;
             attackAnimation.Reset();
             attackHitbox = Rectangle.Empty;
         }
@@ -170,6 +210,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             isAttacking = false;
             attackTimer = 0f;
             attackHitbox = Rectangle.Empty;
+            attackHitboxEnabled = false;
 
             if (moveDir != 0)
                 facingRight = moveDir > 0;
@@ -177,7 +218,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private bool CanUseAttackHitbox()
         {
-            if (isDodging || !isAttacking || equippedWeapon == null)
+            if (isDodging || !isAttacking || !attackHitboxEnabled || equippedWeapon == null)
                 return false;
 
             return equippedWeapon.IsActiveFrame(attackAnimation.CurrentFrameIndex);

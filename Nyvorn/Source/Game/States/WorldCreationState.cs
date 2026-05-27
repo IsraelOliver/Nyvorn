@@ -244,9 +244,16 @@ namespace Nyvorn.Source.Game.States
             string line3 = "Esquerda/Direita mudam o preset.";
 
             float textWidth = area.Width - 24;
-            spriteBatch.DrawString(font, TextLayout.WrapText(font, line1, textWidth), new Vector2(area.X + 12, area.Y + 10), new Color(255, 241, 193));
-            spriteBatch.DrawString(font, TextLayout.WrapText(font, line2, textWidth), new Vector2(area.X + 12, area.Y + 10 + font.LineSpacing), new Color(168, 230, 207));
-            spriteBatch.DrawString(font, TextLayout.WrapText(font, line3, textWidth), new Vector2(area.X + 12, area.Y + 10 + (font.LineSpacing * 2)), new Color(143, 211, 255));
+            string wrappedLine1 = TextLayout.WrapText(font, line1, textWidth);
+            string wrappedLine2 = TextLayout.WrapText(font, line2, textWidth);
+            string wrappedLine3 = TextLayout.WrapText(font, line3, textWidth);
+            Vector2 textPos = new Vector2(area.X + 12, area.Y + 10);
+
+            spriteBatch.DrawString(font, wrappedLine1, textPos, new Color(255, 241, 193));
+            textPos.Y += TextLayout.GetWrappedHeight(font, wrappedLine1);
+            spriteBatch.DrawString(font, wrappedLine2, textPos, new Color(168, 230, 207));
+            textPos.Y += TextLayout.GetWrappedHeight(font, wrappedLine2);
+            spriteBatch.DrawString(font, wrappedLine3, textPos, new Color(143, 211, 255));
         }
 
         private void DrawCreateButton(SpriteBatch spriteBatch)
@@ -398,19 +405,19 @@ namespace Nyvorn.Source.Game.States
         {
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
-            return new Rectangle((screenW - 520) / 2, (screenH - 420) / 2, 520, 420);
+            return new Rectangle((screenW - 520) / 2, (screenH - 520) / 2, 520, 520);
         }
 
         private Rectangle GetPlanetNameBounds()
         {
             Rectangle panel = GetPanelBounds();
-            return new Rectangle(panel.X + 28, panel.Y + 96, panel.Width - 56, 42);
+            return new Rectangle(panel.X + 28, panel.Y + 96, panel.Width - 56, 56);
         }
 
         private Rectangle GetSeedBounds()
         {
             Rectangle planetBounds = GetPlanetNameBounds();
-            return new Rectangle(planetBounds.X, planetBounds.Bottom + 40, planetBounds.Width, 42);
+            return new Rectangle(planetBounds.X, planetBounds.Bottom + 40, planetBounds.Width, 56);
         }
 
         private Rectangle GetPresetAreaBounds()

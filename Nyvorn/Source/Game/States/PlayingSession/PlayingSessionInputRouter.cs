@@ -47,6 +47,8 @@ namespace Nyvorn.Source.Game.States
                 return false;
 
             return selectedSlot.ItemId == ItemId.SandBlock ||
+                   selectedSlot.ItemId == ItemId.Workbench ||
+                   selectedSlot.ItemId == ItemId.WoodDoor ||
                    TileItemMapper.TryGetTileType(selectedSlot.ItemId, out _);
         }
 
@@ -58,9 +60,15 @@ namespace Nyvorn.Source.Game.States
                 false,
                 false,
                 input.PlacePressed,
-                input.OpenInventoryPressed,
-                input.TissueRevealPressed,
-                input.ToggleMinimapPressed,
+                input.ActivePowerPressed,
+                input.ActivePowerJustPressed,
+                input.TogglePlayerHubPressed,
+                input.ToggleMapPressed,
+                input.ToggleConstructionModePressed,
+                input.InteractPressed,
+                input.CyclePowerPressed,
+                input.ToggleDebugPressed,
+                input.CancelPressed,
                 input.HotbarSelectionIndex,
                 input.DodgePressed,
                 input.DodgeDir,

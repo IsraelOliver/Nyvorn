@@ -1,15 +1,28 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Gameplay.Entities.Player;
-using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Combat.Weapons
 {
     public sealed class Pickaxe : Weapon
     {
-        public Pickaxe(Texture2D texture)
+        private readonly int powerTier;
+        private readonly int miningPower;
+        private readonly float miningSpeed;
+        private readonly int hitDamage;
+
+        public Pickaxe(
+            Texture2D texture,
+            int miningPower = 1,
+            float miningSpeed = 1.5f,
+            int powerTier = 1,
+            int hitDamage = 8)
             : base(texture, frameW: 32, frameH: 32, pivot: new Point(9, 19))
         {
+            this.powerTier = powerTier;
+            this.miningPower = miningPower;
+            this.miningSpeed = miningSpeed;
+            this.hitDamage = hitDamage;
             SetIdle();
         }
 
@@ -17,8 +30,11 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public override bool UsesPlayerAttackUpperPose => true;
         public override bool ReplacesPlayerUpperBody => true;
         public override float? WorldBreakRangeOverride => 56f;
-        public override int PowerTier => 1;
-        public override int HitDamage => 8;
+        public override int PowerTier => powerTier;
+        public override ToolType ToolType => ToolType.Pickaxe;
+        public override int MiningPower => miningPower;
+        public override float MiningSpeed => miningSpeed;
+        public override int HitDamage => hitDamage;
         public override float HitKnockbackX => 190f;
         public override float HitKnockbackY => -45f;
         public override float AttackDuration => 0.3f;
@@ -84,14 +100,6 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public override bool IsActiveFrame(int frameIndex)
         {
             return frameIndex == 2;
-        }
-
-        public override bool CanBreakTile(TileType tileType)
-        {
-            return tileType == TileType.Dirt
-                || tileType == TileType.Grass
-                || tileType == TileType.Sand
-                || tileType == TileType.Stone;
         }
 
         public override void Draw(SpriteBatch spriteBatch, Vector2 handWorld, Vector2 playerRootPosition, AnimFrame movementFrame, bool facingRight)

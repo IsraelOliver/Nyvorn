@@ -4,7 +4,7 @@ namespace Nyvorn.Source.World.Generation
 {
     public sealed class TissueField
     {
-        private readonly bool[] values;
+        private readonly TissueCellState[] cells;
 
         public TissueField(int width, int height)
         {
@@ -15,34 +15,47 @@ namespace Nyvorn.Source.World.Generation
 
             Width = width;
             Height = height;
-            values = new bool[width * height];
+            cells = new TissueCellState[width * height];
         }
 
         public int Width { get; }
         public int Height { get; }
 
+        // Compatibilidade temporaria com os sistemas atuais. Novas regras devem
+        // ler GetState e decidir usando Presence/Vitality/Corruption/etc.
         public bool HasTissue(int x, int y)
         {
-            if (!IsInBounds(x, y))
-                return false;
-
-            return values[(y * Width) + x];
+            return GetState(x, y).HasBiologicalPresence;
         }
 
+        // Compatibilidade com snapshots legados: true vira presenca viva basica.
         public void SetTissue(int x, int y, bool hasTissue)
+        {
+            SetState(x, y, TissueCellState.FromLegacyPresence(hasTissue));
+        }
+
+        public TissueCellState GetState(int x, int y)
+        {
+            if (!IsInBounds(x, y))
+                return TissueCellState.Neutral;
+
+            return cells[(y * Width) + x];
+        }
+
+        public void SetState(int x, int y, TissueCellState state)
         {
             if (!IsInBounds(x, y))
                 return;
 
-            values[(y * Width) + x] = hasTissue;
+            cells[(y * Width) + x] = state;
         }
 
         public int CountActiveTiles()
         {
             int count = 0;
-            for (int i = 0; i < values.Length; i++)
+            for (int i = 0; i < cells.Length; i++)
             {
-                if (values[i])
+                if (cells[i].HasBiologicalPresence)
                     count++;
             }
 

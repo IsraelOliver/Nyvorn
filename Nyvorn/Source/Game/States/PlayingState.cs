@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Game;
+using Nyvorn.Source.Gameplay.Crafting;
+using Nyvorn.Source.Gameplay.Interaction;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Decorations;
@@ -27,6 +29,7 @@ namespace Nyvorn.Source.Game.States
         private readonly InputService inputService = new();
         private readonly SpriteFont consoleFont;
         private readonly Texture2D consolePixel;
+        private readonly PlayerHubUI playerHubUI;
         private bool deathStatePushed;
         private bool minimapVisible;
         private bool minimapTissueMode;
@@ -59,6 +62,7 @@ namespace Nyvorn.Source.Game.States
             consoleFont = content.Load<SpriteFont>("ui/UIFont");
             consolePixel = new Texture2D(graphicsDevice, 1, 1);
             consolePixel.SetData(new[] { Color.White });
+            playerHubUI = new PlayerHubUI(graphicsDevice, session);
             autoSaveTimer = AutoSaveInterval;
         }
 
@@ -80,12 +84,17 @@ namespace Nyvorn.Source.Game.States
             KeyboardState keyboard = Keyboard.GetState();
             bool handledConsoleThisFrame = false;
 
-            if (!consoleOpen && IsNewConsoleKeyPress(keyboard, Keys.T))
+            if (input.ToggleDebugPressed)
             {
-                consoleOpen = true;
-                consoleInput = string.Empty;
-                consoleMessage = string.Empty;
+                consoleOpen = !consoleOpen;
+                if (consoleOpen)
+                {
+                    consoleInput = string.Empty;
+                    consoleMessage = string.Empty;
+                }
+
                 previousConsoleKeyboard = keyboard;
+                input = input.ConsumeGameplayInput();
                 handledConsoleThisFrame = true;
             }
 
@@ -93,19 +102,44 @@ namespace Nyvorn.Source.Game.States
             {
                 HandleConsoleInput(keyboard);
                 previousConsoleKeyboard = keyboard;
-                input = CreateConsoleGameplayInput(input);
+                input = input.ConsumeGameplayInput();
                 handledConsoleThisFrame = true;
             }
 
             session.EnsureCurrentTissueHubActivated();
 
-            if (input.ToggleMinimapPressed)
-                minimapVisible = !minimapVisible;
-            if (input.TissueRevealPressed && session.IsPlayerOnActivatedTissueHub)
+            if (!handledConsoleThisFrame && input.CancelPressed)
             {
-                minimapVisible = true;
-                minimapTissueMode = true;
+                if (playerHubUI.IsOpen)
+                {
+                    playerHubUI.Close();
+                    previousConsoleKeyboard = keyboard;
+                    input = input.ConsumeGameplayInput();
+                    handledConsoleThisFrame = true;
+                }
+                else if (minimapVisible)
+                {
+                    minimapVisible = false;
+                    previousConsoleKeyboard = keyboard;
+                    input = input.ConsumeGameplayInput();
+                    handledConsoleThisFrame = true;
+                }
+                else
+                {
+                    previousConsoleKeyboard = keyboard;
+                    stateMachine.PushState(new PauseMenuState(graphicsDevice, content, stateMachine, session));
+                    return;
+                }
             }
+
+            if (!handledConsoleThisFrame && input.TogglePlayerHubPressed)
+                playerHubUI.Toggle();
+
+            if (!handledConsoleThisFrame && input.ToggleMapPressed)
+                minimapVisible = !minimapVisible;
+
+            if (!handledConsoleThisFrame && input.ToggleConstructionModePressed)
+                session.ToggleConstructionMode();
 
             if (minimapVisible)
             {
@@ -129,29 +163,38 @@ namespace Nyvorn.Source.Game.States
                     input = input.ConsumeWorldMouseInput();
             }
 
-            if (!handledConsoleThisFrame && IsNewConsoleKeyPress(keyboard, Keys.Escape))
-            {
-                previousConsoleKeyboard = keyboard;
-                stateMachine.PushState(new PauseMenuState(graphicsDevice, content, stateMachine, session));
-                return;
-            }
-
-            if (input.OpenInventoryPressed && stateMachine.CurrentState is not InventoryState)
-                stateMachine.PushState(new InventoryState(graphicsDevice, stateMachine, session));
-
-            if (stateMachine.CurrentState is InventoryState inventoryState &&
-                inventoryState.ContainsMouse(Mouse.GetState().Position))
-            {
-                input = input.ConsumeWorldMouseInput();
-            }
-
             Vector2 mouseWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
+            session.WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
+
+            CraftTier craftTier = session.WorkbenchRuntimeSystem.GetNearbyCraftTier();
+            playerHubUI.Update(input, craftTier);
+            if (playerHubUI.IsOpen && playerHubUI.ContainsMouse(input.MouseScreenPosition.ToPoint(), craftTier))
+                input = input.ConsumeWorldMouseInput();
+
+            if (!handledConsoleThisFrame && input.InteractPressed)
+            {
+                bool interactedWithDoor = session.DoorRuntimeSystem.TryInteract(session.Player);
+                if (!interactedWithDoor &&
+                    session.WorkbenchRuntimeSystem.TryInteract(session.Player, out InteractionResult interactionResult) &&
+                    interactionResult.OpenPlayerHub)
+                {
+                    playerHubUI.Open();
+                    craftTier = interactionResult.CraftTier;
+                }
+            }
+
+            if (!handledConsoleThisFrame && input.CyclePowerPressed)
+                session.PowerSystem.CycleNextPower();
+
+            if (!handledConsoleThisFrame && !session.IsConstructionMode && input.ActivePowerJustPressed)
+                session.PowerSystem.TryActivateCurrentPower();
+
             session.UpdateSimulationViewport(screenW, screenH);
             session.Update(dt, input, mouseWorld);
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
-                if (session.WorldMap.HasUnsavedChanges)
+                if (session.HasUnsavedWorldChanges)
                     saveService.Save(session);
                 else
                     saveService.SavePlayerOnly(session);
@@ -167,7 +210,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            session.FollowCamera(screenW, screenH);
+            session.FollowCamera(dt, screenW, screenH);
             previousConsoleKeyboard = keyboard;
         }
 
@@ -234,6 +277,17 @@ namespace Nyvorn.Source.Game.States
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawInteriorFocusOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
             }
@@ -242,6 +296,7 @@ namespace Nyvorn.Source.Game.States
             session.DrawHud(spriteBatch, screenW, screenH);
             if (minimapVisible)
                 session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier());
             if (consoleOpen)
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
@@ -292,16 +347,34 @@ namespace Nyvorn.Source.Game.States
             string normalized = command.ToLowerInvariant();
             if (normalized == "/help" || normalized == "help")
             {
-                SetConsoleMessage("Comandos: /help, spawn pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
+                SetConsoleMessage("Comandos: /help, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
                 consoleInput = string.Empty;
                 return;
             }
 
-            if (normalized == "spawn pickaxe" || normalized == "spawn picareta")
+            if (normalized == "spawn pickaxe" || normalized == "spawn picareta" || normalized == "spawn wood pickaxe")
             {
-                SetConsoleMessage(session.TryDropItem(ItemId.Pickaxe)
-                    ? "Spawned: pickaxe"
-                    : "Falha ao spawnar pickaxe");
+                SetConsoleMessage(session.TryDropItem(ItemId.WoodPickaxe)
+                    ? "Spawned: wood pickaxe"
+                    : "Falha ao spawnar wood pickaxe");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "spawn stone pickaxe")
+            {
+                SetConsoleMessage(session.TryDropItem(ItemId.StonePickaxe)
+                    ? "Spawned: stone pickaxe"
+                    : "Falha ao spawnar stone pickaxe");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "spawn iron pickaxe")
+            {
+                SetConsoleMessage(session.TryDropItem(ItemId.IronPickaxe)
+                    ? "Spawned: iron pickaxe"
+                    : "Falha ao spawnar iron pickaxe");
                 consoleInput = string.Empty;
                 return;
             }
@@ -349,24 +422,6 @@ namespace Nyvorn.Source.Game.States
             consoleHistory.Add(line);
             while (consoleHistory.Count > MaxConsoleHistoryLines)
                 consoleHistory.RemoveAt(0);
-        }
-
-        private static InputState CreateConsoleGameplayInput(InputState input)
-        {
-            return new InputState(
-                0,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                -1,
-                false,
-                0,
-                input.MouseScreenPosition,
-                0);
         }
 
         private bool TryExecuteTickCommand(string command)
@@ -527,11 +582,6 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(consoleFont, prompt, new Vector2(10, inputBounds.Y + 5), Color.White);
         }
 
-        private bool IsNewConsoleKeyPress(KeyboardState keyboard, Keys key)
-        {
-            return keyboard.IsKeyDown(key) && !previousConsoleKeyboard.IsKeyDown(key);
-        }
-
         private static bool TryGetConsoleCharacter(KeyboardState keyboard, Keys key, out char character)
         {
             bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
@@ -589,15 +639,14 @@ namespace Nyvorn.Source.Game.States
 
         private void RetryFromDeath()
         {
-            stateMachine.Clear();
-            PlanetWorldMetadata metadata = session.PlanetMetadata;
-            PlayingSessionFactory factory = new PlayingSessionFactory(graphicsDevice, content);
-            stateMachine.PushState(new LoadingWorldState(
-                graphicsDevice,
-                content,
-                stateMachine,
-                factory.CreateBuildOperation(metadata.PlanetName, metadata.SizePreset, metadata.Seed),
-                "Regenerando Planeta"));
+            session.RespawnPlayerAtWorldCenter();
+            deathStatePushed = false;
+            int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
+            int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
+            session.Camera.CenterOn(session.Player.Position + new Vector2(8f, 12f), screenW, screenH);
+            saveService.SavePlayerOnly(session);
+            autoSaveTimer = AutoSaveInterval;
+            stateMachine.PopState();
         }
     }
 }

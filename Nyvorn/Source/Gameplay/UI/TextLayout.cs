@@ -28,6 +28,29 @@ namespace Nyvorn.Source.Gameplay.UI
             return wrapped.ToString();
         }
 
+        public static int CountLines(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return 0;
+
+            int lines = 1;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\n')
+                    lines++;
+            }
+
+            return lines;
+        }
+
+        public static float GetWrappedHeight(SpriteFont font, string text)
+        {
+            if (font == null)
+                return 0f;
+
+            return CountLines(text) * font.LineSpacing;
+        }
+
         private static void AppendWrappedParagraph(SpriteFont font, string paragraph, float maxWidth, StringBuilder wrapped)
         {
             if (string.IsNullOrWhiteSpace(paragraph))
@@ -61,13 +84,23 @@ namespace Nyvorn.Source.Gameplay.UI
                     currentLine = string.Empty;
                 }
 
-                foreach (string fragment in BreakLongWord(font, word, maxWidth))
+                string[] fragments = BreakLongWord(font, word, maxWidth);
+                for (int i = 0; i < fragments.Length; i++)
                 {
+                    string fragment = fragments[i];
                     DebugValidateSpriteFontText(font, fragment);
 
                     if (font.MeasureString(fragment).X <= maxWidth)
                     {
-                        currentLine = fragment;
+                        if (i < fragments.Length - 1)
+                        {
+                            wrapped.Append(fragment);
+                            wrapped.Append('\n');
+                        }
+                        else
+                        {
+                            currentLine = fragment;
+                        }
                     }
                     else
                     {
@@ -81,16 +114,16 @@ namespace Nyvorn.Source.Gameplay.UI
                 wrapped.Append(currentLine);
         }
 
-        private static IEnumerable<string> BreakLongWord(SpriteFont font, string word, float maxWidth)
+        private static string[] BreakLongWord(SpriteFont font, string word, float maxWidth)
         {
             DebugValidateSpriteFontText(font, word);
 
             if (font.MeasureString(word).X <= maxWidth)
             {
-                yield return word;
-                yield break;
+                return new[] { word };
             }
 
+            List<string> fragments = new List<string>();
             int start = 0;
 
             while (start < word.Length)
@@ -113,9 +146,11 @@ namespace Nyvorn.Source.Gameplay.UI
                 string result = word.Substring(start, length);
                 DebugValidateSpriteFontText(font, result);
 
-                yield return result;
+                fragments.Add(result);
                 start += length;
             }
+
+            return fragments.ToArray();
         }
 
         private static void DebugValidateSpriteFontText(SpriteFont font, string text)

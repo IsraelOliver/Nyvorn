@@ -34,6 +34,8 @@ namespace Nyvorn.Source.Gameplay.UI
             this.itemTextures = itemTextures;
         }
 
+        public SpriteFont Font => font;
+
         public void Draw(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int currentHealth, int maxHealth, int screenWidth, int screenHeight)
         {
             DrawHotbar(spriteBatch, hotbar, selectedHotbarIndex, screenWidth, screenHeight);

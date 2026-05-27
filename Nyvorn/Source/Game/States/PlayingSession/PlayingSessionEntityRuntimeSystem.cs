@@ -18,7 +18,7 @@ namespace Nyvorn.Source.Game.States
             for (int i = RuntimeContext.Enemies.Count - 1; i >= 0; i--)
             {
                 if (IsWithinSimulationRange(RuntimeContext.Enemies[i].Position))
-                    RuntimeContext.Enemies[i].Update(dt, RuntimeContext.WorldMap);
+                    RuntimeContext.Enemies[i].Update(dt, RuntimeContext.WorldMap, RuntimeContext.Player.Position);
             }
 
             WorldItemRuntimeSystem.Update(dt, IsWithinSimulationRange);

@@ -16,6 +16,7 @@ namespace Nyvorn.Source.World.Persistence
         public int Seed { get; init; }
         public List<TreePartSaveData> Parts { get; init; } = new();
         public TreePartSaveData Canopy { get; init; }
+        public bool HasCanopy { get; init; } = true;
 
         public static TreeSaveData FromTree(TreeInstance tree)
         {
@@ -34,7 +35,8 @@ namespace Nyvorn.Source.World.Persistence
                 BranchDirection = tree.BranchDirection,
                 Seed = tree.Seed,
                 Parts = parts,
-                Canopy = FromPlacement(tree.Canopy)
+                Canopy = FromPlacement(tree.Canopy),
+                HasCanopy = tree.HasCanopy
             };
         }
 
@@ -57,7 +59,8 @@ namespace Nyvorn.Source.World.Persistence
                 BranchDirection = BranchDirection,
                 Seed = Seed,
                 Parts = parts,
-                Canopy = Canopy != null ? ToPlacement(Canopy) : new TreePartPlacement(TreePartType.Canopy, new Point(-2, -Height - 4))
+                Canopy = Canopy != null ? ToPlacement(Canopy) : new TreePartPlacement(TreePartType.Canopy, new Point(-2, -Height - 4)),
+                HasCanopy = HasCanopy
             };
         }
 

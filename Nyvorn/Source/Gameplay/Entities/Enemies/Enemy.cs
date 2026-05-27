@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Gameplay.Combat.Interfaces;
+using Nyvorn.Source.Gameplay.Entities.Enemies.AI;
 using Nyvorn.Source.Gameplay.Entities.Enemies.EnemyAnimations;
 using Nyvorn.Source.World;
 using System;
@@ -12,13 +13,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         private readonly EnemyConfig config;
         private readonly Texture2D texture;
         private readonly EnemyAnimator animator;
+        private readonly EnemyBrain brain;
         private readonly EnemyCombat combat;
         private readonly EnemyMotor motor;
 
         public Vector2 Position => motor.Position;
         public bool IsAlive => combat.IsAlive;
-        bool IHitSource.HasActiveHitbox => IsAlive;
-        Rectangle IHitSource.ActiveHitbox => IsAlive ? Hurtbox : Rectangle.Empty;
+        bool IHitSource.HasActiveHitbox => IsAlive && combat.AttackTimer > 0f;
+        Rectangle IHitSource.ActiveHitbox => IsAlive && combat.AttackTimer > 0f ? Hurtbox : Rectangle.Empty;
         int IHitSource.HitSequence => 0;
         int IHitSource.HitDamage => config.ContactDamage;
         float IHitSource.HitKnockbackX => config.ContactKnockbackX;
@@ -38,15 +40,27 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             this.config = config ?? EnemyConfig.Default;
             this.texture = texture;
             motor = new EnemyMotor(position, this.config);
+            brain = new EnemyBrain(this.config);
             combat = new EnemyCombat(this.config);
 
             animator = new EnemyAnimator(EnemyTestAnimations.Create(), EnemyAnimState.Idle);
         }
 
-        public void Update(float dt, WorldMap worldMap)
+        public void Update(float dt, WorldMap worldMap, Vector2 playerPosition)
         {
             combat.Tick(dt);
-            motor.Update(dt, worldMap);
+            EnemyBrainDecision decision = brain.Update(
+                dt,
+                Position,
+                playerPosition,
+                worldMap.PixelWidth,
+                combat.Health,
+                combat.MaxHealth);
+
+            if (decision.TriggerAttackVisual)
+                TriggerAttackVisual();
+
+            motor.Update(dt, worldMap, decision.MoveVelocityX);
 
             EnemyAnimState state = ResolveAnimState();
             animator.Play(state);
@@ -55,6 +69,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
         public void ApplyKnockback(float forceX, float forceY = -55f)
         {
+            brain.NotifyHit(forceX);
             motor.ApplyKnockback(forceX, forceY);
         }
 
@@ -97,7 +112,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             if (combat.AttackTimer > 0f)
                 return EnemyAnimState.Attack;
 
-            bool isMoving = Math.Abs(motor.KnockbackVelocityX) > 8f;
+            bool isMoving = Math.Abs(motor.HorizontalVelocityX) > 8f
+                || brain.CurrentIntent == EnemyIntent.Chase
+                || brain.CurrentIntent == EnemyIntent.Investigate
+                || brain.CurrentIntent == EnemyIntent.Retreat;
             if (isMoving)
                 return EnemyAnimState.Move;
 

@@ -16,6 +16,7 @@ namespace Nyvorn.Source.World
         private const int AutoTileSheetSpacing = 1;
         private const int DefaultChunkTileSize = 32;
         private const int MaxCachedChunks = 96;
+        private static readonly Color BackgroundTileTint = new Color(104, 104, 104, 210);
 
         public int Width { get; }
         public int Height { get; }
@@ -43,12 +44,16 @@ namespace Nyvorn.Source.World
         private int _chunkRenderTick;
 
         private readonly TileType[,] _tiles;
+        private readonly TileType[,] _backgroundTiles;
         private readonly byte[,] _autoTileVariants;
+        private readonly byte[,] _backgroundAutoTileVariants;
         private readonly List<TreeInstance> _trees = new();
         private readonly TreeRenderer _treeRenderer = new();
         private readonly Dictionary<WorldChunkCoord, ChunkRenderCache> _chunkCaches = new();
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
         private readonly Dictionary<long, WorldTileChange> _trackedTileChanges = new();
+        private Func<int, int, bool> _objectOccupancyQuery;
+        private Func<int, int, bool> _movementBlockQuery;
 
         public WorldMap(int width, int height, int tileSize)
         {
@@ -57,7 +62,9 @@ namespace Nyvorn.Source.World
             TileSize = tileSize;
 
             _tiles = new TileType[Width, Height];
+            _backgroundTiles = new TileType[Width, Height];
             _autoTileVariants = new byte[Width, Height];
+            _backgroundAutoTileVariants = new byte[Width, Height];
         }
 
         public bool IsTrackingTileChanges { get; private set; }
@@ -123,11 +130,60 @@ namespace Nyvorn.Source.World
             TileRevision++;
         }
 
+        public byte[] ExportBackgroundTileSnapshot()
+        {
+            byte[] snapshot = new byte[Width * Height];
+            int index = 0;
+
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    snapshot[index++] = (byte)_backgroundTiles[x, y];
+            }
+
+            return snapshot;
+        }
+
+        public void ImportBackgroundTileSnapshot(byte[] snapshot)
+        {
+            if (snapshot == null || snapshot.Length == 0)
+            {
+                ClearBackgroundTiles();
+                return;
+            }
+
+            if (snapshot.Length != Width * Height)
+                throw new System.ArgumentException("Background tile snapshot size does not match world dimensions.", nameof(snapshot));
+
+            int index = 0;
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    _backgroundTiles[x, y] = (TileType)snapshot[index++];
+            }
+
+            RebuildBackgroundAutoTileVariants();
+            TileRevision++;
+        }
+
+        public void ClearBackgroundTiles()
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    _backgroundTiles[x, y] = TileType.Empty;
+            }
+
+            RebuildBackgroundAutoTileVariants();
+        }
+
         public byte[] ExportTissueSnapshot()
         {
             if (_tissueField == null)
                 return null;
 
+            // Snapshot legado: preserva apenas presenca para compatibilidade com
+            // saves atuais. O novo modelo biologico devera ganhar formato proprio.
             byte[] snapshot = new byte[Width * Height];
             int index = 0;
 
@@ -154,6 +210,7 @@ namespace Nyvorn.Source.World
             TissueField field = new TissueField(Width, Height);
             int index = 0;
 
+            // Snapshot legado booleano: true entra como presenca/vitalidade basica.
             for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)
@@ -369,6 +426,30 @@ namespace Nyvorn.Source.World
 
         public bool IsSolidAt(int x, int y) => IsSolid(GetTile(x, y));
 
+        public void SetObjectCollisionQueries(
+            Func<int, int, bool> objectOccupancyQuery,
+            Func<int, int, bool> movementBlockQuery)
+        {
+            _objectOccupancyQuery = objectOccupancyQuery;
+            _movementBlockQuery = movementBlockQuery;
+        }
+
+        public bool IsObjectOccupiedAt(int x, int y)
+        {
+            if (!InBounds(x, y))
+                return false;
+
+            return _objectOccupancyQuery?.Invoke(WrapTileX(x), y) == true;
+        }
+
+        public bool IsMovementBlockedAt(int x, int y)
+        {
+            if (!InBounds(x, y))
+                return false;
+
+            return IsSolidAt(x, y) || _movementBlockQuery?.Invoke(WrapTileX(x), y) == true;
+        }
+
         public bool HasAdjacentSolid(int x, int y)
         {
             return IsSolidAt(x - 1, y)
@@ -456,6 +537,9 @@ namespace Nyvorn.Source.World
             if (GetTile(x, y) != TileType.Empty)
                 return false;
 
+            if (IsObjectOccupiedAt(x, y))
+                return false;
+
             return HasAdjacentSolid(x, y);
         }
 
@@ -471,6 +555,87 @@ namespace Nyvorn.Source.World
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
             return true;
+        }
+
+        public TileType GetBackgroundTile(int x, int y)
+        {
+            if (!InBounds(x, y))
+                return TileType.Empty;
+
+            return _backgroundTiles[WrapTileX(x), y];
+        }
+
+        public bool CanPlaceBackgroundTile(int x, int y, TileType tileType)
+        {
+            if (!InBounds(x, y))
+                return false;
+
+            if (tileType == TileType.Empty)
+                return false;
+
+            if (!IsSolid(tileType))
+                return false;
+
+            return GetBackgroundTile(x, y) == TileType.Empty;
+        }
+
+        public bool TryPlaceBackgroundTile(int x, int y, TileType tileType)
+        {
+            if (!CanPlaceBackgroundTile(x, y, tileType))
+                return false;
+
+            int wrappedX = WrapTileX(x);
+            _backgroundTiles[wrappedX, y] = tileType;
+            RefreshBackgroundAutoTileNeighborhood(wrappedX, y);
+            TileRevision++;
+            return true;
+        }
+
+        public bool TryBreakBackgroundTile(int x, int y, out TileType removedTile)
+        {
+            removedTile = TileType.Empty;
+
+            if (!InBounds(x, y))
+                return false;
+
+            int wrappedX = WrapTileX(x);
+            TileType currentTile = _backgroundTiles[wrappedX, y];
+            if (!IsSolid(currentTile))
+                return false;
+
+            removedTile = currentTile;
+            _backgroundTiles[wrappedX, y] = TileType.Empty;
+            RefreshBackgroundAutoTileNeighborhood(wrappedX, y);
+            TileRevision++;
+            return true;
+        }
+
+        public bool TryGetTileParticleRenderData(
+            TileType tile,
+            int x,
+            int y,
+            bool background,
+            out Texture2D texture,
+            out Rectangle sourceRectangle,
+            out Color tint)
+        {
+            texture = GetTextureForTile(tile);
+            sourceRectangle = Rectangle.Empty;
+            tint = background ? BackgroundTileTint : Color.White;
+
+            if (tile == TileType.Empty || texture == null || !InBounds(x, y))
+                return false;
+
+            sourceRectangle = tile switch
+            {
+                TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y, background),
+                TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background),
+                TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background),
+                TileType.Sand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
+                _ => Rectangle.Empty
+            };
+
+            return sourceRectangle != Rectangle.Empty;
         }
 
         public void BeginTileChangeTracking()
@@ -577,6 +742,104 @@ namespace Nyvorn.Source.World
             return false;
         }
 
+        public bool TryGetTreeAtTile(Point tile, out TreeInstance tree)
+        {
+            return TryGetTreePartAtTile(tile, out tree, out _);
+        }
+
+        public bool TryChopTreeAtTile(Point tile, out int woodQuantity, out Vector2 dropPosition)
+        {
+            woodQuantity = 0;
+            dropPosition = Vector2.Zero;
+
+            if (!TryGetTreePartAtTile(tile, out TreeInstance tree, out TreePartPlacement cutPart))
+                return false;
+
+            if (!tree.HasCanopy)
+            {
+                _trees.Remove(tree);
+                TileRevision++;
+                return true;
+            }
+
+            if (cutPart.PartType == TreePartType.RootLeft || cutPart.PartType == TreePartType.RootRight)
+            {
+                ChopTreeRoot(tree, cutPart.PartType);
+                woodQuantity = 1;
+                dropPosition = GetTileCenter(tile.X, tile.Y);
+                TileRevision++;
+                return true;
+            }
+
+            int cutOffsetY = System.Math.Min(0, cutPart.OffsetTiles.Y);
+            if (cutOffsetY == 0)
+            {
+                woodQuantity = System.Math.Max(1, tree.Height);
+                dropPosition = GetTileCenter(tree.BaseTile.X, tree.BaseTile.Y);
+                _trees.Remove(tree);
+                TileRevision++;
+                return true;
+            }
+
+            if (cutOffsetY == -1)
+            {
+                woodQuantity = CountChoppedWood(tree, cutOffsetY);
+                dropPosition = GetTileCenter(tile.X, tile.Y);
+
+                tree.Parts.Clear();
+                tree.Parts.Add(new TreePartPlacement(TreePartType.TrunkBaseCut, Point.Zero));
+                tree.HasCanopy = false;
+                TileRevision++;
+                return true;
+            }
+
+            int stumpOffsetY = cutOffsetY + 1;
+
+            List<TreePartPlacement> remainingParts = new();
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                TreePartPlacement placement = tree.Parts[i];
+                if (placement.OffsetTiles.Y > cutOffsetY)
+                    remainingParts.Add(placement);
+            }
+
+            remainingParts.RemoveAll(part => part.OffsetTiles.Y == stumpOffsetY);
+            remainingParts.Add(new TreePartPlacement(TreePartType.TrunkUpperCut, new Point(0, stumpOffsetY)));
+            remainingParts.Sort(CompareTreePartPlacementForRendering);
+
+            woodQuantity = CountChoppedWood(tree, cutOffsetY);
+            dropPosition = GetTileCenter(tile.X, tile.Y);
+
+            tree.Parts.Clear();
+            tree.Parts.AddRange(remainingParts);
+            tree.HasCanopy = false;
+            TileRevision++;
+            return true;
+        }
+
+        private static void ChopTreeRoot(TreeInstance tree, TreePartType rootPartType)
+        {
+            bool cuttingLeftRoot = rootPartType == TreePartType.RootLeft;
+            bool hasOtherRoot = HasTreePart(
+                tree,
+                cuttingLeftRoot ? TreePartType.RootRight : TreePartType.RootLeft);
+
+            tree.Parts.RemoveAll(part =>
+                part.PartType == rootPartType ||
+                part.OffsetTiles == Point.Zero);
+
+            TreePartType basePartType = TreePartType.TrunkBareBase;
+            if (hasOtherRoot)
+            {
+                basePartType = cuttingLeftRoot
+                    ? TreePartType.TrunkBaseRightRootCutSocket
+                    : TreePartType.TrunkBaseLeftRootSocket;
+            }
+
+            tree.Parts.Add(new TreePartPlacement(basePartType, Point.Zero));
+            tree.Parts.Sort(CompareTreePartPlacementForRendering);
+        }
+
         public bool TryRemoveTree(TreeInstance tree)
         {
             if (tree == null)
@@ -587,6 +850,61 @@ namespace Nyvorn.Source.World
 
             TileRevision++;
             return true;
+        }
+
+        private static bool HasTreePart(TreeInstance tree, TreePartType partType)
+        {
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                if (tree.Parts[i].PartType == partType)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetTreePartAtTile(Point tile, out TreeInstance tree, out TreePartPlacement part)
+        {
+            tree = null;
+            part = default;
+
+            if (!InBounds(tile.X, tile.Y))
+                return false;
+
+            int wrappedTileX = WrapTileX(tile.X);
+            for (int treeIndex = 0; treeIndex < _trees.Count; treeIndex++)
+            {
+                TreeInstance candidate = _trees[treeIndex];
+                for (int partIndex = 0; partIndex < candidate.Parts.Count; partIndex++)
+                {
+                    TreePartPlacement placement = candidate.Parts[partIndex];
+                    int partX = WrapTileX(candidate.BaseTile.X + placement.OffsetTiles.X);
+                    int partY = candidate.BaseTile.Y + placement.OffsetTiles.Y;
+                    if (partX != wrappedTileX || partY != tile.Y)
+                        continue;
+
+                    tree = candidate;
+                    part = placement;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int CountChoppedWood(TreeInstance tree, int cutOffsetY)
+        {
+            int removedHeight = tree.Height + cutOffsetY;
+            return System.Math.Max(1, removedHeight);
+        }
+
+        private static int CompareTreePartPlacementForRendering(TreePartPlacement left, TreePartPlacement right)
+        {
+            int yComparison = right.OffsetTiles.Y.CompareTo(left.OffsetTiles.Y);
+            if (yComparison != 0)
+                return yComparison;
+
+            return left.OffsetTiles.X.CompareTo(right.OffsetTiles.X);
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -611,6 +929,19 @@ namespace Nyvorn.Source.World
             }
 
             DrawTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY, 0, 0);
+        }
+
+        public void DrawBackground(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY)
+        {
+            int minTileX = System.Math.Clamp(startTileX, 0, Width - 1);
+            int maxTileX = System.Math.Clamp(endTileX, 0, Width - 1);
+            int minTileY = System.Math.Clamp(startTileY, 0, Height - 1);
+            int maxTileY = System.Math.Clamp(endTileY, 0, Height - 1);
+
+            if (minTileX > maxTileX || minTileY > maxTileY)
+                return;
+
+            DrawBackgroundTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY);
         }
 
         public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer)
@@ -690,14 +1021,7 @@ namespace Nyvorn.Source.World
                     if (tile == TileType.Empty)
                         continue;
 
-                    Texture2D texture = tile switch
-                    {
-                        TileType.Dirt => _dirt,
-                        TileType.Grass => _grass,
-                        TileType.Sand => _sand,
-                        TileType.Stone => _stone,
-                        _ => null
-                    };
+                    Texture2D texture = GetTextureForTile(tile);
 
                     if (texture == null)
                         continue;
@@ -719,6 +1043,47 @@ namespace Nyvorn.Source.World
                     spriteBatch.Draw(texture, destination, sourceRectangle, Color.White);
                 }
             }
+        }
+
+        private void DrawBackgroundTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY)
+        {
+            for (int y = minTileY; y <= maxTileY; y++)
+            {
+                for (int x = minTileX; x <= maxTileX; x++)
+                {
+                    TileType tile = GetBackgroundTile(x, y);
+                    if (tile == TileType.Empty)
+                        continue;
+
+                    Texture2D texture = GetTextureForTile(tile);
+                    if (texture == null)
+                        continue;
+
+                    Rectangle? sourceRectangle = tile switch
+                    {
+                        TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y, background: true),
+                        TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background: true),
+                        TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background: true),
+                        TileType.Sand => GetBackgroundAutoTileSourceRectangle(x, y),
+                        _ => null
+                    };
+
+                    Rectangle destination = new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, BackgroundTileTint);
+                }
+            }
+        }
+
+        private Texture2D GetTextureForTile(TileType tile)
+        {
+            return tile switch
+            {
+                TileType.Dirt => _dirt,
+                TileType.Grass => _grass,
+                TileType.Sand => _sand,
+                TileType.Stone => _stone,
+                _ => null
+            };
         }
 
         private ChunkRenderCache GetOrCreateChunkCache(GraphicsDevice graphicsDevice, WorldChunkCoord chunkCoord)
@@ -818,12 +1183,22 @@ namespace Nyvorn.Source.World
             return GetAutoTileSheetCellFromVariant(_autoTileVariants[WrapTileX(x), y], x, y);
         }
 
+        private Rectangle GetBackgroundAutoTileSourceRectangle(int x, int y)
+        {
+            return GetAutoTileSheetCellFromVariant(_backgroundAutoTileVariants[WrapTileX(x), y], x, y);
+        }
+
         private Rectangle GetDirtAutoTileSourceRectangle(int x, int y)
         {
-            bool up = IsSolidAt(x, y - 1);
-            bool right = IsSolidAt(x + 1, y);
-            bool down = IsSolidAt(x, y + 1);
-            bool left = IsSolidAt(x - 1, y);
+            return GetDirtAutoTileSourceRectangle(x, y, background: false);
+        }
+
+        private Rectangle GetDirtAutoTileSourceRectangle(int x, int y, bool background)
+        {
+            bool up = IsAutoTileConnectedAt(x, y - 1, background);
+            bool right = IsAutoTileConnectedAt(x + 1, y, background);
+            bool down = IsAutoTileConnectedAt(x, y + 1, background);
+            bool left = IsAutoTileConnectedAt(x - 1, y, background);
 
             int connectedCount = 0;
             if (up) connectedCount++;
@@ -846,24 +1221,24 @@ namespace Nyvorn.Source.World
                     return GetDirtThreeConnectionSourceRectangle(x, y, up, right, down, left);
 
                 default:
-                    if (TryGetDirtInnerCornerSourceRectangle(x, y, out Rectangle innerCorner))
+                    if (TryGetDirtInnerCornerSourceRectangle(x, y, background, out Rectangle innerCorner))
                         return innerCorner;
 
                     return GetAutoTileSheetCell(2 + PickTileVariation(x, y, 3), 1);
             }
         }
 
-        private bool TryGetDirtInnerCornerSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        private bool TryGetDirtInnerCornerSourceRectangle(int x, int y, bool background, out Rectangle sourceRectangle)
         {
-            bool up = IsSolidAt(x, y - 1);
-            bool right = IsSolidAt(x + 1, y);
-            bool down = IsSolidAt(x, y + 1);
-            bool left = IsSolidAt(x - 1, y);
+            bool up = IsAutoTileConnectedAt(x, y - 1, background);
+            bool right = IsAutoTileConnectedAt(x + 1, y, background);
+            bool down = IsAutoTileConnectedAt(x, y + 1, background);
+            bool left = IsAutoTileConnectedAt(x - 1, y, background);
 
-            bool downRightAir = right && down && !IsSolidAt(x + 1, y + 1);
-            bool downLeftAir = left && down && !IsSolidAt(x - 1, y + 1);
-            bool upRightAir = up && right && !IsSolidAt(x + 1, y - 1);
-            bool upLeftAir = up && left && !IsSolidAt(x - 1, y - 1);
+            bool downRightAir = right && down && !IsAutoTileConnectedAt(x + 1, y + 1, background);
+            bool downLeftAir = left && down && !IsAutoTileConnectedAt(x - 1, y + 1, background);
+            bool upRightAir = up && right && !IsAutoTileConnectedAt(x + 1, y - 1, background);
+            bool upLeftAir = up && left && !IsAutoTileConnectedAt(x - 1, y - 1, background);
 
             if (downRightAir)
             {
@@ -950,12 +1325,28 @@ namespace Nyvorn.Source.World
             return GetDirtAutoTileSourceRectangle(x, y);
         }
 
+        private bool IsAutoTileConnectedAt(int x, int y, bool background)
+        {
+            return background
+                ? IsBackgroundSolidAt(x, y)
+                : IsSolidAt(x, y);
+        }
+
         private void RebuildAutoTileVariants()
         {
             for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)
                     _autoTileVariants[x, y] = ComputeAutoTileVariant(x, y);
+            }
+        }
+
+        private void RebuildBackgroundAutoTileVariants()
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                    _backgroundAutoTileVariants[x, y] = ComputeBackgroundAutoTileVariant(x, y);
             }
         }
 
@@ -970,6 +1361,21 @@ namespace Nyvorn.Source.World
                 {
                     int wrappedX = WrapTileX(x);
                     _autoTileVariants[wrappedX, y] = ComputeAutoTileVariant(wrappedX, y);
+                }
+            }
+        }
+
+        private void RefreshBackgroundAutoTileNeighborhood(int centerX, int centerY)
+        {
+            for (int y = centerY - 1; y <= centerY + 1; y++)
+            {
+                if (y < 0 || y >= Height)
+                    continue;
+
+                for (int x = centerX - 1; x <= centerX + 1; x++)
+                {
+                    int wrappedX = WrapTileX(x);
+                    _backgroundAutoTileVariants[wrappedX, y] = ComputeBackgroundAutoTileVariant(wrappedX, y);
                 }
             }
         }
@@ -1010,6 +1416,49 @@ namespace Nyvorn.Source.World
                 3 => 14,
                 _ => (byte)(((x + y) & 1) == 0 ? 15 : 16)
             };
+        }
+
+        private byte ComputeBackgroundAutoTileVariant(int x, int y)
+        {
+            TileType tile = _backgroundTiles[x, y];
+            if (!IsSolid(tile))
+                return 255;
+
+            bool up = IsBackgroundSolidAt(x, y - 1);
+            bool right = IsBackgroundSolidAt(x + 1, y);
+            bool down = IsBackgroundSolidAt(x, y + 1);
+            bool left = IsBackgroundSolidAt(x - 1, y);
+
+            int connectedCount = 0;
+            if (up) connectedCount++;
+            if (right) connectedCount++;
+            if (down) connectedCount++;
+            if (left) connectedCount++;
+
+            return connectedCount switch
+            {
+                0 => 0,
+                1 when down => 1,
+                1 when left => 2,
+                1 when right => 3,
+                1 => 4,
+                2 when left && right => 5,
+                2 when up && down => 6,
+                2 when right && down => 7,
+                2 when left && down => 8,
+                2 when up && right => 9,
+                2 => 10,
+                3 when !up => 11,
+                3 when !right => 12,
+                3 when !left => 13,
+                3 => 14,
+                _ => (byte)(((x + y) & 1) == 0 ? 15 : 16)
+            };
+        }
+
+        private bool IsBackgroundSolidAt(int x, int y)
+        {
+            return IsSolid(GetBackgroundTile(x, y));
         }
 
         private Rectangle GetAutoTileSheetCellFromVariant(byte variant, int x, int y)

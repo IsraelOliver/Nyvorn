@@ -93,5 +93,18 @@ namespace Nyvorn.Source.Gameplay.Items
 
             return true;
         }
+
+        public int RemoveUpTo(int amount)
+        {
+            if (IsEmpty || amount <= 0)
+                return 0;
+
+            int removed = amount > Quantity ? Quantity : amount;
+            Quantity -= removed;
+            if (Quantity <= 0)
+                Clear();
+
+            return removed;
+        }
     }
 }

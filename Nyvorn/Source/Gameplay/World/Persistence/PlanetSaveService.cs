@@ -112,7 +112,24 @@ namespace Nyvorn.Source.World.Persistence
                         PickupDelayRemaining = item.PickupDelayRemaining
                     })
                     .ToList(),
+                Workbenches = session.WorkbenchRuntimeSystem.Workbenches
+                    .Select(workbench => new WorkbenchSaveData
+                    {
+                        PositionX = workbench.Position.X,
+                        PositionY = workbench.Position.Y
+                    })
+                    .ToList(),
+                Doors = session.DoorRuntimeSystem.Doors
+                    .Select(door => new DoorSaveData
+                    {
+                        TileX = door.Tile.X,
+                        TileY = door.Tile.Y,
+                        IsOpen = door.IsOpen,
+                        OpensRight = door.OpensRight
+                    })
+                    .ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
+                BackgroundTileSnapshot = session.WorldMap.ExportBackgroundTileSnapshot(),
                 SandSnapshot = session.SandSystem?.ExportSnapshot(),
                 TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
                 TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
@@ -120,6 +137,8 @@ namespace Nyvorn.Source.World.Persistence
 
             playerSaveService.Save(session);
             session.WorldMap.MarkPersisted();
+            session.WorkbenchRuntimeSystem.MarkPersisted();
+            session.DoorRuntimeSystem.MarkPersisted();
         }
 
         public void SavePlayerOnly(PlayingSession session)
@@ -173,8 +192,11 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
+                Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
+                Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
+                BackgroundTileSnapshot = CompressBytes(saveData.BackgroundTileSnapshot),
                 SandSnapshot = CompressBytes(saveData.SandSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
@@ -190,8 +212,11 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
+                Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
+                Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
+                BackgroundTileSnapshot = DecompressBytes(saveData.BackgroundTileSnapshot),
                 SandSnapshot = DecompressBytes(saveData.SandSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)

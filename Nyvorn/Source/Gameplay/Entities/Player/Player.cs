@@ -33,6 +33,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool IsInvincible => combat.IsInvincible;
         public float WorldInteractionRange => config.WorldInteractionRange;
         public float WorldBreakRange => combat.WorldBreakRangeOverride ?? config.WorldInteractionRange;
+        public int MiningPower => combat.MiningPower;
+        public float MiningSpeed => combat.MiningSpeed;
 
         public const int SpriteW = 32;
         public const int SpriteH = 32;
@@ -73,6 +75,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
             motor.Update(dt, worldMap, sandSystem, horizontalVelocity, combat.IsDodging);
+            ApplyFallDamage(motor.LastLandingImpactVelocity);
 
             if (motor.IsGrounded && jumpPressed)
                 motor.TryJump();
@@ -155,6 +158,23 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return combat.EquippedWeapon.CanBreakTile(tileType);
         }
 
+        public void TryStartToolUseAnimation(Vector2 mouseWorld)
+        {
+            if (combat.TryStartVisualAttack(Position, mouseWorld, out bool attackFacingRight))
+                playerAnimator.SetFacing(attackFacingRight);
+        }
+
+        private void ApplyFallDamage(float landingVelocity)
+        {
+            if (landingVelocity <= config.FallDamageSafeVelocity || config.FallDamageMax <= 0)
+                return;
+
+            float damageRange = System.MathF.Max(1f, config.FallDamageFatalVelocity - config.FallDamageSafeVelocity);
+            float damageRatio = MathHelper.Clamp((landingVelocity - config.FallDamageSafeVelocity) / damageRange, 0f, 1f);
+            int damage = (int)System.MathF.Round(damageRatio * config.FallDamageMax);
+            combat.TryReceiveFallDamage(damage);
+        }
+
         public void ApplyKnockback(float forceX, float forceY = -60f)
         {
             motor.ApplyKnockback(forceX, forceY);
@@ -168,6 +188,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public void TeleportTo(Vector2 targetPosition)
         {
             motor.TeleportTo(targetPosition);
+        }
+
+        public void RespawnAt(Vector2 targetPosition)
+        {
+            combat.Respawn();
+            motor.TeleportTo(targetPosition);
+            moveDir = 0;
+            jumpPressed = false;
         }
 
         void IHitSource.OnHitConnected()

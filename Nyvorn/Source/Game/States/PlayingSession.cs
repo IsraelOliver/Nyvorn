@@ -3,10 +3,15 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.Powers;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Interiors;
+using Nyvorn.Source.Gameplay.World.Objects;
+using Nyvorn.Source.Gameplay.World.Particles;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Decorations;
@@ -31,6 +36,11 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
+        public required WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
+        public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
+        public required InteriorFocusSystem InteriorFocusSystem { get; init; }
+        public required BlockParticleSystem BlockParticleSystem { get; init; }
+        public required PlayerPowerSystem PowerSystem { get; init; }
         public int SelectedHotbarIndex => InputRouter.SelectedHotbarIndex;
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => ViewCoordinator.ActiveSimulationChunks;
         public int LastRandomTileSampleCount => WorldTickCoordinator.LastRandomTileSampleCount;
@@ -41,6 +51,7 @@ namespace Nyvorn.Source.Game.States
         public long MediumTickCount => WorldTickCoordinator.MediumTickCount;
         public long SlowTickCount => WorldTickCoordinator.SlowTickCount;
         public WorldMap WorldMap => RuntimeContext.WorldMap;
+        public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges || WorkbenchRuntimeSystem.HasUnsavedChanges || DoorRuntimeSystem.HasUnsavedChanges;
         public Player Player => RuntimeContext.Player;
         public List<Enemy> Enemies => RuntimeContext.Enemies;
         public List<WorldItem> WorldItems => RuntimeContext.WorldItems;
@@ -51,6 +62,7 @@ namespace Nyvorn.Source.Game.States
         public WorldMinimapRenderer WorldMinimapRenderer => ViewCoordinator.WorldMinimapRenderer;
         public TissueNetwork TissueNetwork => TissueSystem.TissueNetwork;
         public IReadOnlySet<int> ActivatedTissueHubKeys => TissueSystem.ActivatedTissueHubKeys;
+        public bool IsConstructionMode { get; private set; }
 
         public void InitializeRuntimeState()
         {
@@ -77,6 +89,22 @@ namespace Nyvorn.Source.Game.States
             WorldTickCoordinator.StepWorldTicks(cycles);
         }
 
+        public void ToggleConstructionMode()
+        {
+            IsConstructionMode = !IsConstructionMode;
+        }
+
+        public void RespawnPlayerAtWorldCenter()
+        {
+            int centerTileX = WorldMap.Width / 2;
+            Vector2 spawnPosition = new WorldGenerator().GetSurfaceSpawnPosition(
+                WorldMap,
+                centerTileX,
+                tilesAboveSurface: 2);
+
+            Player.RespawnAt(spawnPosition);
+        }
+
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
             UpdateFrame(dt, input, mouseWorld);
@@ -91,16 +119,42 @@ namespace Nyvorn.Source.Game.States
         private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)
         {
             BlockInteractionSystem.Update(dt);
+            WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
             InputState worldInput = InputRouter.RouteFrameInput(input);
 
             CombatCoordinator.SyncEquippedWeapon(SelectedHotbarIndex);
-            BlockInteractionSystem.UpdateTilePreview(SelectedHotbarIndex, mouseWorld);
-            BlockInteractionSystem.TryPlaceSelectedBlock(worldInput, SelectedHotbarIndex, mouseWorld);
+            BlockInteractionSystem.UpdateTilePreview(SelectedHotbarIndex, mouseWorld, IsConstructionMode);
+            bool animateConstructionPickaxe =
+                IsConstructionMode &&
+                worldInput.ActivePowerPressed &&
+                BlockInteractionSystem.ShouldAnimateConstructionPickaxe(SelectedHotbarIndex, mouseWorld);
+
+            if (IsConstructionMode)
+                BlockInteractionSystem.TryUseConstructionModeAction(dt, worldInput, SelectedHotbarIndex, mouseWorld);
+
+            bool objectPlacementHandled =
+                WorkbenchRuntimeSystem.TryPlaceSelectedWorkbench(worldInput, SelectedHotbarIndex, mouseWorld) ||
+                DoorRuntimeSystem.TryPlaceSelectedDoor(worldInput, SelectedHotbarIndex, mouseWorld);
+            if (objectPlacementHandled)
+            {
+                worldInput = worldInput.ConsumeWorldMouseInput();
+            }
+            else
+            {
+                BlockInteractionSystem.TryPlaceSelectedBlock(worldInput, SelectedHotbarIndex, mouseWorld);
+            }
+
+            if (animateConstructionPickaxe && !worldInput.AttackPressed)
+                Player.TryStartToolUseAnimation(mouseWorld);
+
             Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
+            InteriorFocusSystem.Update(dt, IsConstructionMode);
             TissueSystem.Update(dt, input);
-            BlockInteractionSystem.TryBreakTargetBlock(mouseWorld, SelectedHotbarIndex);
+            PowerSystem.Update(dt);
+            BlockInteractionSystem.TryBreakTargetBlock(dt, worldInput, mouseWorld, SelectedHotbarIndex);
             EntityRuntimeSystem.Update(dt);
+            BlockParticleSystem.Update(dt);
 
             CombatCoordinator.ResolveCombat();
         }
@@ -141,6 +195,11 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
+        public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawInteriorFocusOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
             ViewCoordinator.DrawSky(spriteBatch, screenWidth, screenHeight);
@@ -155,6 +214,7 @@ namespace Nyvorn.Source.Game.States
         public void DrawHud(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
             ViewCoordinator.DrawHud(spriteBatch, Hotbar, SelectedHotbarIndex, screenWidth, screenHeight);
+            ViewCoordinator.DrawPowerHud(spriteBatch, PowerSystem, screenWidth, screenHeight, IsConstructionMode);
         }
 
         public void SetSelectedHotbarIndex(int index)
@@ -224,9 +284,30 @@ namespace Nyvorn.Source.Game.States
             return WorldItemRuntimeSystem.TryStoreItem(itemId, quantity, preferInventory);
         }
 
-        public void FollowCamera(int screenWidth, int screenHeight)
+        public int CountItem(ItemId itemId)
         {
-            ViewCoordinator.FollowPlayer(screenWidth, screenHeight);
+            return Hotbar.CountItem(itemId) + Inventory.CountItem(itemId);
+        }
+
+        public bool TryConsumeItem(ItemId itemId, int quantity)
+        {
+            if (quantity <= 0 || CountItem(itemId) < quantity)
+                return false;
+
+            int fromInventory = System.Math.Min(Inventory.CountItem(itemId), quantity);
+            if (fromInventory > 0)
+                Inventory.TryRemove(itemId, fromInventory);
+
+            int remaining = quantity - fromInventory;
+            if (remaining > 0)
+                Hotbar.TryRemove(itemId, remaining);
+
+            return true;
+        }
+
+        public void FollowCamera(float dt, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.FollowPlayer(dt, screenWidth, screenHeight);
         }
 
         public void InitializeSandSystem()
