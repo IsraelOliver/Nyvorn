@@ -17,6 +17,7 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private readonly GraphicsDevice graphicsDevice;
         private readonly Texture2D pixel;
+        private readonly Dictionary<int, byte> tissuePixelDensities = new();
         private Texture2D minimapTexture;
         private Color[] minimapPixels = System.Array.Empty<Color>();
         private int cachedTileRevision = -1;
@@ -85,7 +86,7 @@ namespace Nyvorn.Source.Gameplay.UI
             return new WorldMinimapInteractionResult(consumedMouse || isDragging, false, -1);
         }
 
-        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
+        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, TissueSystem tissueSystem, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
         {
             EnsureMinimapTexture(worldMap);
 
@@ -103,6 +104,7 @@ namespace Nyvorn.Source.Gameplay.UI
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
                 DrawRect(spriteBatch, panel, new Color(5, 8, 10, 120));
+                DrawWorldTissueOverlay(spriteBatch, worldMap, tissueSystem, panel, sourceRect);
                 DrawTissueOverlay(spriteBatch, worldMap, tissueNetwork, panel, sourceRect, activatedHubKeys);
             }
             else
@@ -119,6 +121,62 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawRect(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), new Color(8, 18, 24, 235));
             DrawRectOutline(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), 1, new Color(133, 179, 191));
             DrawModeButtons(spriteBatch, panel, tissueMode);
+        }
+
+        private void DrawWorldTissueOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueSystem tissueSystem, Rectangle panel, Rectangle sourceRect)
+        {
+            if (tissueSystem == null || panel.Width <= 0 || panel.Height <= 0)
+                return;
+
+            tissuePixelDensities.Clear();
+            int sourcePixelLeft = sourceRect.Left * worldMap.TileSize;
+            int sourcePixelTop = sourceRect.Top * worldMap.TileSize;
+            int sourcePixelRight = sourceRect.Right * worldMap.TileSize;
+            int sourcePixelBottom = sourceRect.Bottom * worldMap.TileSize;
+
+            foreach (TissueCellPosition tissuePixel in tissueSystem.EnumerateCells())
+            {
+                if (tissuePixel.PixelX < sourcePixelLeft || tissuePixel.PixelX >= sourcePixelRight ||
+                    tissuePixel.PixelY < sourcePixelTop || tissuePixel.PixelY >= sourcePixelBottom)
+                {
+                    continue;
+                }
+
+                int localX = System.Math.Clamp(
+                    (int)(((tissuePixel.PixelX - sourcePixelLeft) / (float)(sourcePixelRight - sourcePixelLeft)) * panel.Width),
+                    0,
+                    panel.Width - 1);
+                int localY = System.Math.Clamp(
+                    (int)(((tissuePixel.PixelY - sourcePixelTop) / (float)(sourcePixelBottom - sourcePixelTop)) * panel.Height),
+                    0,
+                    panel.Height - 1);
+                int key = (localY * panel.Width) + localX;
+
+                if (!tissuePixelDensities.TryGetValue(key, out byte currentDensity) || tissuePixel.Cell.Density > currentDensity)
+                    tissuePixelDensities[key] = tissuePixel.Cell.Density;
+            }
+
+            foreach (KeyValuePair<int, byte> tissuePixel in tissuePixelDensities)
+            {
+                int localX = tissuePixel.Key % panel.Width;
+                int localY = tissuePixel.Key / panel.Width;
+                DrawRect(
+                    spriteBatch,
+                    new Rectangle(panel.X + localX, panel.Y + localY, 1, 1),
+                    GetTissueDensityColor(tissuePixel.Value));
+            }
+        }
+
+        private static Color GetTissueDensityColor(byte density)
+        {
+            if (density < 64)
+                return new Color(255, 32, 32);
+            if (density < 128)
+                return new Color(32, 255, 32);
+            if (density < 192)
+                return new Color(32, 224, 255);
+
+            return new Color(255, 240, 32);
         }
 
         private void DrawTissueOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Rectangle panel, Rectangle sourceRect, IReadOnlySet<int> activatedHubKeys)

@@ -43,6 +43,7 @@ namespace Nyvorn.Source.Game.States
 
         public required WorldMap WorldMap { get; init; }
         public SandSystem SandSystem { get; set; }
+        public TissueSystem WorldTissueSystem { get; set; }
         public required Player Player { get; init; }
         public required List<Enemy> Enemies { get; init; }
         public required List<WorldItem> WorldItems { get; init; }
@@ -184,6 +185,31 @@ namespace Nyvorn.Source.Game.States
             Player.Draw(spriteBatch);
         }
 
+        public void DrawWorldTissueDebug(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (WorldTissueSystem == null)
+                return;
+
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            int startPixelX = (int)System.MathF.Floor(Camera.Position.X - worldOffsetX);
+            int endPixelX = (int)System.MathF.Ceiling(Camera.Position.X - worldOffsetX + viewWidth);
+            int startPixelY = System.Math.Max(0, (int)System.MathF.Floor(Camera.Position.Y));
+            int endPixelY = System.Math.Min(WorldTissueSystem.Height - 1, (int)System.MathF.Ceiling(Camera.Position.Y + viewHeight));
+
+            for (int pixelY = startPixelY; pixelY <= endPixelY; pixelY++)
+            {
+                for (int rawPixelX = startPixelX; rawPixelX <= endPixelX; rawPixelX++)
+                {
+                    int pixelX = WrapPixelX(rawPixelX);
+                    if (!WorldTissueSystem.TryGetTissueAt(pixelX, pixelY, out TissueCell cell))
+                        continue;
+
+                    spriteBatch.Draw(DebugPixel, new Rectangle(rawPixelX, pixelY, 1, 1), GetTissueDebugColor(cell.Density));
+                }
+            }
+        }
+
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
@@ -240,7 +266,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
         {
-            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
+            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, WorldTissueSystem, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
         }
 
         public void DrawInventory(SpriteBatch spriteBatch, Hotbar hotbar, Inventory inventory, int selectedHotbarIndex, int screenWidth, int screenHeight)
@@ -322,6 +348,18 @@ namespace Nyvorn.Source.Game.States
 
             int wrapped = pixelX % worldWidth;
             return wrapped < 0 ? wrapped + worldWidth : wrapped;
+        }
+
+        private static Color GetTissueDebugColor(byte density)
+        {
+            if (density < 64)
+                return new Color(255, 32, 32);
+            if (density < 128)
+                return new Color(32, 255, 32);
+            if (density < 192)
+                return new Color(32, 224, 255);
+
+            return new Color(255, 240, 32);
         }
 
         private static bool IntersectsVisibleArea(Rectangle bounds, float left, float top, float right, float bottom)
