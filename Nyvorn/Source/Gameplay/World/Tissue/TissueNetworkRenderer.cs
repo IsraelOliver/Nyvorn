@@ -148,6 +148,8 @@ namespace Nyvorn.Source.World.Tissue
                     resonance,
                     TissueConfig.ResonanceVisual.HaloColor,
                     TissueConfig.ResonanceVisual.HaloAlpha,
+                    TissueConfig.ResonanceVisual.AfterglowColor,
+                    TissueConfig.ResonanceVisual.AfterglowHaloAlpha,
                     MathF.Max(1f, branch.Thickness * TissueConfig.ResonanceVisual.HaloThicknessScale * kindScale),
                     branch.Intensity);
             }
@@ -157,17 +159,30 @@ namespace Nyvorn.Source.World.Tissue
             {
                 TissueNode node = visibleNodes[i];
                 if (!resonance.Propagation.TryGetNode(node.Id, out TissueNodePropagation propagation) ||
-                    !TryGetNodePulse(resonance, propagation, out float intensity, out float radius))
+                    propagation.ArrivalDistance > resonance.PulseFront)
                 {
                     continue;
                 }
 
-                DrawDisc(
-                    spriteBatch,
-                    node.Position,
-                    radius * TissueConfig.ResonanceVisual.NodeOuterScale,
-                    TissueConfig.ResonanceVisual.HaloColor *
-                        (TissueConfig.ResonanceVisual.NodeHaloAlpha * intensity));
+                if (TryGetNodeAfterglow(resonance, propagation, out float afterglowIntensity, out float afterglowRadius))
+                {
+                    DrawDisc(
+                        spriteBatch,
+                        node.Position,
+                        afterglowRadius * TissueConfig.ResonanceVisual.NodeOuterScale,
+                        TissueConfig.ResonanceVisual.AfterglowColor *
+                            (TissueConfig.ResonanceVisual.AfterglowNodeHaloAlpha * afterglowIntensity));
+                }
+
+                if (TryGetNodePulse(resonance, propagation, out float pulseIntensity, out float pulseRadius))
+                {
+                    DrawDisc(
+                        spriteBatch,
+                        node.Position,
+                        pulseRadius * TissueConfig.ResonanceVisual.NodeOuterScale,
+                        TissueConfig.ResonanceVisual.HaloColor *
+                            (TissueConfig.ResonanceVisual.NodeHaloAlpha * pulseIntensity));
+                }
             }
         }
 
@@ -198,6 +213,8 @@ namespace Nyvorn.Source.World.Tissue
                     resonance,
                     TissueConfig.ResonanceVisual.PulseColor,
                     TissueConfig.ResonanceVisual.CoreAlpha,
+                    TissueConfig.ResonanceVisual.AfterglowColor,
+                    TissueConfig.ResonanceVisual.AfterglowCoreAlpha,
                     MathF.Max(1f, branch.Thickness * TissueConfig.ResonanceVisual.CoreThicknessScale * kindScale),
                     branch.Intensity);
             }
@@ -207,22 +224,35 @@ namespace Nyvorn.Source.World.Tissue
             {
                 TissueNode node = visibleNodes[i];
                 if (!resonance.Propagation.TryGetNode(node.Id, out TissueNodePropagation propagation) ||
-                    !TryGetNodePulse(resonance, propagation, out float intensity, out float radius))
+                    propagation.ArrivalDistance > resonance.PulseFront)
                 {
                     continue;
                 }
 
-                DrawDisc(
-                    spriteBatch,
-                    node.Position,
-                    radius * TissueConfig.ResonanceVisual.NodeInnerScale,
-                    TissueConfig.ResonanceVisual.PulseColor *
-                        (TissueConfig.ResonanceVisual.NodeCoreAlpha * intensity));
-                DrawDisc(
-                    spriteBatch,
-                    node.Position,
-                    MathF.Max(1f, radius * 0.46f),
-                    TissueConfig.ResonanceVisual.CoreColor * intensity);
+                if (TryGetNodeAfterglow(resonance, propagation, out float afterglowIntensity, out float afterglowRadius))
+                {
+                    DrawDisc(
+                        spriteBatch,
+                        node.Position,
+                        afterglowRadius * TissueConfig.ResonanceVisual.NodeInnerScale,
+                        TissueConfig.ResonanceVisual.AfterglowColor *
+                            (TissueConfig.ResonanceVisual.AfterglowNodeCoreAlpha * afterglowIntensity));
+                }
+
+                if (TryGetNodePulse(resonance, propagation, out float pulseIntensity, out float pulseRadius))
+                {
+                    DrawDisc(
+                        spriteBatch,
+                        node.Position,
+                        pulseRadius * TissueConfig.ResonanceVisual.NodeInnerScale,
+                        TissueConfig.ResonanceVisual.PulseColor *
+                            (TissueConfig.ResonanceVisual.NodeCoreAlpha * pulseIntensity));
+                    DrawDisc(
+                        spriteBatch,
+                        node.Position,
+                        MathF.Max(1f, pulseRadius * 0.46f),
+                        TissueConfig.ResonanceVisual.CoreColor * pulseIntensity);
+                }
             }
         }
 
@@ -233,6 +263,8 @@ namespace Nyvorn.Source.World.Tissue
             TissueResonanceState resonance,
             Color color,
             float baseAlpha,
+            Color afterglowColor,
+            float afterglowAlpha,
             float thickness,
             float branchStrength)
         {
@@ -255,19 +287,58 @@ namespace Nyvorn.Source.World.Tissue
 
                 if (pointDistance > resonance.MaximumDistance)
                     break;
-                if (pointDistance > resonance.PulseFront || pointDistance < resonance.PulseBack)
+                if (pointDistance > resonance.PulseFront)
                     continue;
+
+                float propagationStrength = GetPropagationStrength(pointDistance, resonance.MaximumDistance);
+                float biologicalStrength = resonance.VisualStrength *
+                    propagationStrength *
+                    MathHelper.Clamp(branchStrength, 0f, 1f);
+                if (pointDistance <= resonance.PulseBack)
+                {
+                    DrawLine(
+                        spriteBatch,
+                        start,
+                        end,
+                        afterglowColor * (biologicalStrength * afterglowAlpha),
+                        thickness);
+                    continue;
+                }
 
                 float trailProgress = (resonance.PulseFront - pointDistance) / TissueConfig.Resonance.TrailLength;
                 float trailAlpha = 1f - MathHelper.Clamp(trailProgress, 0f, 1f);
-                float propagationStrength = GetPropagationStrength(pointDistance, resonance.MaximumDistance);
-                float alpha = resonance.VisualStrength *
-                    propagationStrength *
-                    MathHelper.Clamp(branchStrength, 0f, 1f) *
-                    trailAlpha *
-                    baseAlpha;
-                DrawLine(spriteBatch, start, end, color * alpha, thickness);
+                DrawLine(
+                    spriteBatch,
+                    start,
+                    end,
+                    color * (biologicalStrength * trailAlpha * baseAlpha),
+                    thickness);
             }
+        }
+
+        private static bool TryGetNodeAfterglow(
+            TissueResonanceState resonance,
+            TissueNodePropagation propagation,
+            out float intensity,
+            out float radius)
+        {
+            intensity = 0f;
+            radius = 0f;
+            if (propagation.ArrivalDistance > resonance.PulseBack)
+                return false;
+
+            float propagationStrength = GetPropagationStrength(
+                propagation.ArrivalDistance,
+                resonance.MaximumDistance);
+            intensity = resonance.VisualStrength *
+                propagationStrength *
+                propagation.Node.Strength;
+            if (intensity <= 0.001f)
+                return false;
+
+            radius = GetNodeBaseRadius(propagation.Node) *
+                TissueConfig.ResonanceVisual.AfterglowNodeRadiusScale;
+            return true;
         }
 
         private static bool TryGetNodePulse(
@@ -296,10 +367,15 @@ namespace Nyvorn.Source.World.Tissue
                 return false;
 
             float expansion = MathF.Sin(pulseProgress * MathF.PI);
-            float baseRadius = TissueConfig.ResonanceVisual.NodeRadiusBase +
-                (propagation.Node.Degree * TissueConfig.ResonanceVisual.NodeDegreeRadius);
+            float baseRadius = GetNodeBaseRadius(propagation.Node);
             radius = baseRadius * (1f + (expansion * TissueConfig.ResonanceVisual.NodePulseScale));
             return true;
+        }
+
+        private static float GetNodeBaseRadius(TissueNodeInfo node)
+        {
+            return TissueConfig.ResonanceVisual.NodeRadiusBase +
+                (node.Degree * TissueConfig.ResonanceVisual.NodeDegreeRadius);
         }
 
         private static float GetPropagationStrength(float distance, float maximumDistance)

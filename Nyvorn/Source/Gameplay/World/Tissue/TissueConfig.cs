@@ -243,6 +243,7 @@ namespace Nyvorn.Source.World.Tissue
             public static readonly Color HaloColor = new(178, 58, 255);
             public static readonly Color PulseColor = new(255, 118, 210);
             public static readonly Color CoreColor = new(255, 214, 100);
+            public static readonly Color AfterglowColor = new(255, 142, 58);
             public const int MinimumCullingPadding = 72;
             public const float CullingMarginRatio = 1f / 3f;
             public const float MicroThicknessScale = 0.62f;
@@ -250,6 +251,8 @@ namespace Nyvorn.Source.World.Tissue
             public const float CoreThicknessScale = 1.7f;
             public const float HaloAlpha = 0.42f;
             public const float CoreAlpha = 0.92f;
+            public const float AfterglowHaloAlpha = 0.075f;
+            public const float AfterglowCoreAlpha = 0.22f;
             public const float NodeRadiusBase = 5f;
             public const float NodeDegreeRadius = 0.8f;
             public const float NodeOuterScale = 3.2f;
@@ -257,6 +260,9 @@ namespace Nyvorn.Source.World.Tissue
             public const float NodePulseScale = 0.65f;
             public const float NodeHaloAlpha = 0.34f;
             public const float NodeCoreAlpha = 0.96f;
+            public const float AfterglowNodeRadiusScale = 0.72f;
+            public const float AfterglowNodeHaloAlpha = 0.095f;
+            public const float AfterglowNodeCoreAlpha = 0.28f;
         }
     }
 }
