@@ -114,7 +114,7 @@ namespace Nyvorn.Source.Gameplay.UI
                 {
                     EnsureTissueOverlayTexture(worldMap, tissueNetwork);
                     spriteBatch.Draw(tissueOverlayTexture, panel, sourceRect, Color.White);
-                    if (zoom >= 3f)
+                    if (zoom >= TissueConfig.MinimapVisual.MicroDetailZoom)
                         spriteBatch.Draw(tissueDetailTexture, panel, sourceRect, Color.White);
                 }
                 else
@@ -169,9 +169,11 @@ namespace Nyvorn.Source.Gameplay.UI
                 TissueBranch branch = tissueNetwork.Branches[branchIndex];
                 Color[] target = branch.Kind == TissueBranch.TissueBranchKind.Micro ? tissueDetailPixels : tissueOverlayPixels;
                 Color color = branch.Kind == TissueBranch.TissueBranchKind.Micro
-                    ? new Color(160, 52, 205, 115)
-                    : Color.Lerp(new Color(202, 58, 215, 210), new Color(255, 154, 130, 245), branch.Intensity);
-                int thickness = branch.Kind == TissueBranch.TissueBranchKind.Micro ? 1 : (branch.IsPrimary ? 2 : 1);
+                    ? TissueConfig.MinimapVisual.MicroColor
+                    : Color.Lerp(TissueConfig.MinimapVisual.BranchColorLow, TissueConfig.MinimapVisual.BranchColorHigh, branch.Intensity);
+                int thickness = branch.Kind == TissueBranch.TissueBranchKind.Micro
+                    ? TissueConfig.MinimapVisual.MicroThickness
+                    : (branch.IsPrimary ? TissueConfig.MinimapVisual.PrimaryBranchThickness : TissueConfig.MinimapVisual.BranchThickness);
                 for (int pointIndex = 0; pointIndex < branch.Points.Count - 1; pointIndex++)
                 {
                     Point start = WorldPixelToWrappedTile(branch.Points[pointIndex], worldMap);
@@ -186,8 +188,11 @@ namespace Nyvorn.Source.Gameplay.UI
                 if (!node.IsPrimary)
                     continue;
                 Point center = WorldPixelToWrappedTile(node.Position, worldMap);
-                int radius = System.Math.Clamp(1 + (node.Degree / 3), 2, 4);
-                DrawOverlayDisc(tissueOverlayPixels, width, height, center, radius, new Color(255, 205, 82, 255));
+                int radius = System.Math.Clamp(
+                    1 + (node.Degree / TissueConfig.MinimapVisual.NodeDegreeDivisor),
+                    TissueConfig.MinimapVisual.NodeRadiusMin,
+                    TissueConfig.MinimapVisual.NodeRadiusMax);
+                DrawOverlayDisc(tissueOverlayPixels, width, height, center, radius, TissueConfig.MinimapVisual.NodeColor);
             }
 
             tissueOverlayTexture.SetData(tissueOverlayPixels);
@@ -252,12 +257,6 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private void DrawTissueOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Rectangle panel, Rectangle sourceRect, IReadOnlySet<int> activatedHubKeys)
         {
-            if (worldMap.TissueField != null)
-            {
-                DrawTissueFieldOverlay(spriteBatch, worldMap, worldMap.TissueField, panel, sourceRect, activatedHubKeys);
-                return;
-            }
-
             if (tissueNetwork == null)
                 return;
 
@@ -301,6 +300,8 @@ namespace Nyvorn.Source.Gameplay.UI
         private void DrawTissueFieldOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueField tissueField, Rectangle panel, Rectangle sourceRect, IReadOnlySet<int> activatedHubKeys)
         {
             TissueAnalysisResult analysis = GetTissueAnalysis(worldMap, tissueField);
+            if (analysis == null)
+                return;
             int minPixelWidth = System.Math.Max(1, (int)System.MathF.Ceiling(panel.Width / (float)sourceRect.Width));
             int minPixelHeight = System.Math.Max(1, (int)System.MathF.Ceiling(panel.Height / (float)sourceRect.Height));
 

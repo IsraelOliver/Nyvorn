@@ -6,7 +6,6 @@ namespace Nyvorn.Source.World.Tissue
 {
     public sealed class TissueNetwork
     {
-        private const int SpatialChunkSize = 512;
         private readonly Dictionary<long, List<int>> branchChunks = new();
         private readonly Dictionary<long, List<int>> nodeChunks = new();
 
@@ -103,7 +102,9 @@ namespace Nyvorn.Source.World.Tissue
 
         private static Point GetChunk(float x, float y)
         {
-            return new Point((int)MathF.Floor(x / SpatialChunkSize), (int)MathF.Floor(y / SpatialChunkSize));
+            return new Point(
+                (int)MathF.Floor(x / TissueConfig.Network.RenderSpatialChunkSize),
+                (int)MathF.Floor(y / TissueConfig.Network.RenderSpatialChunkSize));
         }
 
         private static long CreateChunkKey(int x, int y)

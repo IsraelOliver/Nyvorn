@@ -28,12 +28,32 @@ namespace Nyvorn.Source.World.Generation
         public float MemoryDensity { get; }
         public float Flow { get; }
         public bool HasBiologicalPresence => Presence > PresenceThreshold;
+        public bool IsNeutral => Presence <= PresenceThreshold &&
+                                 Vitality <= PresenceThreshold &&
+                                 Corruption <= PresenceThreshold &&
+                                 MemoryDensity <= PresenceThreshold &&
+                                 Flow <= PresenceThreshold;
 
         public static TissueCellState FromLegacyPresence(bool hasTissue)
         {
             return hasTissue
                 ? new TissueCellState(1f, 1f, 0f, 0f, 0f)
                 : Neutral;
+        }
+
+        public TissueCellState With(
+            float? presence = null,
+            float? vitality = null,
+            float? corruption = null,
+            float? memoryDensity = null,
+            float? flow = null)
+        {
+            return new TissueCellState(
+                presence ?? Presence,
+                vitality ?? Vitality,
+                corruption ?? Corruption,
+                memoryDensity ?? MemoryDensity,
+                flow ?? Flow);
         }
 
         private static float Clamp01(float value)

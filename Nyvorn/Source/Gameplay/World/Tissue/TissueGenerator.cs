@@ -7,20 +7,7 @@ namespace Nyvorn.Source.World.Tissue
 {
     public sealed class TissueGenerator
     {
-        private const int SampleCellSize = 128;
-        private const float SurfaceDepthStart = 0.22f;
-        private const float PointChanceSurface = 0.035f;
-        private const float PointChanceDepth = 0.82f;
-        private const float DensityCurvePower = 2.2f;
-        private const float MinPointDistanceSurface = 150f;
-        private const float MinPointDistanceDepth = 64f;
-        private const float ConnectionDistanceMin = 48f;
-        private const float ConnectionDistanceMax = 280f;
-        private const float RepairConnectionDistanceMax = 448f;
-        private const float MinAngularSeparation = MathF.PI * (32f / 180f);
-        private const int NodeDegreeThreshold = 4;
-        private const int PointSpatialCellSize = 64;
-        private const int GraphSpatialCellSize = 280;
+        public const int AlgorithmVersion = 1;
 
         private readonly int seed;
         private Random random;
@@ -81,14 +68,19 @@ namespace Nyvorn.Source.World.Tissue
 
         private List<NestField> GenerateNestFields(int width, int height)
         {
-            int nestCount = Math.Clamp(width / 12000, 2, 5);
+            int nestCount = Math.Clamp(
+                width / TissueConfig.Generation.NestWidthDivisor,
+                TissueConfig.Generation.NestCountMin,
+                TissueConfig.Generation.NestCountMax);
             List<NestField> nests = new(nestCount);
             for (int i = 0; i < nestCount; i++)
             {
                 nests.Add(new NestField(
-                    new Vector2(random.Next(width), height * (0.72f + ((float)random.NextDouble() * 0.23f))),
-                    random.Next(280, 561),
-                    1.45f + ((float)random.NextDouble() * 0.55f)));
+                    new Vector2(
+                        random.Next(width),
+                        height * MathHelper.Lerp(TissueConfig.Generation.NestDepthMin, TissueConfig.Generation.NestDepthMax, (float)random.NextDouble())),
+                    random.Next(TissueConfig.Generation.NestRadiusMin, TissueConfig.Generation.NestRadiusMax + 1),
+                    MathHelper.Lerp(TissueConfig.Generation.NestMultiplierMin, TissueConfig.Generation.NestMultiplierMax, (float)random.NextDouble())));
             }
             return nests;
         }
@@ -97,24 +89,24 @@ namespace Nyvorn.Source.World.Tissue
         {
             List<PointDraft> points = new();
             Dictionary<long, List<int>> spatial = new();
-            int minY = (int)MathF.Round(height * SurfaceDepthStart);
+            int minY = (int)MathF.Round(height * TissueConfig.Generation.SurfaceDepthStart);
 
-            for (int cellY = minY; cellY < height; cellY += SampleCellSize)
+            for (int cellY = minY; cellY < height; cellY += TissueConfig.Generation.SampleCellSize)
             {
-                for (int cellX = 0; cellX < width; cellX += SampleCellSize)
+                for (int cellX = 0; cellX < width; cellX += TissueConfig.Generation.SampleCellSize)
                 {
-                    int x = Math.Min(width - 1, cellX + random.Next(SampleCellSize));
-                    int y = Math.Min(height - 1, cellY + random.Next(SampleCellSize));
+                    int x = Math.Min(width - 1, cellX + random.Next(TissueConfig.Generation.SampleCellSize));
+                    int y = Math.Min(height - 1, cellY + random.Next(TissueConfig.Generation.SampleCellSize));
                     float depth = y / (float)Math.Max(1, height - 1);
-                    float densityFactor = MathF.Pow(depth, DensityCurvePower);
+                    float densityFactor = MathF.Pow(depth, TissueConfig.Generation.DensityCurvePower);
                     float nestInfluence = GetNestInfluence(x, y, width, nests);
-                    float chance = MathHelper.Lerp(PointChanceSurface, PointChanceDepth, densityFactor);
-                    chance = Math.Clamp(chance * (1f + nestInfluence), 0f, 0.98f);
+                    float chance = MathHelper.Lerp(TissueConfig.Generation.PointChanceSurface, TissueConfig.Generation.PointChanceDepth, densityFactor);
+                    chance = Math.Clamp(chance * (1f + nestInfluence), 0f, TissueConfig.Generation.MaxPointChance);
                     if (random.NextDouble() > chance)
                         continue;
 
-                    float minDistance = MathHelper.Lerp(MinPointDistanceSurface, MinPointDistanceDepth, densityFactor);
-                    minDistance /= 1f + (nestInfluence * 0.28f);
+                    float minDistance = MathHelper.Lerp(TissueConfig.Generation.MinPointDistanceSurface, TissueConfig.Generation.MinPointDistanceDepth, densityFactor);
+                    minDistance /= 1f + (nestInfluence * TissueConfig.Generation.NestDistanceReduction);
                     Vector2 position = new(x, y);
                     if (!IsFarEnough(position, minDistance, points, spatial, width))
                         continue;
@@ -127,7 +119,7 @@ namespace Nyvorn.Source.World.Tissue
                         NestInfluence = nestInfluence
                     };
                     points.Add(point);
-                    AddPointToSpatial(point.Id, position, PointSpatialCellSize, spatial, width);
+                    AddPointToSpatial(point.Id, position, TissueConfig.Generation.PointSpatialCellSize, spatial, width);
                 }
             }
 
@@ -148,14 +140,14 @@ namespace Nyvorn.Source.World.Tissue
                 float t = 1f - (distance / nest.Radius);
                 influence += t * t * nest.Multiplier;
             }
-            return Math.Clamp(influence, 0f, 2.5f);
+            return Math.Clamp(influence, 0f, TissueConfig.Generation.NestInfluenceMax);
         }
 
         private bool IsFarEnough(Vector2 position, float minDistance, List<PointDraft> points, Dictionary<long, List<int>> spatial, int width)
         {
-            int radius = (int)MathF.Ceiling(minDistance / PointSpatialCellSize);
-            Point cell = GetSpatialCell(position, PointSpatialCellSize, width);
-            int bucketCountX = Math.Max(1, (int)MathF.Ceiling(width / (float)PointSpatialCellSize));
+            int radius = (int)MathF.Ceiling(minDistance / TissueConfig.Generation.PointSpatialCellSize);
+            Point cell = GetSpatialCell(position, TissueConfig.Generation.PointSpatialCellSize, width);
+            int bucketCountX = Math.Max(1, (int)MathF.Ceiling(width / (float)TissueConfig.Generation.PointSpatialCellSize));
             float minDistanceSq = minDistance * minDistance;
 
             for (int dy = -radius; dy <= radius; dy++)
@@ -183,12 +175,12 @@ namespace Nyvorn.Source.World.Tissue
             List<EdgeDraft> edges = new();
             HashSet<long> edgeKeys = new();
             HashSet<int>[] adjacency = CreateAdjacency(points.Count);
-            Dictionary<long, List<int>> spatial = BuildSpatialIndex(points, GraphSpatialCellSize, width);
+            Dictionary<long, List<int>> spatial = BuildSpatialIndex(points, TissueConfig.Network.GraphSpatialCellSize, width);
 
             for (int sourceIndex = 0; sourceIndex < points.Count; sourceIndex++)
             {
                 PointDraft source = points[sourceIndex];
-                List<NeighborCandidate> candidates = FindCandidates(sourceIndex, points, spatial, width, ConnectionDistanceMax, 1);
+                List<NeighborCandidate> candidates = FindCandidates(sourceIndex, points, spatial, width, TissueConfig.Network.ConnectionDistanceMax, 1);
                 candidates.Sort((a, b) => a.Distance.CompareTo(b.Distance));
                 GetConnectionRange(source, out int minConnections, out int maxConnections);
                 int desired = random.Next(minConnections, maxConnections + 1);
@@ -197,7 +189,7 @@ namespace Nyvorn.Source.World.Tissue
                 for (int i = 0; i < candidates.Count && adjacency[sourceIndex].Count < desired; i++)
                 {
                     NeighborCandidate candidate = candidates[i];
-                    if (candidate.Distance < ConnectionDistanceMin || adjacency[candidate.Index].Count >= 8)
+                    if (candidate.Distance < TissueConfig.Network.ConnectionDistanceMin || adjacency[candidate.Index].Count >= TissueConfig.Network.MaximumNodeDegree)
                         continue;
                     if (HasSimilarAngle(candidate.Angle, chosenAngles) && adjacency[sourceIndex].Count >= minConnections)
                         continue;
@@ -224,13 +216,13 @@ namespace Nyvorn.Source.World.Tissue
                 return;
 
             UnionFind union = BuildUnion(points.Count, edges);
-            Dictionary<long, List<int>> spatial = BuildSpatialIndex(points, GraphSpatialCellSize, width);
+            Dictionary<long, List<int>> spatial = BuildSpatialIndex(points, TissueConfig.Network.GraphSpatialCellSize, width);
             List<EdgeDraft> candidates = new();
             HashSet<long> candidateKeys = new();
 
             for (int i = 0; i < points.Count; i++)
             {
-                List<NeighborCandidate> nearby = FindCandidates(i, points, spatial, width, RepairConnectionDistanceMax, 2);
+                List<NeighborCandidate> nearby = FindCandidates(i, points, spatial, width, TissueConfig.Network.RepairConnectionDistanceMax, 2);
                 for (int j = 0; j < nearby.Count; j++)
                 {
                     int other = nearby[j].Index;
@@ -247,7 +239,7 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < edges.Count; i++)
                 existing.Add(CreateEdgeKey(edges[i].A, edges[i].B));
 
-            for (int i = 0; i < candidates.Count && GetLargestComponentSize(union, points.Count) < points.Count * 0.99f; i++)
+            for (int i = 0; i < candidates.Count && GetLargestComponentSize(union, points.Count) < points.Count * TissueConfig.Network.ConnectivityTarget; i++)
             {
                 EdgeDraft edge = candidates[i];
                 if (union.Find(edge.A) == union.Find(edge.B))
@@ -266,8 +258,13 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < points.Count; i++)
             {
                 PointDraft point = points[i];
-                float strength = Math.Clamp((point.Depth * 0.55f) + (degrees[i] / 8f * 0.30f) + (point.NestInfluence * 0.15f), 0.15f, 1f);
-                nodes.Add(new TissueNode(i, point.Position, degrees[i] >= NodeDegreeThreshold, strength, degrees[i], point.NestInfluence));
+                float strength = Math.Clamp(
+                    (point.Depth * TissueConfig.Nodes.StrengthDepthWeight) +
+                    (degrees[i] / (float)TissueConfig.Network.MaximumNodeDegree * TissueConfig.Nodes.StrengthDegreeWeight) +
+                    (point.NestInfluence * TissueConfig.Nodes.StrengthNestWeight),
+                    TissueConfig.Nodes.StrengthMin,
+                    TissueConfig.Nodes.StrengthMax);
+                nodes.Add(new TissueNode(i, point.Position, degrees[i] >= TissueConfig.Nodes.PrimaryDegreeThreshold, strength, degrees[i], point.NestInfluence));
             }
             return nodes;
         }
@@ -281,10 +278,15 @@ namespace Nyvorn.Source.World.Tissue
                 PointDraft a = points[edge.A];
                 PointDraft b = points[edge.B];
                 float depth = (a.Depth + b.Depth) * 0.5f;
-                float strength = Math.Clamp((depth * 0.62f) + ((degrees[edge.A] + degrees[edge.B]) / 16f * 0.24f) + ((a.NestInfluence + b.NestInfluence) * 0.07f), 0.2f, 1f);
-                float thickness = MathHelper.Lerp(0.65f, 2.1f, strength);
+                float strength = Math.Clamp(
+                    (depth * TissueConfig.Branches.StrengthDepthWeight) +
+                    ((degrees[edge.A] + degrees[edge.B]) / (TissueConfig.Network.MaximumNodeDegree * 2f) * TissueConfig.Branches.StrengthDegreeWeight) +
+                    ((a.NestInfluence + b.NestInfluence) * TissueConfig.Branches.StrengthNestWeight),
+                    TissueConfig.Branches.StrengthMin,
+                    TissueConfig.Branches.StrengthMax);
+                float thickness = MathHelper.Lerp(TissueConfig.Branches.ThicknessMin, TissueConfig.Branches.ThicknessMax, strength);
                 List<Vector2> path = BuildOrganicPath(a.Position, b.Position, width, i);
-                branches.Add(new TissueBranch(i, edge.A, edge.B, strength >= 0.72f, thickness, strength, TissueBranch.TissueBranchKind.Main, path));
+                branches.Add(new TissueBranch(i, edge.A, edge.B, strength >= TissueConfig.Branches.PrimaryStrengthThreshold, thickness, strength, TissueBranch.TissueBranchKind.Main, path));
             }
             return branches;
         }
@@ -295,21 +297,26 @@ namespace Nyvorn.Source.World.Tissue
             Vector2 unwrappedEnd = new(start.X + wrappedDeltaX, end.Y);
             Vector2 current = start;
             List<Vector2> path = new() { current };
-            OpenSimplexNoise noise = new(seed + 7001 + edgeId);
+            OpenSimplexNoise noise = new(seed + TissueConfig.Paths.NoiseSeedOffset + edgeId);
             float wander = 0f;
-            int maxSteps = Math.Max(12, (int)MathF.Ceiling(Vector2.Distance(start, unwrappedEnd) / 2f));
+            int maxSteps = Math.Max(
+                TissueConfig.Paths.MinimumSteps,
+                (int)MathF.Ceiling(Vector2.Distance(start, unwrappedEnd) * TissueConfig.Paths.StepsPerPixel));
 
             for (int stepIndex = 0; stepIndex < maxSteps; stepIndex++)
             {
                 Vector2 toTarget = unwrappedEnd - current;
                 float distance = toTarget.Length();
-                if (distance <= 3f)
+                if (distance <= TissueConfig.Paths.TargetSnapDistance)
                     break;
                 Vector2 direction = toTarget / distance;
                 Vector2 perpendicular = new(-direction.Y, direction.X);
-                float sample = (float)noise.Evaluate(current.X * 0.008, current.Y * 0.008);
-                wander = (wander * 0.86f) + (sample * 0.82f);
-                float stepSize = Math.Clamp(3.4f + (sample * 0.75f), 2.2f, 4.4f);
+                float sample = (float)noise.Evaluate(current.X * TissueConfig.Paths.NoiseScale, current.Y * TissueConfig.Paths.NoiseScale);
+                wander = (wander * TissueConfig.Paths.WanderRetention) + (sample * TissueConfig.Paths.WanderStrength);
+                float stepSize = Math.Clamp(
+                    TissueConfig.Paths.StepSize + (sample * TissueConfig.Paths.StepNoiseStrength),
+                    TissueConfig.Paths.StepSizeMin,
+                    TissueConfig.Paths.StepSizeMax);
                 Vector2 next = current + (direction * stepSize) + (perpendicular * wander);
                 if (Vector2.DistanceSquared(next, unwrappedEnd) > distance * distance)
                     next = unwrappedEnd;
@@ -325,18 +332,28 @@ namespace Nyvorn.Source.World.Tissue
             int id = branches.Count;
             for (int i = 0; i < points.Count; i++)
             {
-                if (degrees[i] < NodeDegreeThreshold || random.NextDouble() > 0.46)
+                if (degrees[i] < TissueConfig.Nodes.PrimaryDegreeThreshold || random.NextDouble() > TissueConfig.MicroFilaments.GenerationChance)
                     continue;
-                int count = degrees[i] >= 6 ? 2 : 1;
+                int count = degrees[i] >= TissueConfig.MicroFilaments.MultipleFilamentDegree
+                    ? TissueConfig.MicroFilaments.DenseFilamentCount
+                    : TissueConfig.MicroFilaments.FilamentCount;
                 for (int filament = 0; filament < count; filament++)
                 {
                     float angle = (float)(random.NextDouble() * Math.PI * 2.0);
-                    float length = random.Next(18, 71);
+                    float length = random.Next(TissueConfig.MicroFilaments.LengthMin, TissueConfig.MicroFilaments.LengthMax + 1);
                     Vector2 start = points[i].Position;
                     Vector2 end = start + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * length;
-                    end.Y = Math.Clamp(end.Y, height * SurfaceDepthStart, height - 1f);
+                    end.Y = Math.Clamp(end.Y, height * TissueConfig.Generation.SurfaceDepthStart, height - 1f);
                     List<Vector2> path = BuildOrganicPath(start, end, width, id);
-                    branches.Add(new TissueBranch(id++, i, -1, false, 0.45f, 0.28f + (points[i].Depth * 0.22f), TissueBranch.TissueBranchKind.Micro, path));
+                    branches.Add(new TissueBranch(
+                        id++,
+                        i,
+                        -1,
+                        false,
+                        TissueConfig.MicroFilaments.Thickness,
+                        TissueConfig.MicroFilaments.IntensityBase + (points[i].Depth * TissueConfig.MicroFilaments.IntensityDepthWeight),
+                        TissueBranch.TissueBranchKind.Micro,
+                        path));
                 }
             }
         }
@@ -350,10 +367,22 @@ namespace Nyvorn.Source.World.Tissue
                 if (branch.Kind == TissueBranch.TissueBranchKind.Micro)
                     continue;
                 for (int p = 0; p < branch.Points.Count; p++)
-                    SetRasterizedTile(worldMap, field, branch.Points[p], branch.Intensity, vitality: 0.72f, flow: 0.78f);
+                    SetRasterizedTile(
+                        worldMap,
+                        field,
+                        branch.Points[p],
+                        branch.Intensity,
+                        vitality: TissueConfig.Rasterization.BranchVitality,
+                        flow: TissueConfig.Rasterization.BranchFlow);
             }
             for (int i = 0; i < nodes.Count; i++)
-                SetRasterizedTile(worldMap, field, nodes[i].Position, nodes[i].Strength, vitality: 0.92f, flow: 0.88f);
+                SetRasterizedTile(
+                    worldMap,
+                    field,
+                    nodes[i].Position,
+                    nodes[i].Strength,
+                    vitality: TissueConfig.Rasterization.NodeVitality,
+                    flow: TissueConfig.Rasterization.NodeFlow);
             tileCount = field.CountActiveTiles();
             return field;
         }
@@ -371,7 +400,7 @@ namespace Nyvorn.Source.World.Tissue
             TissueCellState current = field.GetState(tileX, tileY);
             if (current.Presence >= presence)
                 return;
-            field.SetState(tileX, tileY, new TissueCellState(presence, vitality, 0f, 0f, flow));
+            field.SetBaseState(tileX, tileY, new TissueCellState(presence, vitality, 0f, 0f, flow));
         }
 
         private TissueGenerationStats BuildStats(List<PointDraft> points, int[] degrees, int edgeCount, int microCount, int nestCount, int rasterizedTiles, float dominantRatio, List<EdgeDraft> edges)
@@ -387,8 +416,8 @@ namespace Nyvorn.Source.World.Tissue
                 minDegree = Math.Min(minDegree, degrees[i]);
                 maxDegree = Math.Max(maxDegree, degrees[i]);
                 degreeTotal += degrees[i];
-                if (points[i].Depth < 0.48f) upper++;
-                else if (points[i].Depth < 0.76f) middle++;
+                if (points[i].Depth < TissueConfig.Network.MiddleLayerStart) upper++;
+                else if (points[i].Depth < TissueConfig.Network.DeepLayerStart) middle++;
                 else deep++;
             }
             return new TissueGenerationStats
@@ -490,7 +519,7 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < chosen.Count; i++)
             {
                 float difference = MathF.Abs(MathHelper.WrapAngle(angle - chosen[i]));
-                if (difference < MinAngularSeparation)
+                if (difference < TissueConfig.Network.MinAngularSeparation)
                     return true;
             }
             return false;
@@ -498,10 +527,24 @@ namespace Nyvorn.Source.World.Tissue
 
         private static void GetConnectionRange(PointDraft point, out int min, out int max)
         {
-            if (point.Depth < 0.48f) { min = 1; max = 2; }
-            else if (point.Depth < 0.76f) { min = 2; max = 4; }
-            else { min = 3; max = 6; }
-            if (point.NestInfluence > 0.35f) max = Math.Min(8, max + 2);
+            if (point.Depth < TissueConfig.Network.MiddleLayerStart)
+            {
+                min = TissueConfig.Network.UpperConnectionsMin;
+                max = TissueConfig.Network.UpperConnectionsMax;
+            }
+            else if (point.Depth < TissueConfig.Network.DeepLayerStart)
+            {
+                min = TissueConfig.Network.MiddleConnectionsMin;
+                max = TissueConfig.Network.MiddleConnectionsMax;
+            }
+            else
+            {
+                min = TissueConfig.Network.DeepConnectionsMin;
+                max = TissueConfig.Network.DeepConnectionsMax;
+            }
+
+            if (point.NestInfluence > TissueConfig.Network.NestConnectionBoostThreshold)
+                max = Math.Min(TissueConfig.Network.MaximumNodeDegree, max + TissueConfig.Network.NestConnectionBonus);
         }
 
         private static void AddEdge(int a, int b, float distance, List<EdgeDraft> edges, HashSet<long> keys, HashSet<int>[] adjacency)
@@ -517,8 +560,8 @@ namespace Nyvorn.Source.World.Tissue
         {
             List<NeighborCandidate> candidates = new();
             PointDraft source = points[sourceIndex];
-            Point cell = GetSpatialCell(source.Position, GraphSpatialCellSize, width);
-            int bucketCountX = Math.Max(1, (int)MathF.Ceiling(width / (float)GraphSpatialCellSize));
+            Point cell = GetSpatialCell(source.Position, TissueConfig.Network.GraphSpatialCellSize, width);
+            int bucketCountX = Math.Max(1, (int)MathF.Ceiling(width / (float)TissueConfig.Network.GraphSpatialCellSize));
             float maxDistanceSq = maxDistance * maxDistance;
             for (int dy = -bucketRadius; dy <= bucketRadius; dy++)
             {

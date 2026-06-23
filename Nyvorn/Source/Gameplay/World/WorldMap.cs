@@ -22,11 +22,12 @@ namespace Nyvorn.Source.World
         public int Height { get; }
         public int TileSize { get; }
         public int TileRevision { get; private set; }
-        public bool HasUnsavedChanges => TileRevision != _persistedTileRevision;
+        public bool HasUnsavedChanges => TileRevision != _persistedTileRevision || HasUnsavedTissueChanges;
         public int PixelWidth => Width * TileSize;
         public TissueField TissueField => _tissueField;
         public TissueAnalysisResult TissueAnalysis => _tissueAnalysis;
         public int TissueRevision { get; private set; }
+        public bool HasUnsavedTissueChanges => _tissueField?.HasUnsavedChanges ?? false;
         public int ChunkTileSize => DefaultChunkTileSize;
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
         public int ChunkCountY => (Height + ChunkTileSize - 1) / ChunkTileSize;
@@ -90,6 +91,7 @@ namespace Nyvorn.Source.World
 
             TrackTileChange(wrappedX, y, currentTile, type);
             _tiles[wrappedX, y] = type;
+            HandleTissueTileTransition(wrappedX, y, currentTile, type);
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
@@ -222,9 +224,48 @@ namespace Nyvorn.Source.World
 
         public void SetTissueField(TissueField tissueField)
         {
+            if (ReferenceEquals(_tissueField, tissueField))
+                return;
+
+            if (_tissueField != null)
+                _tissueField.Changed -= HandleTissueFieldChanged;
+
             _tissueField = tissueField;
+            if (_tissueField != null)
+            {
+                _tissueField.SetOccupancyValidator(IsSolidAt);
+                _tissueField.Changed += HandleTissueFieldChanged;
+            }
             _tissueAnalysis = null;
             TissueRevision++;
+        }
+
+        public TissueCellState GetTissueState(int x, int y)
+        {
+            if (_tissueField == null || !InBounds(x, y))
+                return TissueCellState.Neutral;
+
+            return _tissueField.GetState(WrapTileX(x), y);
+        }
+
+        public bool TrySetTissueState(int x, int y, TissueCellState state)
+        {
+            if (_tissueField == null || !InBounds(x, y))
+                return false;
+
+            int wrappedX = WrapTileX(x);
+            if (!state.IsNeutral && !IsSolidAt(wrappedX, y))
+                return false;
+
+            return _tissueField.SetState(wrappedX, y, state);
+        }
+
+        public bool ClearTissueAt(int x, int y)
+        {
+            if (_tissueField == null || !InBounds(x, y))
+                return false;
+
+            return _tissueField.Clear(WrapTileX(x), y);
         }
 
         public void SetTissueAnalysis(TissueAnalysisResult analysis)
@@ -235,6 +276,7 @@ namespace Nyvorn.Source.World
         public void MarkPersisted()
         {
             _persistedTileRevision = TileRevision;
+            _tissueField?.MarkPersisted();
         }
 
         public void MarkTissueDirty()
@@ -243,27 +285,32 @@ namespace Nyvorn.Source.World
             TissueRevision++;
         }
 
-        public TissueAnalysisResult GetOrCreateTissueAnalysis()
+        private void HandleTissueTileTransition(int x, int y, TileType previousTile, TileType nextTile)
         {
             if (_tissueField == null)
-                return null;
+                return;
 
-            if (_tissueAnalysis == null)
-                _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
+            if (IsSolid(previousTile) && !IsSolid(nextTile))
+                _tissueField.Clear(x, y);
+        }
 
+        private void HandleTissueFieldChanged()
+        {
+            _tissueAnalysis = null;
+            TissueRevision++;
+        }
+
+        public TissueAnalysisResult GetOrCreateTissueAnalysis()
+        {
+            // Compatibilidade de API: a nova topologia vem da TissueNetwork.
+            // O analyzer legado nao e mais executado automaticamente.
             return _tissueAnalysis;
         }
 
         public TissueAnalysisResult RebuildTissueAnalysis()
         {
-            if (_tissueField == null)
-            {
-                _tissueAnalysis = null;
-                return null;
-            }
-
-            _tissueAnalysis = new TissueAnalyzer().Analyze(_tissueField, this);
-            return _tissueAnalysis;
+            _tissueAnalysis = null;
+            return null;
         }
 
         public byte[] ExportTissueAnalysisSnapshot()
@@ -520,6 +567,7 @@ namespace Nyvorn.Source.World
             removedTile = currentTile;
             TrackTileChange(wrappedX, y, currentTile, TileType.Empty);
             _tiles[wrappedX, y] = TileType.Empty;
+            HandleTissueTileTransition(wrappedX, y, currentTile, TileType.Empty);
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
@@ -551,6 +599,7 @@ namespace Nyvorn.Source.World
             int wrappedX = WrapTileX(x);
             TrackTileChange(wrappedX, y, TileType.Empty, tileType);
             _tiles[wrappedX, y] = tileType;
+            HandleTissueTileTransition(wrappedX, y, TileType.Empty, tileType);
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
@@ -676,6 +725,7 @@ namespace Nyvorn.Source.World
                 _trackedTileBaselines[key] = baselineTile;
                 _trackedTileChanges[key] = new WorldTileChange(wrappedX, tileChange.Y, tileChange.TileType);
                 _tiles[wrappedX, tileChange.Y] = tileChange.TileType;
+                HandleTissueTileTransition(wrappedX, tileChange.Y, baselineTile, tileChange.TileType);
                 RefreshAutoTileNeighborhood(wrappedX, tileChange.Y);
                 MarkChunkNeighborhoodDirty(wrappedX, tileChange.Y);
                 TileRevision++;

@@ -15,11 +15,9 @@ namespace Nyvorn.Source.World.Generation.Passes
             context.ProgressReporter?.Begin(Name, "Tecendo rede cosmica subterranea");
 
             TissueGenerationResult generation = new TissueGenerator(context.Config.Seed).Generate(context.WorldMap);
-            TissueField field = new(context.WorldMap.Width, context.WorldMap.Height);
-            context.TissueField = field;
+            context.TissueField = generation.RasterizedField;
             context.TissueGeneration = generation;
-            context.WorldMap.SetTissueField(field);
-            context.WorldMap.RebuildTissueAnalysis();
+            context.WorldMap.SetTissueField(generation.RasterizedField);
 
             TissueGenerationStats stats = generation.Stats;
             context.DebugStats["Tissue.GenerationMode"] = "CosmicWeb";
@@ -34,8 +32,6 @@ namespace Nyvorn.Source.World.Generation.Passes
             context.DebugStats["Tissue.Hash"] = stats.DeterministicHash.ToString("X16");
             context.DebugStats["Tissue.Schema"] = "Presence,Vitality,Corruption,MemoryDensity,Flow";
 
-            // O campo derivado permanece isolado do WorldMap nesta fase. O campo
-            // neutro acima preserva hubs, reveal e snapshots legados sem ativar a teia.
             context.ProgressReporter?.Report(Name, 1f, "Rede cosmica consolidada");
             context.ProgressReporter?.Complete(Name, "Tecido cosmico preparado");
         }

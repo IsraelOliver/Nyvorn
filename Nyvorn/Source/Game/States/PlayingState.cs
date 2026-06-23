@@ -12,6 +12,7 @@ using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Persistence;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace Nyvorn.Source.Game.States
 {
@@ -37,11 +38,16 @@ namespace Nyvorn.Source.Game.States
         private string consoleInput = string.Empty;
         private string consoleMessage = string.Empty;
         private readonly List<string> consoleHistory = new();
+        private int consoleCursor;
+        private int consoleSelectionAnchor = -1;
+        private int commandHistoryIndex;
+        private string commandHistoryDraft = string.Empty;
+        private float consoleCursorBlinkTimer;
         private KeyboardState previousConsoleKeyboard;
         private float autoSaveTimer;
         private const float AutoSaveInterval = 60f;
         private const int MaxConsoleInputLength = 96;
-        private const int MaxConsoleHistoryLines = 6;
+        private const int MaxConsoleHistoryLines = 20;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -58,6 +64,7 @@ namespace Nyvorn.Source.Game.States
             minimapVisible = false;
             minimapTissueMode = false;
             consoleOpen = false;
+            commandHistoryIndex = session.ConsoleCommandHistory.Count;
             previousConsoleKeyboard = Keyboard.GetState();
             consoleFont = content.Load<SpriteFont>("ui/UIFont");
             consolePixel = new Texture2D(graphicsDevice, 1, 1);
@@ -76,6 +83,8 @@ namespace Nyvorn.Source.Game.States
         public void Update(GameTime gameTime)
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            if (consoleOpen)
+                consoleCursorBlinkTimer += dt;
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
@@ -89,7 +98,7 @@ namespace Nyvorn.Source.Game.States
                 consoleOpen = !consoleOpen;
                 if (consoleOpen)
                 {
-                    consoleInput = string.Empty;
+                    ResetConsoleEditor();
                     consoleMessage = string.Empty;
                 }
 
@@ -272,12 +281,13 @@ namespace Nyvorn.Source.Game.States
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
                 session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
 
@@ -319,6 +329,10 @@ namespace Nyvorn.Source.Game.States
 
         private void HandleConsoleInput(KeyboardState keyboard)
         {
+            consoleCursor = System.Math.Clamp(consoleCursor, 0, consoleInput.Length);
+            bool control = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+            bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+
             foreach (Keys key in keyboard.GetPressedKeys())
             {
                 if (previousConsoleKeyboard.IsKeyDown(key))
@@ -336,20 +350,262 @@ namespace Nyvorn.Source.Game.States
                     return;
                 }
 
-                if (key == Keys.Back)
+                if (control && key == Keys.A)
                 {
-                    if (consoleInput.Length > 0)
-                        consoleInput = consoleInput[..^1];
-
+                    consoleSelectionAnchor = 0;
+                    consoleCursor = consoleInput.Length;
+                    ResetConsoleCursorBlink();
                     continue;
                 }
 
-                if (consoleInput.Length >= MaxConsoleInputLength)
+                if (control && key == Keys.C)
+                {
+                    CopyConsoleSelection();
+                    continue;
+                }
+
+                if (control && key == Keys.X)
+                {
+                    CutConsoleSelection();
+                    continue;
+                }
+
+                if (control && key == Keys.V)
+                {
+                    PasteConsoleClipboard();
+                    continue;
+                }
+
+                if (key == Keys.Up)
+                {
+                    NavigateCommandHistory(-1);
+                    continue;
+                }
+
+                if (key == Keys.Down)
+                {
+                    NavigateCommandHistory(1);
+                    continue;
+                }
+
+                if (key == Keys.Left)
+                {
+                    MoveConsoleCursor(consoleCursor - 1, shift);
+                    continue;
+                }
+
+                if (key == Keys.Right)
+                {
+                    MoveConsoleCursor(consoleCursor + 1, shift);
+                    continue;
+                }
+
+                if (key == Keys.Home)
+                {
+                    MoveConsoleCursor(0, shift);
+                    continue;
+                }
+
+                if (key == Keys.End)
+                {
+                    MoveConsoleCursor(consoleInput.Length, shift);
+                    continue;
+                }
+
+                if (key == Keys.Back)
+                {
+                    BackspaceConsoleInput();
+                    continue;
+                }
+
+                if (key == Keys.Delete)
+                {
+                    DeleteConsoleInput();
+                    continue;
+                }
+
+                if (control)
                     continue;
 
                 if (TryGetConsoleCharacter(keyboard, key, out char character))
-                    consoleInput += character;
+                    InsertConsoleText(character.ToString());
             }
+        }
+
+        private bool HasConsoleSelection => consoleSelectionAnchor >= 0 && consoleSelectionAnchor != consoleCursor;
+
+        private void ResetConsoleEditor()
+        {
+            consoleInput = string.Empty;
+            consoleCursor = 0;
+            consoleSelectionAnchor = -1;
+            commandHistoryIndex = session.ConsoleCommandHistory.Count;
+            commandHistoryDraft = string.Empty;
+            ResetConsoleCursorBlink();
+        }
+
+        private void ResetConsoleCursorBlink()
+        {
+            consoleCursorBlinkTimer = 0f;
+        }
+
+        private void MoveConsoleCursor(int target, bool selecting)
+        {
+            if (selecting)
+            {
+                if (consoleSelectionAnchor < 0)
+                    consoleSelectionAnchor = consoleCursor;
+            }
+            else
+            {
+                consoleSelectionAnchor = -1;
+            }
+
+            consoleCursor = System.Math.Clamp(target, 0, consoleInput.Length);
+            if (consoleSelectionAnchor == consoleCursor)
+                consoleSelectionAnchor = -1;
+            ResetConsoleCursorBlink();
+        }
+
+        private void NavigateCommandHistory(int direction)
+        {
+            IReadOnlyList<string> history = session.ConsoleCommandHistory;
+            if (history.Count == 0)
+                return;
+
+            if (commandHistoryIndex < 0 || commandHistoryIndex > history.Count)
+                commandHistoryIndex = history.Count;
+            if (commandHistoryIndex == history.Count && direction < 0)
+                commandHistoryDraft = consoleInput;
+
+            commandHistoryIndex = System.Math.Clamp(commandHistoryIndex + direction, 0, history.Count);
+            consoleInput = commandHistoryIndex == history.Count
+                ? commandHistoryDraft
+                : history[commandHistoryIndex];
+            consoleCursor = consoleInput.Length;
+            consoleSelectionAnchor = -1;
+            ResetConsoleCursorBlink();
+        }
+
+        private void CopyConsoleSelection()
+        {
+            string text = GetSelectedConsoleText();
+            ClipboardService.TrySetText(text);
+            ResetConsoleCursorBlink();
+        }
+
+        private void CutConsoleSelection()
+        {
+            CopyConsoleSelection();
+            if (HasConsoleSelection)
+                DeleteConsoleSelection();
+            else if (consoleInput.Length > 0)
+                ReplaceConsoleRange(0, consoleInput.Length, string.Empty);
+        }
+
+        private void PasteConsoleClipboard()
+        {
+            ClipboardService.TryGetText(out string clipboardText);
+            InsertConsoleText(SanitizeConsolePaste(clipboardText));
+        }
+
+        private string GetSelectedConsoleText()
+        {
+            if (!HasConsoleSelection)
+                return consoleInput;
+
+            GetConsoleSelectionRange(out int start, out int length);
+            return consoleInput.Substring(start, length);
+        }
+
+        private void BackspaceConsoleInput()
+        {
+            if (DeleteConsoleSelection())
+                return;
+            if (consoleCursor <= 0)
+                return;
+
+            ReplaceConsoleRange(consoleCursor - 1, 1, string.Empty);
+        }
+
+        private void DeleteConsoleInput()
+        {
+            if (DeleteConsoleSelection())
+                return;
+            if (consoleCursor >= consoleInput.Length)
+                return;
+
+            ReplaceConsoleRange(consoleCursor, 1, string.Empty);
+        }
+
+        private bool DeleteConsoleSelection()
+        {
+            if (!HasConsoleSelection)
+                return false;
+
+            GetConsoleSelectionRange(out int start, out int length);
+            ReplaceConsoleRange(start, length, string.Empty);
+            return true;
+        }
+
+        private void InsertConsoleText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            int start = consoleCursor;
+            int removeLength = 0;
+            if (HasConsoleSelection)
+                GetConsoleSelectionRange(out start, out removeLength);
+
+            int available = MaxConsoleInputLength - (consoleInput.Length - removeLength);
+            if (available <= 0)
+                return;
+            if (text.Length > available)
+                text = text[..available];
+
+            ReplaceConsoleRange(start, removeLength, text);
+        }
+
+        private void ReplaceConsoleRange(int start, int length, string replacement)
+        {
+            consoleInput = consoleInput.Remove(start, length).Insert(start, replacement);
+            consoleCursor = start + replacement.Length;
+            consoleSelectionAnchor = -1;
+            commandHistoryIndex = session.ConsoleCommandHistory.Count;
+            commandHistoryDraft = string.Empty;
+            ResetConsoleCursorBlink();
+        }
+
+        private void GetConsoleSelectionRange(out int start, out int length)
+        {
+            start = System.Math.Min(consoleCursor, consoleSelectionAnchor);
+            int end = System.Math.Max(consoleCursor, consoleSelectionAnchor);
+            length = end - start;
+        }
+
+        private static string SanitizeConsolePaste(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+
+            StringBuilder sanitized = new(text.Length);
+            bool previousWasSpace = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char character = text[i];
+                if (character == '\r' || character == '\n' || character == '\t')
+                    character = ' ';
+                if (character < ' ' || character > '~')
+                    continue;
+                if (character == ' ' && previousWasSpace)
+                    continue;
+
+                sanitized.Append(character);
+                previousWasSpace = character == ' ';
+            }
+
+            return sanitized.ToString();
         }
 
         private void ExecuteConsoleCommand()
@@ -359,15 +615,23 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             AddConsoleHistory("> " + command);
-            string normalized = command.ToLowerInvariant();
-            if (normalized == "/help" || normalized == "help")
+            ResetConsoleEditor();
+            if (!command.StartsWith("/", System.StringComparison.Ordinal))
             {
-                SetConsoleMessage("Comandos: /help, /debugfly [on|off], /tissuevisual on|off, spawn pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
-                consoleInput = string.Empty;
+                SetConsoleMessage("Comandos devem comecar com /. Digite /help");
                 return;
             }
 
-            if (normalized == "/debugfly" || normalized == "debugfly")
+            session.AddConsoleCommand(command);
+            string commandBody = command[1..].Trim();
+            string normalized = commandBody.ToLowerInvariant();
+            if (normalized == "help")
+            {
+                ShowConsoleHelp();
+                return;
+            }
+
+            if (normalized == "debugfly")
             {
                 bool enabled = session.ToggleDebugFly();
                 SetConsoleMessage(enabled
@@ -377,7 +641,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "/debugfly on" || normalized == "debugfly on")
+            if (normalized == "debugfly on")
             {
                 session.SetDebugFly(true);
                 SetConsoleMessage("Debug fly ativado: W/A/S/D para voar e atravessar blocos");
@@ -385,7 +649,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "/debugfly off" || normalized == "debugfly off")
+            if (normalized == "debugfly off")
             {
                 session.SetDebugFly(false);
                 SetConsoleMessage("Debug fly desativado: movimento normal restaurado");
@@ -393,7 +657,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "/tissuevisual on" || normalized == "tissuevisual on")
+            if (normalized == "tissuevisual on")
             {
                 session.SetTissueVisualEnabled(true);
                 SetConsoleMessage("Tissue cosmic web ativado");
@@ -401,7 +665,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "/tissuevisual off" || normalized == "tissuevisual off")
+            if (normalized == "tissuevisual off")
             {
                 session.SetTissueVisualEnabled(false);
                 SetConsoleMessage("Tissue cosmic web desativado");
@@ -409,9 +673,32 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "/tissuevisual" || normalized == "tissuevisual")
+            if (normalized == "tissuevisual")
             {
                 SetConsoleMessage("Uso: /tissuevisual on ou /tissuevisual off");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "tissuefield on")
+            {
+                session.SetTissueFieldVisualEnabled(true);
+                SetConsoleMessage("TissueField real ativado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "tissuefield off")
+            {
+                session.SetTissueFieldVisualEnabled(false);
+                SetConsoleMessage("TissueField real desativado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "tissuefield")
+            {
+                SetConsoleMessage("Uso: /tissuefield on ou /tissuefield off");
                 consoleInput = string.Empty;
                 return;
             }
@@ -443,25 +730,25 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (TryExecuteTickCommand(command))
+            if (TryExecuteTickCommand(commandBody))
             {
                 consoleInput = string.Empty;
                 return;
             }
 
-            if (TryExecuteGrassCommand(command))
+            if (TryExecuteGrassCommand(commandBody))
             {
                 consoleInput = string.Empty;
                 return;
             }
 
-            if (TryExecuteDebugCommand(command))
+            if (TryExecuteDebugCommand(commandBody))
             {
                 consoleInput = string.Empty;
                 return;
             }
 
-            if (TryExecuteWorldCommand(command))
+            if (TryExecuteWorldCommand(commandBody))
             {
                 consoleInput = string.Empty;
                 return;
@@ -486,6 +773,38 @@ namespace Nyvorn.Source.Game.States
             consoleHistory.Add(line);
             while (consoleHistory.Count > MaxConsoleHistoryLines)
                 consoleHistory.RemoveAt(0);
+        }
+
+        private void ShowConsoleHelp()
+        {
+            consoleHistory.Clear();
+            consoleMessage = "Comandos disponiveis";
+            string[] commands =
+            {
+                "Comandos disponiveis:",
+                "/help",
+                "/debugfly [on|off]",
+                "/tissuevisual on|off",
+                "/tissuefield on|off",
+                "/spawn pickaxe",
+                "/spawn picareta",
+                "/spawn wood pickaxe",
+                "/spawn stone pickaxe",
+                "/spawn iron pickaxe",
+                "/tick status",
+                "/tick",
+                "/tick speed <1..16>",
+                "/tick pause",
+                "/tick resume",
+                "/tick reset",
+                "/tick step [1..600]",
+                "/grass grow [1..10000]",
+                "/debug ticks",
+                "/world save"
+            };
+
+            for (int i = 0; i < commands.Length; i++)
+                AddConsoleHistory(commands[i]);
         }
 
         private bool TryExecuteTickCommand(string command)
@@ -529,7 +848,7 @@ namespace Nyvorn.Source.Game.States
                 int cycles = 1;
                 if (parts.Length >= 3 && !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out cycles))
                 {
-                    SetConsoleMessage("Uso: tick step [1..600]");
+                    SetConsoleMessage("Uso: /tick step [1..600]");
                     return true;
                 }
 
@@ -549,7 +868,7 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: tick speed 1..16, tick step [n], tick pause, tick resume, tick reset, tick status");
+            SetConsoleMessage("Uso: /tick speed 1..16, /tick step [n], /tick pause, /tick resume, /tick reset, /tick status");
             return true;
         }
 
@@ -564,7 +883,7 @@ namespace Nyvorn.Source.Game.States
                 int samples = 256;
                 if (parts.Length >= 3 && !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out samples))
                 {
-                    SetConsoleMessage("Uso: grass grow [samples]");
+                    SetConsoleMessage("Uso: /grass grow [samples]");
                     return true;
                 }
 
@@ -574,7 +893,7 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: grass grow [samples]");
+            SetConsoleMessage("Uso: /grass grow [samples]");
             return true;
         }
 
@@ -594,7 +913,7 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: debug ticks");
+            SetConsoleMessage("Uso: /debug ticks");
             return true;
         }
 
@@ -612,7 +931,7 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: world save");
+            SetConsoleMessage("Uso: /world save");
             return true;
         }
 
@@ -642,8 +961,44 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(consolePixel, inputBounds, Color.Black * 0.82f);
             spriteBatch.Draw(consolePixel, new Rectangle(0, inputBounds.Y, screenWidth, 2), new Color(143, 211, 255));
 
-            string prompt = "> " + consoleInput + "_";
-            spriteBatch.DrawString(consoleFont, prompt, new Vector2(10, inputBounds.Y + 5), Color.White);
+            const string promptPrefix = "> ";
+            Vector2 promptPosition = new(10, inputBounds.Y + 5);
+            if (HasConsoleSelection)
+            {
+                GetConsoleSelectionRange(out int selectionStart, out int selectionLength);
+                float selectionX = promptPosition.X + consoleFont.MeasureString(promptPrefix + consoleInput[..selectionStart]).X;
+                float selectionWidth = consoleFont.MeasureString(consoleInput.Substring(selectionStart, selectionLength)).X;
+                spriteBatch.Draw(
+                    consolePixel,
+                    new Rectangle(
+                        (int)System.MathF.Floor(selectionX),
+                        inputBounds.Y + 4,
+                        System.Math.Max(2, (int)System.MathF.Ceiling(selectionWidth)),
+                        lineHeight),
+                    new Color(55, 115, 170, 190));
+            }
+
+            spriteBatch.DrawString(consoleFont, promptPrefix + consoleInput, promptPosition, Color.White);
+            if ((consoleCursorBlinkTimer % 1f) < 0.58f)
+            {
+                float cursorX = promptPosition.X + consoleFont.MeasureString(promptPrefix + consoleInput[..consoleCursor]).X;
+                spriteBatch.Draw(
+                    consolePixel,
+                    new Rectangle((int)System.MathF.Round(cursorX), inputBounds.Y + 6, 2, lineHeight - 4),
+                    new Color(190, 235, 255));
+            }
+
+            const string shortcutHint = "Ctrl+A/C/X/V  Shift+Left/Right  Up/Down: history";
+            float hintWidth = consoleFont.MeasureString(shortcutHint).X;
+            float hintX = screenWidth - hintWidth - 10f;
+            if (consoleInput.Length == 0 && hintX > 420f)
+            {
+                spriteBatch.DrawString(
+                    consoleFont,
+                    shortcutHint,
+                    new Vector2(hintX, inputBounds.Y + 5),
+                    new Color(135, 165, 178));
+            }
         }
 
         private static bool TryGetConsoleCharacter(KeyboardState keyboard, Keys key, out char character)

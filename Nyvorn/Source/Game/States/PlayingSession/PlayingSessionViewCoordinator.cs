@@ -56,6 +56,7 @@ namespace Nyvorn.Source.Game.States
         public required PowerHUD PowerHUD { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
         public required TissueNetworkRenderer TissueNetworkRenderer { get; init; }
+        public required TissueFieldOverlayRenderer TissueFieldOverlayRenderer { get; init; }
         public required IReadOnlySet<int> ActivatedTissueHubKeys { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
@@ -193,6 +194,25 @@ namespace Nyvorn.Source.Game.States
         public void DrawTissueCore(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             TissueNetworkRenderer.DrawCore(spriteBatch, TissueNetwork, GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX));
+        }
+
+        public void DrawTissueFieldOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            GetVisibleTileRange(
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                out int startTileX,
+                out int endTileX,
+                out int startTileY,
+                out int endTileY);
+            TissueFieldOverlayRenderer.Draw(
+                spriteBatch,
+                WorldMap,
+                startTileX,
+                endTileX,
+                startTileY,
+                endTileY);
         }
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
