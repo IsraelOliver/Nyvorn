@@ -9,6 +9,7 @@ int[] seeds = previewOnly ? [1337] : [1337, 2468, 9001];
 WorldSizePreset[] presets = previewOnly ? [WorldSizePreset.Medium] : [WorldSizePreset.Small, WorldSizePreset.Medium, WorldSizePreset.Large];
 
 ValidateLegacySaveCompatibility();
+ValidateResonanceTuning();
 ValidateTissueQueryApi();
 
 foreach (WorldSizePreset preset in presets)
@@ -409,6 +410,28 @@ static void ValidateTissueQueryApi()
     Require(!environmentSensor.CurrentState.HasTissue, "sensor retained tissue after local destruction");
     Require(!resonance.Trigger(sensorPosition), "destroyed local tissue still triggered resonance");
     Require(!resonance.CurrentState.IsActive, "failed resonance retained stale visual state");
+}
+
+static void ValidateResonanceTuning()
+{
+    TissueConfig.Resonance.ResetTuning();
+    Require(Approximately(TissueConfig.Resonance.SetPulseSpeed(5000f), 1200f), "pulse speed upper clamp mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetPulseSpeed(float.NaN), 320f), "invalid pulse speed fallback mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetPulseTrailLength(0f), 8f), "pulse trail lower clamp mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetPulseFadePower(8f), 5f), "pulse fade upper clamp mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetMemoryLifetime(-1f), 0f), "memory lifetime lower clamp mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetMemoryFadeCurve(0f), 0.1f), "memory curve lower clamp mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetMemoryIntensity(3f), 1.5f), "memory intensity upper clamp mismatch");
+    Require(Approximately(TissueConfig.Resonance.SetNodeAfterglowLifetime(20f), 15f), "node afterglow upper clamp mismatch");
+
+    TissueConfig.Resonance.ResetTuning();
+    Require(Approximately(TissueConfig.Resonance.PulseSpeed, 320f), "pulse speed reset mismatch");
+    Require(Approximately(TissueConfig.Resonance.PulseTrailLength, 100f), "pulse trail reset mismatch");
+    Require(Approximately(TissueConfig.Resonance.PulseFadePower, 1.4f), "pulse fade reset mismatch");
+    Require(Approximately(TissueConfig.Resonance.MemoryLifetime, 2.8f), "memory lifetime reset mismatch");
+    Require(Approximately(TissueConfig.Resonance.MemoryFadeCurve, 1.35f), "memory curve reset mismatch");
+    Require(Approximately(TissueConfig.Resonance.MemoryIntensity, 0.82f), "memory intensity reset mismatch");
+    Require(Approximately(TissueConfig.Resonance.NodeAfterglowLifetime, 3.2f), "node afterglow reset mismatch");
 }
 
 static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)

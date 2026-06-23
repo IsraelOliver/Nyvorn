@@ -10,6 +10,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Persistence;
+using Nyvorn.Source.World.Tissue;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -737,6 +738,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryExecuteTissuePulseCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
             if (TryExecuteGrassCommand(commandBody))
             {
                 consoleInput = string.Empty;
@@ -787,6 +794,9 @@ namespace Nyvorn.Source.Game.States
                 "/debugfly [on|off]",
                 "/tissuevisual on|off",
                 "/tissuefield on|off",
+                "/tissuepulse",
+                "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
+                "/tissuepulse reset",
                 "/spawn pickaxe",
                 "/spawn picareta",
                 "/spawn wood pickaxe",
@@ -896,6 +906,98 @@ namespace Nyvorn.Source.Game.States
 
             SetConsoleMessage("Uso: /grass grow [samples]");
             return true;
+        }
+
+        private bool TryExecuteTissuePulseCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("tissuepulse", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1 ||
+                parts[1].Equals("status", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ShowTissuePulseStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("reset", System.StringComparison.OrdinalIgnoreCase))
+            {
+                TissueConfig.Resonance.ResetTuning();
+                SetConsoleMessage("Tissue pulse: parametros restaurados");
+                ShowTissuePulseStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("help", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ShowTissuePulseUsage();
+                return true;
+            }
+
+            if (parts.Length < 3 ||
+                !float.TryParse(parts[2].Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ||
+                float.IsNaN(value) ||
+                float.IsInfinity(value))
+            {
+                ShowTissuePulseUsage();
+                return true;
+            }
+
+            string parameter = parts[1].ToLowerInvariant();
+            float appliedValue;
+            switch (parameter)
+            {
+                case "speed":
+                    appliedValue = TissueConfig.Resonance.SetPulseSpeed(value);
+                    break;
+                case "trail":
+                    appliedValue = TissueConfig.Resonance.SetPulseTrailLength(value);
+                    break;
+                case "fade":
+                    appliedValue = TissueConfig.Resonance.SetPulseFadePower(value);
+                    break;
+                case "memory":
+                    appliedValue = TissueConfig.Resonance.SetMemoryLifetime(value);
+                    break;
+                case "curve":
+                    appliedValue = TissueConfig.Resonance.SetMemoryFadeCurve(value);
+                    break;
+                case "intensity":
+                    appliedValue = TissueConfig.Resonance.SetMemoryIntensity(value);
+                    break;
+                case "node":
+                case "nodeafterglow":
+                case "nodelifetime":
+                    parameter = "node";
+                    appliedValue = TissueConfig.Resonance.SetNodeAfterglowLifetime(value);
+                    break;
+                default:
+                    ShowTissuePulseUsage();
+                    return true;
+            }
+
+            SetConsoleMessage($"Tissue pulse {parameter}: {appliedValue:0.###}");
+            return true;
+        }
+
+        private void ShowTissuePulseStatus()
+        {
+            SetConsoleMessage(
+                $"Pulse speed:{TissueConfig.Resonance.PulseSpeed:0.##} " +
+                $"trail:{TissueConfig.Resonance.PulseTrailLength:0.##} " +
+                $"fade:{TissueConfig.Resonance.PulseFadePower:0.##}");
+            AddConsoleHistory(
+                $"Memory lifetime:{TissueConfig.Resonance.MemoryLifetime:0.##} " +
+                $"curve:{TissueConfig.Resonance.MemoryFadeCurve:0.##} " +
+                $"intensity:{TissueConfig.Resonance.MemoryIntensity:0.##} " +
+                $"node:{TissueConfig.Resonance.NodeAfterglowLifetime:0.##}");
+        }
+
+        private void ShowTissuePulseUsage()
+        {
+            SetConsoleMessage("Uso: /tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>");
+            AddConsoleHistory("Use /tissuepulse para status ou /tissuepulse reset para restaurar");
         }
 
         private bool TryExecuteDebugCommand(string command)

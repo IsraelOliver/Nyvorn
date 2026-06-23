@@ -125,22 +125,91 @@ namespace Nyvorn.Source.World.Tissue
 
         public static class Resonance
         {
+            private const float DefaultPulseSpeed = 320f;
+            private const float DefaultPulseTrailLength = 100f;
+            private const float DefaultPulseFadePower = 1.4f;
+            private const float DefaultMemoryLifetime = 2.8f;
+            private const float DefaultMemoryFadeCurve = 1.35f;
+            private const float DefaultMemoryIntensity = 0.82f;
+            private const float DefaultNodeAfterglowLifetime = 3.2f;
+
             public const float NodeSearchDistance = 300f;
             public const float DefaultMaxPropagationDistance = 720f;
             public const float MinimumPropagationDistance = 320f;
             public const float ViewportDistanceScale = 1.25f;
-            public const float PulseSpeed = 320f;
-            public const float PulseTrailLength = 100f;
-            public const float PulseFadePower = 1.4f;
-            public const float MemoryLifetime = 2.8f;
-            public const float MemoryFadeCurve = 1.35f;
-            public const float MemoryIntensity = 0.82f;
             public const float NodePulseDuration = 0.58f;
-            public const float NodeAfterglowLifetime = 3.2f;
             public const float CoverageAtFullStrength = 0.18f;
             public const float MinimumCoverageInfluence = 0.30f;
             public const float MinimumResponseStrength = 0.008f;
             public const float VisualGain = 2.8f;
+
+            public static float PulseSpeed { get; private set; } = DefaultPulseSpeed;
+            public static float PulseTrailLength { get; private set; } = DefaultPulseTrailLength;
+            public static float PulseFadePower { get; private set; } = DefaultPulseFadePower;
+            public static float MemoryLifetime { get; private set; } = DefaultMemoryLifetime;
+            public static float MemoryFadeCurve { get; private set; } = DefaultMemoryFadeCurve;
+            public static float MemoryIntensity { get; private set; } = DefaultMemoryIntensity;
+            public static float NodeAfterglowLifetime { get; private set; } = DefaultNodeAfterglowLifetime;
+
+            public static float SetPulseSpeed(float value)
+            {
+                PulseSpeed = ClampTuning(value, 40f, 1200f, DefaultPulseSpeed);
+                return PulseSpeed;
+            }
+
+            public static float SetPulseTrailLength(float value)
+            {
+                PulseTrailLength = ClampTuning(value, 8f, 600f, DefaultPulseTrailLength);
+                return PulseTrailLength;
+            }
+
+            public static float SetPulseFadePower(float value)
+            {
+                PulseFadePower = ClampTuning(value, 0.1f, 5f, DefaultPulseFadePower);
+                return PulseFadePower;
+            }
+
+            public static float SetMemoryLifetime(float value)
+            {
+                MemoryLifetime = ClampTuning(value, 0f, 15f, DefaultMemoryLifetime);
+                return MemoryLifetime;
+            }
+
+            public static float SetMemoryFadeCurve(float value)
+            {
+                MemoryFadeCurve = ClampTuning(value, 0.1f, 5f, DefaultMemoryFadeCurve);
+                return MemoryFadeCurve;
+            }
+
+            public static float SetMemoryIntensity(float value)
+            {
+                MemoryIntensity = ClampTuning(value, 0f, 1.5f, DefaultMemoryIntensity);
+                return MemoryIntensity;
+            }
+
+            public static float SetNodeAfterglowLifetime(float value)
+            {
+                NodeAfterglowLifetime = ClampTuning(value, 0f, 15f, DefaultNodeAfterglowLifetime);
+                return NodeAfterglowLifetime;
+            }
+
+            public static void ResetTuning()
+            {
+                PulseSpeed = DefaultPulseSpeed;
+                PulseTrailLength = DefaultPulseTrailLength;
+                PulseFadePower = DefaultPulseFadePower;
+                MemoryLifetime = DefaultMemoryLifetime;
+                MemoryFadeCurve = DefaultMemoryFadeCurve;
+                MemoryIntensity = DefaultMemoryIntensity;
+                NodeAfterglowLifetime = DefaultNodeAfterglowLifetime;
+            }
+
+            private static float ClampTuning(float value, float minimum, float maximum, float fallback)
+            {
+                return float.IsNaN(value) || float.IsInfinity(value)
+                    ? fallback
+                    : Math.Clamp(value, minimum, maximum);
+            }
         }
 
         public static class WorldVisual

@@ -36,6 +36,7 @@ namespace Nyvorn.Source.Game.States
 
         public void InitializeRuntimeState()
         {
+            TissueConfig.Resonance.ResetTuning();
             ambientTissuePresenceTimer = AmbientTissueSampleInterval;
             ambientTissuePresenceCache = 0f;
             EnvironmentSensor.Initialize(Player.Position);
