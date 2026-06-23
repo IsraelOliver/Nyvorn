@@ -301,6 +301,31 @@ static void ValidateTissueQueryApi()
     Require(field.OverrideCount == overridesBeforeQueries, "read-only queries changed field overrides");
     Require(field.HasUnsavedChanges == dirtyBeforeQueries, "read-only queries changed field dirty state");
 
+    Vector2 sensorPosition = new(0f, 8f);
+    TissueEnvironmentSensor environmentSensor = new(map, queries);
+    environmentSensor.Initialize(sensorPosition);
+    TissueEnvironmentState environment = environmentSensor.CurrentState;
+    Require(environment.HasTissue, "environment sensor missed local tissue");
+    Require(Approximately(environment.Coverage, 3f / (width * height)), "environment coverage mismatch");
+    Require(Approximately(environment.Presence, 0.6f), "environment presence mismatch");
+    Require(Approximately(environment.Vitality, 0.6f), "environment vitality mismatch");
+    Require(Approximately(environment.DistanceToNearestNode, 1f), "environment nearest-node distance mismatch");
+    Require(environment.Revision == map.TissueRevision, "environment revision mismatch");
+
+    TissueResonanceController resonance = new(queries, environmentSensor);
+    int revisionBeforeResonance = field.Revision;
+    Require(resonance.Trigger(sensorPosition), "healthy local tissue did not trigger resonance");
+    TissueResonanceState healthyResonance = resonance.CurrentState;
+    Require(healthyResonance.IsActive && healthyResonance.Node.Id == 7, "resonance selected the wrong node");
+    Require(healthyResonance.ResponseStrength > 0f && healthyResonance.VisualStrength > 0f, "resonance strength was not calculated");
+    Require(field.Revision == revisionBeforeResonance, "resonance mutated the tissue field");
+    resonance.Update(TissueConfig.Resonance.PulseDuration * 0.5f);
+    Require(
+        resonance.CurrentState.IsActive && Approximately(resonance.CurrentState.PulseProgress, 0.5f),
+        "resonance pulse did not advance");
+    resonance.Update(TissueConfig.Resonance.Duration);
+    Require(!resonance.CurrentState.IsActive, "resonance did not expire");
+
     Require(map.ClearTissueAt(4, 1), "query fixture tombstone was rejected");
     Require(!queries.HasTissue(4, 1), "query API did not observe a live tombstone");
     int tombstoneRevision = field.Revision;
@@ -309,6 +334,20 @@ static void ValidateTissueQueryApi()
     _ = queries.GetState(4, 1);
     Require(field.Revision == tombstoneRevision && field.OverrideCount == tombstoneOverrides && field.HasUnsavedChanges,
         "querying a tombstone changed mutable field state");
+
+    environmentSensor.Update(0f, sensorPosition);
+    Require(environmentSensor.CurrentState.Revision == map.TissueRevision, "sensor did not react immediately to tissue revision");
+    Require(resonance.Trigger(sensorPosition), "damaged local tissue removed all resonance");
+    Require(
+        resonance.CurrentState.ResponseStrength < healthyResonance.ResponseStrength,
+        "destroying local tissue did not weaken resonance");
+
+    Require(map.ClearTissueAt(0, 1), "second query fixture tombstone was rejected");
+    Require(map.ClearTissueAt(1, 2), "third query fixture tombstone was rejected");
+    environmentSensor.Update(0f, sensorPosition);
+    Require(!environmentSensor.CurrentState.HasTissue, "sensor retained tissue after local destruction");
+    Require(!resonance.Trigger(sensorPosition), "destroyed local tissue still triggered resonance");
+    Require(!resonance.CurrentState.IsActive, "failed resonance retained stale visual state");
 }
 
 static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)

@@ -121,6 +121,145 @@ namespace Nyvorn.Source.World.Tissue
             }
         }
 
+        public void DrawResonanceHalo(
+            SpriteBatch spriteBatch,
+            TissueNetwork network,
+            Rectangle visibleBounds,
+            TissueResonanceState resonance)
+        {
+            if (network == null || !resonance.IsActive || resonance.VisualStrength <= 0.001f)
+                return;
+
+            Rectangle padded = visibleBounds;
+            padded.Inflate(TissueConfig.ResonanceVisual.CullingPadding, TissueConfig.ResonanceVisual.CullingPadding);
+            network.CollectVisibleBranches(padded, visibleBranches);
+            for (int i = 0; i < visibleBranches.Count; i++)
+            {
+                TissueBranch branch = visibleBranches[i];
+                if (!IsConnectedToNode(branch, resonance.Node.Id))
+                    continue;
+
+                float kindScale = branch.Kind == TissueBranch.TissueBranchKind.Micro
+                    ? TissueConfig.ResonanceVisual.MicroThicknessScale
+                    : 1f;
+                DrawResonancePath(
+                    spriteBatch,
+                    branch,
+                    resonance.Node.Id,
+                    TissueConfig.ResonanceVisual.HaloColor *
+                        (TissueConfig.ResonanceVisual.HaloAlpha * resonance.VisualStrength),
+                    MathF.Max(1f, branch.Thickness * TissueConfig.ResonanceVisual.HaloThicknessScale * kindScale),
+                    resonance.PulseProgress);
+            }
+
+            if (!padded.Contains(resonance.Node.Position))
+                return;
+
+            float radius = GetResonanceNodeRadius(resonance);
+            DrawDisc(
+                spriteBatch,
+                resonance.Node.Position,
+                radius * TissueConfig.ResonanceVisual.NodeOuterScale,
+                TissueConfig.ResonanceVisual.HaloColor *
+                    (TissueConfig.ResonanceVisual.NodeHaloAlpha * resonance.VisualStrength));
+        }
+
+        public void DrawResonanceCore(
+            SpriteBatch spriteBatch,
+            TissueNetwork network,
+            Rectangle visibleBounds,
+            TissueResonanceState resonance)
+        {
+            if (network == null || !resonance.IsActive || resonance.VisualStrength <= 0.001f)
+                return;
+
+            Rectangle padded = visibleBounds;
+            padded.Inflate(TissueConfig.ResonanceVisual.CullingPadding, TissueConfig.ResonanceVisual.CullingPadding);
+            network.CollectVisibleBranches(padded, visibleBranches);
+            for (int i = 0; i < visibleBranches.Count; i++)
+            {
+                TissueBranch branch = visibleBranches[i];
+                if (!IsConnectedToNode(branch, resonance.Node.Id))
+                    continue;
+
+                float kindScale = branch.Kind == TissueBranch.TissueBranchKind.Micro
+                    ? TissueConfig.ResonanceVisual.MicroThicknessScale
+                    : 1f;
+                DrawResonancePath(
+                    spriteBatch,
+                    branch,
+                    resonance.Node.Id,
+                    TissueConfig.ResonanceVisual.PulseColor *
+                        (TissueConfig.ResonanceVisual.CoreAlpha * resonance.VisualStrength),
+                    MathF.Max(1f, branch.Thickness * TissueConfig.ResonanceVisual.CoreThicknessScale * kindScale),
+                    resonance.PulseProgress);
+            }
+
+            if (!padded.Contains(resonance.Node.Position))
+                return;
+
+            float radius = GetResonanceNodeRadius(resonance);
+            DrawDisc(
+                spriteBatch,
+                resonance.Node.Position,
+                radius * TissueConfig.ResonanceVisual.NodeInnerScale,
+                TissueConfig.ResonanceVisual.PulseColor *
+                    (TissueConfig.ResonanceVisual.NodeCoreAlpha * resonance.VisualStrength));
+            DrawDisc(
+                spriteBatch,
+                resonance.Node.Position,
+                MathF.Max(1f, radius * 0.46f),
+                TissueConfig.ResonanceVisual.CoreColor * resonance.VisualStrength);
+        }
+
+        private void DrawResonancePath(
+            SpriteBatch spriteBatch,
+            TissueBranch branch,
+            int nodeId,
+            Color color,
+            float thickness,
+            float pulseProgress)
+        {
+            if (branch.Points == null || branch.Points.Count < 2 || color.A == 0)
+                return;
+
+            int segmentCount = branch.Points.Count - 1;
+            bool reverse = branch.EndNodeId == nodeId && branch.StartNodeId != nodeId;
+            float head = MathHelper.Clamp(pulseProgress, 0f, 1f) * TissueConfig.ResonanceVisual.MaximumBranchTravel;
+            float tail = MathF.Max(0f, head - TissueConfig.ResonanceVisual.PulseTailLength);
+            float pulseCenter = (head + tail) * 0.5f;
+            float halfLength = MathF.Max(0.0001f, (head - tail) * 0.5f);
+
+            for (int logicalIndex = 0; logicalIndex < segmentCount; logicalIndex++)
+            {
+                float position = (logicalIndex + 0.5f) / segmentCount;
+                if (position < tail || position > head)
+                    continue;
+
+                int pointIndex = reverse
+                    ? segmentCount - logicalIndex - 1
+                    : logicalIndex;
+                float centerDistance = MathF.Abs(position - pulseCenter) / halfLength;
+                float intensity = MathHelper.Lerp(0.45f, 1f, 1f - MathHelper.Clamp(centerDistance, 0f, 1f));
+                Vector2 start = reverse ? branch.Points[pointIndex + 1] : branch.Points[pointIndex];
+                Vector2 end = reverse ? branch.Points[pointIndex] : branch.Points[pointIndex + 1];
+                DrawLine(spriteBatch, start, end, color * intensity, thickness);
+            }
+        }
+
+        private static bool IsConnectedToNode(TissueBranch branch, int nodeId)
+        {
+            return branch.StartNodeId == nodeId || branch.EndNodeId == nodeId;
+        }
+
+        private static float GetResonanceNodeRadius(TissueResonanceState resonance)
+        {
+            float pulse = MathF.Sin(MathHelper.Clamp(resonance.PulseProgress, 0f, 1f) * MathF.PI);
+            float baseRadius = TissueConfig.ResonanceVisual.NodeRadiusBase +
+                (resonance.Node.Degree * TissueConfig.ResonanceVisual.NodeDegreeRadius);
+            return baseRadius * (1f + (pulse * TissueConfig.ResonanceVisual.NodePulseScale));
+        }
+
         private void DrawPath(SpriteBatch spriteBatch, TissueBranch branch, Color color, float baseThickness)
         {
             if (branch.Points == null || branch.Points.Count < 2 || color.A == 0)

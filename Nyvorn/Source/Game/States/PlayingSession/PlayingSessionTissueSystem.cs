@@ -22,6 +22,8 @@ namespace Nyvorn.Source.Game.States
         public required Player Player { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
         public required ITissueQueryService TissueQueries { get; init; }
+        public required TissueEnvironmentSensor EnvironmentSensor { get; init; }
+        public required TissueResonanceController ResonanceController { get; init; }
         public required TissueRevealController TissueRevealController { get; init; }
         public required TissueFieldDebugRenderer TissueDebugRenderer { get; init; }
         public required HashSet<int> ActivatedTissueHubKeys { get; init; }
@@ -29,22 +31,29 @@ namespace Nyvorn.Source.Game.States
         public bool IsTissueRadarActive => TissueRevealController.IsActive;
         public bool IsPlayerOnActivatedTissueHub => false;
         public bool CanUseTissueFastTravel => false;
+        public TissueEnvironmentState EnvironmentState => EnvironmentSensor.CurrentState;
+        public TissueResonanceState ResonanceState => ResonanceController.CurrentState;
 
         public void InitializeRuntimeState()
         {
             ambientTissuePresenceTimer = AmbientTissueSampleInterval;
             ambientTissuePresenceCache = 0f;
+            EnvironmentSensor.Initialize(Player.Position);
+            ResonanceController.Clear();
         }
 
         public void Update(float dt, InputState input)
         {
             ambientTissuePresenceTimer -= dt;
+            EnvironmentSensor.Update(dt, Player.Position);
             TissueRevealController.Update(dt, Player.Position);
+            ResonanceController.Update(dt);
         }
 
         public void TriggerReveal()
         {
             TissueRevealController.Trigger();
+            ResonanceController.Trigger(Player.Position);
         }
 
         public void EnsureCurrentTissueHubActivated()

@@ -116,6 +116,25 @@ namespace Nyvorn.Source.World.Tissue
             public const float NodeFlow = 0.88f;
         }
 
+        public static class EnvironmentSensor
+        {
+            public const int SampleDiameterTiles = 25;
+            public const float SampleInterval = 0.25f;
+            public const float NearestNodeDistance = 300f;
+        }
+
+        public static class Resonance
+        {
+            public const float NodeSearchDistance = 300f;
+            public const float Duration = 2.4f;
+            public const float PulseDuration = 0.78f;
+            public const float FadePower = 0.72f;
+            public const float CoverageAtFullStrength = 0.18f;
+            public const float MinimumCoverageInfluence = 0.30f;
+            public const float MinimumResponseStrength = 0.008f;
+            public const float VisualGain = 2.8f;
+        }
+
         public static class WorldVisual
         {
             public static readonly Color HaloViolet = new(100, 28, 190);
@@ -213,6 +232,28 @@ namespace Nyvorn.Source.World.Tissue
             public const float MaximumAlpha = 0.88f;
             public const float MemoryColorWeight = 0.42f;
             public const int TileInset = 1;
+        }
+
+        public static class ResonanceVisual
+        {
+            public static readonly Color HaloColor = new(178, 58, 255);
+            public static readonly Color PulseColor = new(255, 118, 210);
+            public static readonly Color CoreColor = new(255, 214, 100);
+            public const int CullingPadding = 72;
+            public const float MaximumBranchTravel = 0.58f;
+            public const float PulseTailLength = 0.20f;
+            public const float MicroThicknessScale = 0.62f;
+            public const float HaloThicknessScale = 7.5f;
+            public const float CoreThicknessScale = 1.7f;
+            public const float HaloAlpha = 0.42f;
+            public const float CoreAlpha = 0.92f;
+            public const float NodeRadiusBase = 5f;
+            public const float NodeDegreeRadius = 0.8f;
+            public const float NodeOuterScale = 3.2f;
+            public const float NodeInnerScale = 1.35f;
+            public const float NodePulseScale = 0.65f;
+            public const float NodeHaloAlpha = 0.34f;
+            public const float NodeCoreAlpha = 0.96f;
         }
     }
 }

@@ -575,6 +575,10 @@ namespace Nyvorn.Source.Game.States
                 build.WorldMap,
                 build.WorldMap.TissueField,
                 tissueNetwork);
+            TissueEnvironmentSensor tissueEnvironmentSensor = new(build.WorldMap, tissueQueries);
+            TissueResonanceController tissueResonanceController = new(
+                tissueQueries,
+                tissueEnvironmentSensor);
             HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
             PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
             {
@@ -582,6 +586,8 @@ namespace Nyvorn.Source.Game.States
                 Player = player,
                 TissueNetwork = tissueNetwork,
                 TissueQueries = tissueQueries,
+                EnvironmentSensor = tissueEnvironmentSensor,
+                ResonanceController = tissueResonanceController,
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys

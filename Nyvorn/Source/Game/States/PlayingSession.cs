@@ -73,6 +73,8 @@ namespace Nyvorn.Source.Game.States
         public TissueNetwork TissueNetwork => TissueSystem.TissueNetwork;
         public TissueField TissueField => WorldMap.TissueField;
         public TissueGenerationStats CosmicTissueStats => CosmicTissueGeneration.Stats;
+        public TissueEnvironmentState TissueEnvironment => TissueSystem.EnvironmentState;
+        public TissueResonanceState TissueResonance => TissueSystem.ResonanceState;
         public IReadOnlySet<int> ActivatedTissueHubKeys => TissueSystem.ActivatedTissueHubKeys;
         public bool IsConstructionMode { get; private set; }
         public bool TissueVisualEnabled { get; private set; }
@@ -253,12 +255,26 @@ namespace Nyvorn.Source.Game.States
         {
             if (TissueVisualEnabled)
                 ViewCoordinator.DrawTissueHalo(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+
+            ViewCoordinator.DrawTissueResonanceHalo(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                TissueSystem.ResonanceState);
         }
 
         public void DrawTissueCore(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             if (TissueVisualEnabled)
                 ViewCoordinator.DrawTissueCore(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+
+            ViewCoordinator.DrawTissueResonanceCore(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                TissueSystem.ResonanceState);
         }
 
         public void DrawTissueFieldOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)

@@ -196,6 +196,34 @@ namespace Nyvorn.Source.Game.States
             TissueNetworkRenderer.DrawCore(spriteBatch, TissueNetwork, GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX));
         }
 
+        public void DrawTissueResonanceHalo(
+            SpriteBatch spriteBatch,
+            int screenWidth,
+            int screenHeight,
+            float worldOffsetX,
+            TissueResonanceState resonance)
+        {
+            TissueNetworkRenderer.DrawResonanceHalo(
+                spriteBatch,
+                TissueNetwork,
+                GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX),
+                resonance);
+        }
+
+        public void DrawTissueResonanceCore(
+            SpriteBatch spriteBatch,
+            int screenWidth,
+            int screenHeight,
+            float worldOffsetX,
+            TissueResonanceState resonance)
+        {
+            TissueNetworkRenderer.DrawResonanceCore(
+                spriteBatch,
+                TissueNetwork,
+                GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX),
+                resonance);
+        }
+
         public void DrawTissueFieldOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(
