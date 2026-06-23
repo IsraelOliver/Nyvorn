@@ -1,4 +1,5 @@
 using System;
+using Nyvorn.Source.World.Tissue;
 
 namespace Nyvorn.Source.World.Generation.Passes
 {
@@ -11,22 +12,28 @@ namespace Nyvorn.Source.World.Generation.Passes
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
-            context.ProgressReporter?.Begin(Name, "Preparando campo biologico do tecido");
+            context.ProgressReporter?.Begin(Name, "Tecendo rede cosmica subterranea");
 
-            TissueField field = new(context.WorldMap.Width, context.WorldMap.Height);
-            context.TissueField = field;
-            context.WorldMap.SetTissueField(field);
-            context.WorldMap.RebuildTissueAnalysis();
+            TissueGenerationResult generation = new TissueGenerator(context.Config.Seed).Generate(context.WorldMap);
+            context.TissueField = generation.RasterizedField;
+            context.TissueGeneration = generation;
+            context.WorldMap.SetTissueField(generation.RasterizedField);
 
-            context.DebugStats["Tissue.GenerationMode"] = "NeutralStub";
-            context.DebugStats["Tissue.ActiveTiles"] = "0";
+            TissueGenerationStats stats = generation.Stats;
+            context.DebugStats["Tissue.GenerationMode"] = "CosmicWeb";
+            context.DebugStats["Tissue.Points"] = stats.PointCount.ToString();
+            context.DebugStats["Tissue.Edges"] = stats.EdgeCount.ToString();
+            context.DebugStats["Tissue.MicroFilaments"] = stats.MicroFilamentCount.ToString();
+            context.DebugStats["Tissue.Nests"] = stats.NestCount.ToString();
+            context.DebugStats["Tissue.RasterizedTiles"] = stats.RasterizedTileCount.ToString();
+            context.DebugStats["Tissue.Degree"] = $"{stats.MinDegree}/{stats.AverageDegree:0.00}/{stats.MaxDegree}";
+            context.DebugStats["Tissue.DominantComponent"] = stats.DominantComponentRatio.ToString("0.000");
+            context.DebugStats["Tissue.VerticalPoints"] = $"{stats.UpperPointCount}/{stats.MiddlePointCount}/{stats.DeepPointCount}";
+            context.DebugStats["Tissue.Hash"] = stats.DeterministicHash.ToString("X16");
             context.DebugStats["Tissue.Schema"] = "Presence,Vitality,Corruption,MemoryDensity,Flow";
 
-            // Arquitetura intencional: a geracao procedural antiga baseada em noise,
-            // threshold global e bool foi removida. O proximo gerador deve preencher
-            // TissueCellState por regiao/bioma sem depender de distribuicao uniforme.
-            context.ProgressReporter?.Report(Name, 1f, "Campo biologico neutro preparado");
-            context.ProgressReporter?.Complete(Name, "Tecido pronto para expansao futura");
+            context.ProgressReporter?.Report(Name, 1f, "Rede cosmica consolidada");
+            context.ProgressReporter?.Complete(Name, "Tecido cosmico preparado");
         }
     }
 }

@@ -24,6 +24,10 @@ namespace Nyvorn.Source.Game.States
 {
     public sealed class PlayingSession
     {
+        private const int MaxSavedConsoleCommands = 100;
+        private int consoleCommandHistoryRevision;
+        private int persistedConsoleCommandHistoryRevision;
+
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required SessionRuntimeContext RuntimeContext { get; init; }
         public SandSystem SandSystem { get; private set; }
@@ -32,6 +36,8 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionBlockInteractionSystem BlockInteractionSystem { get; init; }
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required PlayingSessionTissueSystem TissueSystem { get; init; }
+        public required ITissueQueryService TissueQueries { get; init; }
+        public required TissueGenerationResult CosmicTissueGeneration { get; init; }
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
@@ -41,6 +47,7 @@ namespace Nyvorn.Source.Game.States
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
         public required PlayerPowerSystem PowerSystem { get; init; }
+        public required List<string> ConsoleCommandHistory { get; init; }
         public int SelectedHotbarIndex => InputRouter.SelectedHotbarIndex;
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => ViewCoordinator.ActiveSimulationChunks;
         public int LastRandomTileSampleCount => WorldTickCoordinator.LastRandomTileSampleCount;
@@ -51,7 +58,10 @@ namespace Nyvorn.Source.Game.States
         public long MediumTickCount => WorldTickCoordinator.MediumTickCount;
         public long SlowTickCount => WorldTickCoordinator.SlowTickCount;
         public WorldMap WorldMap => RuntimeContext.WorldMap;
-        public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges || WorkbenchRuntimeSystem.HasUnsavedChanges || DoorRuntimeSystem.HasUnsavedChanges;
+        public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges ||
+                                              WorkbenchRuntimeSystem.HasUnsavedChanges ||
+                                              DoorRuntimeSystem.HasUnsavedChanges ||
+                                              consoleCommandHistoryRevision != persistedConsoleCommandHistoryRevision;
         public Player Player => RuntimeContext.Player;
         public List<Enemy> Enemies => RuntimeContext.Enemies;
         public List<WorldItem> WorldItems => RuntimeContext.WorldItems;
@@ -61,12 +71,42 @@ namespace Nyvorn.Source.Game.States
         public HudRenderer HudRenderer => ViewCoordinator.HudRenderer;
         public WorldMinimapRenderer WorldMinimapRenderer => ViewCoordinator.WorldMinimapRenderer;
         public TissueNetwork TissueNetwork => TissueSystem.TissueNetwork;
+        public TissueField TissueField => WorldMap.TissueField;
+        public TissueGenerationStats CosmicTissueStats => CosmicTissueGeneration.Stats;
+        public TissueEnvironmentState TissueEnvironment => TissueSystem.EnvironmentState;
+        public TissueResonanceState TissueResonance => TissueSystem.ResonanceState;
         public IReadOnlySet<int> ActivatedTissueHubKeys => TissueSystem.ActivatedTissueHubKeys;
         public bool IsConstructionMode { get; private set; }
+        public bool TissueVisualEnabled { get; private set; }
+        public bool TissueFieldVisualEnabled { get; private set; }
+        public bool DebugFlyEnabled => Player.DebugFlyEnabled;
 
         public void InitializeRuntimeState()
         {
             TissueSystem.InitializeRuntimeState();
+        }
+
+        public void AddConsoleCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command))
+                return;
+
+            string normalized = command.Trim();
+            if (ConsoleCommandHistory.Count > 0 &&
+                string.Equals(ConsoleCommandHistory[^1], normalized, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            ConsoleCommandHistory.Add(normalized);
+            while (ConsoleCommandHistory.Count > MaxSavedConsoleCommands)
+                ConsoleCommandHistory.RemoveAt(0);
+            consoleCommandHistoryRevision++;
+        }
+
+        public void MarkConsoleCommandHistoryPersisted()
+        {
+            persistedConsoleCommandHistoryRevision = consoleCommandHistoryRevision;
         }
 
         public void SetWorldTickTimeScale(float timeScale)
@@ -94,6 +134,27 @@ namespace Nyvorn.Source.Game.States
             IsConstructionMode = !IsConstructionMode;
         }
 
+        public void SetTissueVisualEnabled(bool enabled)
+        {
+            TissueVisualEnabled = enabled;
+        }
+
+        public void SetTissueFieldVisualEnabled(bool enabled)
+        {
+            TissueFieldVisualEnabled = enabled;
+        }
+
+        public void SetDebugFly(bool enabled)
+        {
+            Player.SetDebugFly(enabled);
+        }
+
+        public bool ToggleDebugFly()
+        {
+            SetDebugFly(!DebugFlyEnabled);
+            return DebugFlyEnabled;
+        }
+
         public void RespawnPlayerAtWorldCenter()
         {
             int centerTileX = WorldMap.Width / 2;
@@ -114,6 +175,9 @@ namespace Nyvorn.Source.Game.States
         public void UpdateSimulationViewport(int screenWidth, int screenHeight)
         {
             ViewCoordinator.UpdateSimulationViewport(screenWidth, screenHeight);
+            TissueSystem.SetPropagationViewport(
+                screenWidth / Camera.Zoom,
+                screenHeight / Camera.Zoom);
         }
 
         private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)
@@ -188,6 +252,38 @@ namespace Nyvorn.Source.Game.States
         public void DrawEntities(SpriteBatch spriteBatch)
         {
             ViewCoordinator.DrawEntities(spriteBatch);
+        }
+
+        public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (TissueVisualEnabled)
+                ViewCoordinator.DrawTissueHalo(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+
+            ViewCoordinator.DrawTissueResonanceHalo(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                TissueSystem.ResonanceState);
+        }
+
+        public void DrawTissueCore(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (TissueVisualEnabled)
+                ViewCoordinator.DrawTissueCore(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+
+            ViewCoordinator.DrawTissueResonanceCore(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                TissueSystem.ResonanceState);
+        }
+
+        public void DrawTissueFieldOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (TissueFieldVisualEnabled)
+                ViewCoordinator.DrawTissueFieldOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
