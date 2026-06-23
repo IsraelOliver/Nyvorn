@@ -195,10 +195,11 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && input.CyclePowerPressed)
                 session.PowerSystem.CycleNextPower();
 
+            session.UpdateSimulationViewport(screenW, screenH);
+
             if (!handledConsoleThisFrame && !session.IsConstructionMode && input.ActivePowerJustPressed)
                 session.PowerSystem.TryActivateCurrentPower();
 
-            session.UpdateSimulationViewport(screenW, screenH);
             session.Update(dt, input, mouseWorld);
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)

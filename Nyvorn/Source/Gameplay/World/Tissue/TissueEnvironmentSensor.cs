@@ -56,7 +56,7 @@ namespace Nyvorn.Source.World.Tissue
             TissueAreaSample sample = tissueQueries.SampleArea(sampleBounds);
 
             float distanceToNearestNode = float.PositiveInfinity;
-            if (tissueQueries.TryFindNearestNode(
+            if (tissueQueries.TryFindNearestConnectedNode(
                     worldPosition,
                     TissueConfig.EnvironmentSensor.NearestNodeDistance,
                     out TissueNodeInfo nearestNode))

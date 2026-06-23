@@ -244,13 +244,27 @@ static void ValidateTissueQueryApi()
         new TissueNode(7, new Vector2(39f, 8f), true, 0.9f, 5, 0.7f),
         new TissueNode(9, new Vector2(10f, 8f), false, 0.4f, 2, 0.1f),
         new TissueNode(3, new Vector2(36f, 16f), true, 0.8f, 4, 0.5f),
-        new TissueNode(8, new Vector2(4f, 16f), true, 0.8f, 4, 0.5f)
+        new TissueNode(8, new Vector2(4f, 16f), true, 0.8f, 4, 0.5f),
+        new TissueNode(6, new Vector2(1f, 8f), false, 0.3f, 0, 0f)
+    ];
+    TissueBranch[] branches =
+    [
+        new TissueBranch(100, 7, 9, true, 1f, 0.9f, TissueBranch.TissueBranchKind.Main,
+            [new Vector2(39f, 8f), new Vector2(45f, 8f), new Vector2(50f, 8f)]),
+        new TissueBranch(101, 9, 8, true, 1f, 0.8f, TissueBranch.TissueBranchKind.Main,
+            [new Vector2(10f, 8f), new Vector2(4f, 16f)]),
+        new TissueBranch(102, 9, 3, false, 1f, 0.7f, TissueBranch.TissueBranchKind.Main,
+            [new Vector2(10f, 8f), new Vector2(-4f, 16f)]),
+        new TissueBranch(103, 8, 3, false, 1f, 0.6f, TissueBranch.TissueBranchKind.Main,
+            [new Vector2(4f, 16f), new Vector2(-4f, 16f)]),
+        new TissueBranch(104, 8, -1, false, 0.5f, 0.4f, TissueBranch.TissueBranchKind.Micro,
+            [new Vector2(4f, 16f), new Vector2(4f, 21f)])
     ];
     TissueNetwork network = new(
         1337,
         new Rectangle(0, 0, map.PixelWidth, map.Height * map.TileSize),
         nodes,
-        Array.Empty<TissueBranch>());
+        branches);
     ITissueQueryService queries = new TissueQueryService(map, field, network);
 
     Require(StatesEqual(queries.GetState(-1, 1), leftEdge), "tile query did not wrap negative X");
@@ -284,12 +298,36 @@ static void ValidateTissueQueryApi()
     Require(!queries.IsDenseRegion(new Rectangle(0, height, 2, 2), 0f), "empty clipped region was reported as dense");
 
     Require(queries.TryFindNearestNode(new Vector2(1f, 8f), 3f, out TissueNodeInfo wrappedNode), "seam-aware nearest node was not found");
-    Require(wrappedNode.Id == 7 && wrappedNode.Degree == 5 && wrappedNode.IsPrimary, "nearest node DTO mismatch");
+    Require(wrappedNode.Id == 6 && wrappedNode.Degree == 0, "general nearest node DTO mismatch");
+    Require(
+        queries.TryFindNearestConnectedNode(new Vector2(1f, 8f), 3f, out TissueNodeInfo connectedNode) &&
+        connectedNode.Id == 7 && connectedNode.Degree == 5 && connectedNode.IsPrimary,
+        "connected nearest-node query selected an isolated node");
     Require(queries.TryFindNearestNode(new Vector2(0f, 16f), 4f, out TissueNodeInfo tiedNode), "tied nearest node was not found");
     Require(tiedNode.Id == 3, "nearest node tie was not resolved by ID");
     Require(!queries.TryFindNearestNode(new Vector2(20f, 8f), 5f, out _), "nearest node ignored maximum distance");
     Require(!queries.TryFindNearestNode(new Vector2(float.NaN, 8f), 5f, out _), "nearest node accepted invalid position");
     Require(!queries.TryFindNearestNode(new Vector2(1f, 8f), 0f, out _), "nearest node accepted zero distance");
+    Require(!queries.TryFindNearestConnectedNode(new Vector2(20f, 8f), 5f, out _), "connected nearest node ignored maximum distance");
+
+    Require(queries.TryBuildPropagation(7, 25f, out TissuePropagationMap propagation), "Dijkstra propagation was not built");
+    Require(propagation.Nodes.Count == 3, "Dijkstra included a node beyond maximum distance");
+    Require(propagation.Branches.Count == 5, "Dijkstra did not preserve reachable branches and microfilaments");
+    Require(propagation.TryGetNode(7, out TissueNodePropagation originArrival) && Approximately(originArrival.ArrivalDistance, 0f),
+        "origin node arrival distance mismatch");
+    Require(propagation.TryGetNode(9, out TissueNodePropagation secondArrival) && Approximately(secondArrival.ArrivalDistance, 11f),
+        "second node arrival distance mismatch");
+    Require(propagation.TryGetNode(8, out TissueNodePropagation thirdArrival) && Approximately(thirdArrival.ArrivalDistance, 21f),
+        "third node arrival distance mismatch");
+    Require(!propagation.TryGetNode(3, out _), "Dijkstra crossed the propagation distance limit");
+    Require(propagation.TryGetBranch(100, out TissueBranchPropagation firstBranch) &&
+        firstBranch.FromNodeId == 7 && !firstBranch.Reverse && Approximately(firstBranch.StartDistance, 0f),
+        "first branch propagation direction mismatch");
+    Require(propagation.TryGetBranch(104, out TissueBranchPropagation microBranch) &&
+        microBranch.FromNodeId == 8 && Approximately(microBranch.StartDistance, 21f),
+        "microfilament did not inherit its node arrival");
+    Require(!queries.TryBuildPropagation(999, 25f, out _), "propagation accepted an unknown origin");
+    Require(!queries.TryBuildPropagation(7, float.NaN, out _), "propagation accepted an invalid distance");
 
     int revisionBeforeQueries = field.Revision;
     int overridesBeforeQueries = field.OverrideCount;
@@ -297,6 +335,8 @@ static void ValidateTissueQueryApi()
     _ = queries.GetState(4, 1);
     _ = queries.SampleArea(new Rectangle(0, 0, width, height));
     _ = queries.TryFindNearestNode(new Vector2(1f, 8f), 3f, out _);
+    _ = queries.TryFindNearestConnectedNode(new Vector2(1f, 8f), 3f, out _);
+    _ = queries.TryBuildPropagation(7, 25f, out _);
     Require(field.Revision == revisionBeforeQueries, "read-only queries changed field revision");
     Require(field.OverrideCount == overridesBeforeQueries, "read-only queries changed field overrides");
     Require(field.HasUnsavedChanges == dirtyBeforeQueries, "read-only queries changed field dirty state");
@@ -313,17 +353,27 @@ static void ValidateTissueQueryApi()
     Require(environment.Revision == map.TissueRevision, "environment revision mismatch");
 
     TissueResonanceController resonance = new(queries, environmentSensor);
+    resonance.SetViewport(100f, 100f);
     int revisionBeforeResonance = field.Revision;
     Require(resonance.Trigger(sensorPosition), "healthy local tissue did not trigger resonance");
     TissueResonanceState healthyResonance = resonance.CurrentState;
-    Require(healthyResonance.IsActive && healthyResonance.Node.Id == 7, "resonance selected the wrong node");
+    Require(healthyResonance.IsActive && healthyResonance.OriginNode.Id == 7, "resonance selected the wrong node");
+    Require(healthyResonance.Propagation != null && healthyResonance.Propagation.Nodes.Count == 4,
+        "resonance did not retain the propagation map");
+    Require(Approximately(healthyResonance.MaximumDistance, TissueConfig.Resonance.MinimumPropagationDistance),
+        "resonance did not derive its range from the viewport");
     Require(healthyResonance.ResponseStrength > 0f && healthyResonance.VisualStrength > 0f, "resonance strength was not calculated");
     Require(field.Revision == revisionBeforeResonance, "resonance mutated the tissue field");
-    resonance.Update(TissueConfig.Resonance.PulseDuration * 0.5f);
+    resonance.SetViewport(1000f, 1000f);
+    resonance.Update(0.1f);
     Require(
-        resonance.CurrentState.IsActive && Approximately(resonance.CurrentState.PulseProgress, 0.5f),
-        "resonance pulse did not advance");
-    resonance.Update(TissueConfig.Resonance.Duration);
+        resonance.CurrentState.IsActive &&
+        Approximately(resonance.CurrentState.MaximumDistance, healthyResonance.MaximumDistance) &&
+        Approximately(resonance.CurrentState.PulseFront, TissueConfig.Resonance.PulseSpeed * 0.1f) &&
+        Approximately(resonance.CurrentState.PulseBack, (TissueConfig.Resonance.PulseSpeed * 0.1f) - TissueConfig.Resonance.TrailLength),
+        "resonance front and trail did not advance");
+    resonance.Update(
+        ((healthyResonance.MaximumDistance + TissueConfig.Resonance.TrailLength) / TissueConfig.Resonance.PulseSpeed) + 0.1f);
     Require(!resonance.CurrentState.IsActive, "resonance did not expire");
 
     Require(map.ClearTissueAt(4, 1), "query fixture tombstone was rejected");
@@ -363,6 +413,26 @@ static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult genera
     Require(
         queries.TryFindNearestNode(firstNode.Position, 1f, out TissueNodeInfo nearest) && nearest.Id == firstNode.Id,
         $"query API missed an exact generated node for {preset}/{seed}");
+    Require(
+        queries.TryBuildPropagation(firstNode.Id, 500f, out TissuePropagationMap propagation),
+        $"query API failed to build generated propagation for {preset}/{seed}");
+    Require(
+        propagation.TryGetNode(firstNode.Id, out TissueNodePropagation origin) && Approximately(origin.ArrivalDistance, 0f),
+        $"generated propagation lost its origin for {preset}/{seed}");
+    Require(
+        propagation.Nodes.Select(node => node.Node.Id).Distinct().Count() == propagation.Nodes.Count,
+        $"generated propagation contains duplicate nodes for {preset}/{seed}");
+    Require(
+        propagation.Branches.Select(branch => branch.BranchId).Distinct().Count() == propagation.Branches.Count,
+        $"generated propagation contains duplicate branches for {preset}/{seed}");
+    Require(
+        propagation.Nodes.All(node => node.ArrivalDistance <= propagation.MaximumDistance),
+        $"generated propagation exceeded its distance limit for {preset}/{seed}");
+    Require(
+        queries.TryBuildPropagation(firstNode.Id, 500f, out TissuePropagationMap repeatedPropagation) &&
+        propagation.Nodes.SequenceEqual(repeatedPropagation.Nodes) &&
+        propagation.Branches.SequenceEqual(repeatedPropagation.Branches),
+        $"generated propagation is not deterministic for {preset}/{seed}");
 
     int revision = generation.RasterizedField.Revision;
     int overrides = generation.RasterizedField.OverrideCount;

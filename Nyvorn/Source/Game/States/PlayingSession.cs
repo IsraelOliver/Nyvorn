@@ -175,6 +175,9 @@ namespace Nyvorn.Source.Game.States
         public void UpdateSimulationViewport(int screenWidth, int screenHeight)
         {
             ViewCoordinator.UpdateSimulationViewport(screenWidth, screenHeight);
+            TissueSystem.SetPropagationViewport(
+                screenWidth / Camera.Zoom,
+                screenHeight / Camera.Zoom);
         }
 
         private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)

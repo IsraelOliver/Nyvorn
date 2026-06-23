@@ -5,19 +5,25 @@ namespace Nyvorn.Source.World.Tissue
 {
     public readonly record struct TissueResonanceState(
         bool IsActive,
-        TissueNodeInfo Node,
+        TissueNodeInfo OriginNode,
+        TissuePropagationMap Propagation,
         float ResponseStrength,
         float VisualStrength,
-        float PulseProgress,
-        float LifetimeProgress);
+        float ElapsedTime,
+        float PulseFront,
+        float PulseBack,
+        float MaximumDistance);
 
     public sealed class TissueResonanceController
     {
         private readonly ITissueQueryService tissueQueries;
         private readonly TissueEnvironmentSensor environmentSensor;
         private TissueNodeInfo activeNode;
+        private TissuePropagationMap propagation;
         private float responseStrength;
         private float elapsed;
+        private float configuredMaximumDistance = TissueConfig.Resonance.DefaultMaxPropagationDistance;
+        private float activeMaximumDistance;
 
         public TissueResonanceController(
             ITissueQueryService tissueQueries,
@@ -29,12 +35,28 @@ namespace Nyvorn.Source.World.Tissue
 
         public TissueResonanceState CurrentState { get; private set; }
 
+        public void SetViewport(float viewWidth, float viewHeight)
+        {
+            if (float.IsNaN(viewWidth) || float.IsInfinity(viewWidth) ||
+                float.IsNaN(viewHeight) || float.IsInfinity(viewHeight) ||
+                viewWidth <= 0f || viewHeight <= 0f)
+            {
+                configuredMaximumDistance = TissueConfig.Resonance.DefaultMaxPropagationDistance;
+                return;
+            }
+
+            float diagonal = MathF.Sqrt((viewWidth * viewWidth) + (viewHeight * viewHeight));
+            configuredMaximumDistance = MathF.Max(
+                TissueConfig.Resonance.MinimumPropagationDistance,
+                diagonal * TissueConfig.Resonance.ViewportDistanceScale);
+        }
+
         public bool Trigger(Vector2 worldPosition)
         {
             environmentSensor.Refresh(worldPosition);
             TissueEnvironmentState environment = environmentSensor.CurrentState;
             if (!environment.HasTissue ||
-                !tissueQueries.TryFindNearestNode(
+                !tissueQueries.TryFindNearestConnectedNode(
                     worldPosition,
                     TissueConfig.Resonance.NodeSearchDistance,
                     out TissueNodeInfo node))
@@ -61,7 +83,18 @@ namespace Nyvorn.Source.World.Tissue
                 return false;
             }
 
+            if (!tissueQueries.TryBuildPropagation(
+                    node.Id,
+                    configuredMaximumDistance,
+                    out TissuePropagationMap propagationMap))
+            {
+                Clear();
+                return false;
+            }
+
             activeNode = node;
+            propagation = propagationMap;
+            activeMaximumDistance = configuredMaximumDistance;
             responseStrength = MathHelper.Clamp(response, 0f, 1f);
             elapsed = 0f;
             UpdateState();
@@ -74,7 +107,8 @@ namespace Nyvorn.Source.World.Tissue
                 return;
 
             elapsed += MathF.Max(0f, dt);
-            if (elapsed >= TissueConfig.Resonance.Duration)
+            float pulseBack = (elapsed * TissueConfig.Resonance.PulseSpeed) - TissueConfig.Resonance.TrailLength;
+            if (pulseBack >= activeMaximumDistance)
             {
                 Clear();
                 return;
@@ -86,6 +120,8 @@ namespace Nyvorn.Source.World.Tissue
         public void Clear()
         {
             activeNode = default;
+            propagation = null;
+            activeMaximumDistance = 0f;
             responseStrength = 0f;
             elapsed = 0f;
             CurrentState = default;
@@ -93,26 +129,21 @@ namespace Nyvorn.Source.World.Tissue
 
         private void UpdateState()
         {
-            float lifetimeProgress = MathHelper.Clamp(
-                elapsed / TissueConfig.Resonance.Duration,
-                0f,
-                1f);
-            float pulseProgress = MathHelper.Clamp(
-                elapsed / TissueConfig.Resonance.PulseDuration,
-                0f,
-                1f);
-            float fade = MathF.Pow(1f - lifetimeProgress, TissueConfig.Resonance.FadePower);
             float visualStrength = MathHelper.Clamp(
-                responseStrength * TissueConfig.Resonance.VisualGain * fade,
+                responseStrength * TissueConfig.Resonance.VisualGain,
                 0f,
                 1f);
+            float pulseFront = elapsed * TissueConfig.Resonance.PulseSpeed;
             CurrentState = new TissueResonanceState(
                 true,
                 activeNode,
+                propagation,
                 responseStrength,
                 visualStrength,
-                pulseProgress,
-                lifetimeProgress);
+                elapsed,
+                pulseFront,
+                pulseFront - TissueConfig.Resonance.TrailLength,
+                activeMaximumDistance);
         }
     }
 }

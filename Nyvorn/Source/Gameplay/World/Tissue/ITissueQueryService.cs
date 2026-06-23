@@ -42,5 +42,15 @@ namespace Nyvorn.Source.World.Tissue
             Vector2 worldPosition,
             float maximumDistance,
             out TissueNodeInfo node);
+
+        bool TryFindNearestConnectedNode(
+            Vector2 worldPosition,
+            float maximumDistance,
+            out TissueNodeInfo node);
+
+        bool TryBuildPropagation(
+            int originNodeId,
+            float maximumDistance,
+            out TissuePropagationMap propagation);
     }
 }

@@ -8,6 +8,9 @@ namespace Nyvorn.Source.World.Tissue
     {
         private readonly Dictionary<long, List<int>> branchChunks = new();
         private readonly Dictionary<long, List<int>> nodeChunks = new();
+        private readonly Dictionary<int, int> nodeIndicesById = new();
+        private readonly Dictionary<int, List<int>> connectedBranchIndices = new();
+        private readonly float[] branchLengths;
 
         public TissueNetwork(int seed, Rectangle worldBounds, IReadOnlyList<TissueNode> nodes, IReadOnlyList<TissueBranch> branches)
         {
@@ -15,7 +18,9 @@ namespace Nyvorn.Source.World.Tissue
             WorldBounds = worldBounds;
             Nodes = nodes;
             Branches = branches;
+            branchLengths = new float[Branches.Count];
             BuildSpatialIndex();
+            BuildTopologyIndex();
         }
 
         public int Seed { get; }
@@ -51,6 +56,20 @@ namespace Nyvorn.Source.World.Tissue
         }
 
         internal bool TryFindNearestNode(Vector2 position, float maximumDistance, out TissueNode nearestNode)
+        {
+            return TryFindNearestNode(position, maximumDistance, requireConnected: false, out nearestNode);
+        }
+
+        internal bool TryFindNearestConnectedNode(Vector2 position, float maximumDistance, out TissueNode nearestNode)
+        {
+            return TryFindNearestNode(position, maximumDistance, requireConnected: true, out nearestNode);
+        }
+
+        private bool TryFindNearestNode(
+            Vector2 position,
+            float maximumDistance,
+            bool requireConnected,
+            out TissueNode nearestNode)
         {
             nearestNode = null;
             if (Nodes.Count == 0 || maximumDistance <= 0f)
@@ -98,6 +117,9 @@ namespace Nyvorn.Source.World.Tissue
             foreach (int index in candidates)
             {
                 TissueNode candidate = Nodes[index];
+                if (requireConnected && !HasGraphConnection(candidate.Id))
+                    continue;
+
                 float candidateX = WrapCoordinate(candidate.Position.X, worldLeft, worldWidth);
                 double deltaX = Math.Abs(candidateX - wrappedX);
                 deltaX = Math.Min(deltaX, worldWidth - deltaX);
@@ -118,6 +140,134 @@ namespace Nyvorn.Source.World.Tissue
             return nearestNode != null;
         }
 
+        private bool HasGraphConnection(int nodeId)
+        {
+            if (!connectedBranchIndices.TryGetValue(nodeId, out List<int> indices))
+                return false;
+
+            for (int i = 0; i < indices.Count; i++)
+            {
+                TissueBranch branch = Branches[indices[i]];
+                if (branch.Kind == TissueBranch.TissueBranchKind.Main && branch.EndNodeId >= 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal bool TryBuildPropagation(
+            int originNodeId,
+            float maximumDistance,
+            out TissuePropagationMap propagation)
+        {
+            propagation = null;
+            if (!nodeIndicesById.ContainsKey(originNodeId) || maximumDistance <= 0f)
+                return false;
+
+            Dictionary<int, float> distances = new()
+            {
+                [originNodeId] = 0f
+            };
+            PriorityQueue<int, float> queue = new();
+            queue.Enqueue(originNodeId, 0f);
+
+            while (queue.TryDequeue(out int nodeId, out float queuedDistance))
+            {
+                if (!distances.TryGetValue(nodeId, out float currentDistance) || queuedDistance > currentDistance)
+                    continue;
+                if (!connectedBranchIndices.TryGetValue(nodeId, out List<int> branchIndices))
+                    continue;
+
+                for (int i = 0; i < branchIndices.Count; i++)
+                {
+                    int branchIndex = branchIndices[i];
+                    TissueBranch branch = Branches[branchIndex];
+                    if (branch.Kind != TissueBranch.TissueBranchKind.Main || branch.EndNodeId < 0)
+                        continue;
+
+                    int neighborId = branch.StartNodeId == nodeId
+                        ? branch.EndNodeId
+                        : branch.StartNodeId;
+                    if (!nodeIndicesById.ContainsKey(neighborId))
+                        continue;
+
+                    float candidateDistance = currentDistance + branchLengths[branchIndex];
+                    if (candidateDistance > maximumDistance)
+                        continue;
+                    if (distances.TryGetValue(neighborId, out float knownDistance) && candidateDistance >= knownDistance)
+                        continue;
+
+                    distances[neighborId] = candidateDistance;
+                    queue.Enqueue(neighborId, candidateDistance);
+                }
+            }
+
+            List<TissueNodePropagation> nodes = new(distances.Count);
+            foreach (KeyValuePair<int, float> pair in distances)
+            {
+                TissueNode node = Nodes[nodeIndicesById[pair.Key]];
+                nodes.Add(new TissueNodePropagation(CreateNodeInfo(node), pair.Value));
+            }
+            nodes.Sort((a, b) =>
+            {
+                int distanceComparison = a.ArrivalDistance.CompareTo(b.ArrivalDistance);
+                return distanceComparison != 0
+                    ? distanceComparison
+                    : a.Node.Id.CompareTo(b.Node.Id);
+            });
+
+            List<TissueBranchPropagation> branches = new();
+            for (int i = 0; i < Branches.Count; i++)
+            {
+                TissueBranch branch = Branches[i];
+                bool startReached = distances.TryGetValue(branch.StartNodeId, out float startDistance);
+                float endDistance = 0f;
+                bool endReached = branch.EndNodeId >= 0 &&
+                    distances.TryGetValue(branch.EndNodeId, out endDistance);
+                if (!startReached && !endReached)
+                    continue;
+
+                int fromNodeId;
+                float propagationStart;
+                bool reverse;
+                if (!endReached ||
+                    (startReached && (startDistance < endDistance ||
+                    (startDistance == endDistance && branch.StartNodeId < branch.EndNodeId))))
+                {
+                    fromNodeId = branch.StartNodeId;
+                    propagationStart = startDistance;
+                    reverse = false;
+                }
+                else
+                {
+                    fromNodeId = branch.EndNodeId;
+                    propagationStart = endDistance;
+                    reverse = true;
+                }
+
+                float length = branchLengths[i];
+                if (length <= 0f || propagationStart >= maximumDistance)
+                    continue;
+
+                branches.Add(new TissueBranchPropagation(
+                    branch.Id,
+                    fromNodeId,
+                    propagationStart,
+                    length,
+                    reverse));
+            }
+            branches.Sort((a, b) =>
+            {
+                int distanceComparison = a.StartDistance.CompareTo(b.StartDistance);
+                return distanceComparison != 0
+                    ? distanceComparison
+                    : a.BranchId.CompareTo(b.BranchId);
+            });
+
+            propagation = new TissuePropagationMap(maximumDistance, nodes, branches);
+            return true;
+        }
+
         private void BuildSpatialIndex()
         {
             for (int i = 0; i < Branches.Count; i++)
@@ -128,6 +278,52 @@ namespace Nyvorn.Source.World.Tissue
                 Point chunk = GetChunk(Nodes[i].Position.X, Nodes[i].Position.Y);
                 AddIndex(chunk.X, chunk.Y, i, nodeChunks);
             }
+        }
+
+        private void BuildTopologyIndex()
+        {
+            for (int i = 0; i < Nodes.Count; i++)
+            {
+                nodeIndicesById[Nodes[i].Id] = i;
+                connectedBranchIndices[Nodes[i].Id] = new List<int>();
+            }
+
+            for (int i = 0; i < Branches.Count; i++)
+            {
+                TissueBranch branch = Branches[i];
+                branchLengths[i] = CalculatePathLength(branch.Points);
+                AddConnectedBranch(branch.StartNodeId, i);
+                if (branch.EndNodeId >= 0 && branch.EndNodeId != branch.StartNodeId)
+                    AddConnectedBranch(branch.EndNodeId, i);
+            }
+        }
+
+        private void AddConnectedBranch(int nodeId, int branchIndex)
+        {
+            if (connectedBranchIndices.TryGetValue(nodeId, out List<int> indices))
+                indices.Add(branchIndex);
+        }
+
+        private static float CalculatePathLength(IReadOnlyList<Vector2> points)
+        {
+            if (points == null || points.Count < 2)
+                return 0f;
+
+            float length = 0f;
+            for (int i = 1; i < points.Count; i++)
+                length += Vector2.Distance(points[i - 1], points[i]);
+            return length;
+        }
+
+        private static TissueNodeInfo CreateNodeInfo(TissueNode node)
+        {
+            return new TissueNodeInfo(
+                node.Id,
+                node.Position,
+                node.IsPrimary,
+                node.Strength,
+                node.Degree,
+                node.NestInfluence);
         }
 
         private static void AddBoundsToIndex(Rectangle bounds, int index, Dictionary<long, List<int>> chunks)

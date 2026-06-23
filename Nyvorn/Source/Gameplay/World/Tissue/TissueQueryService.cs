@@ -138,6 +138,48 @@ namespace Nyvorn.Source.World.Tissue
             return true;
         }
 
+        public bool TryFindNearestConnectedNode(
+            Vector2 worldPosition,
+            float maximumDistance,
+            out TissueNodeInfo node)
+        {
+            node = default;
+            if (!IsFinite(worldPosition.X) ||
+                !IsFinite(worldPosition.Y) ||
+                !IsFinite(maximumDistance) ||
+                maximumDistance <= 0f)
+            {
+                return false;
+            }
+
+            if (!tissueNetwork.TryFindNearestConnectedNode(worldPosition, maximumDistance, out TissueNode nearest))
+                return false;
+
+            node = new TissueNodeInfo(
+                nearest.Id,
+                nearest.Position,
+                nearest.IsPrimary,
+                nearest.Strength,
+                nearest.Degree,
+                nearest.NestInfluence);
+            return true;
+        }
+
+        public bool TryBuildPropagation(
+            int originNodeId,
+            float maximumDistance,
+            out TissuePropagationMap propagation)
+        {
+            propagation = null;
+            if (!IsFinite(maximumDistance) || maximumDistance <= 0f)
+                return false;
+
+            return tissueNetwork.TryBuildPropagation(
+                originNodeId,
+                maximumDistance,
+                out propagation);
+        }
+
         private static float NormalizeThreshold(float value)
         {
             if (!IsFinite(value))

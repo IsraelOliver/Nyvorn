@@ -126,9 +126,13 @@ namespace Nyvorn.Source.World.Tissue
         public static class Resonance
         {
             public const float NodeSearchDistance = 300f;
-            public const float Duration = 2.4f;
-            public const float PulseDuration = 0.78f;
-            public const float FadePower = 0.72f;
+            public const float DefaultMaxPropagationDistance = 720f;
+            public const float MinimumPropagationDistance = 320f;
+            public const float ViewportDistanceScale = 1.25f;
+            public const float PulseSpeed = 320f;
+            public const float TrailLength = 100f;
+            public const float DistanceFalloffPower = 1.4f;
+            public const float NodePulseDuration = 0.58f;
             public const float CoverageAtFullStrength = 0.18f;
             public const float MinimumCoverageInfluence = 0.30f;
             public const float MinimumResponseStrength = 0.008f;
@@ -239,9 +243,8 @@ namespace Nyvorn.Source.World.Tissue
             public static readonly Color HaloColor = new(178, 58, 255);
             public static readonly Color PulseColor = new(255, 118, 210);
             public static readonly Color CoreColor = new(255, 214, 100);
-            public const int CullingPadding = 72;
-            public const float MaximumBranchTravel = 0.58f;
-            public const float PulseTailLength = 0.20f;
+            public const int MinimumCullingPadding = 72;
+            public const float CullingMarginRatio = 1f / 3f;
             public const float MicroThicknessScale = 0.62f;
             public const float HaloThicknessScale = 7.5f;
             public const float CoreThicknessScale = 1.7f;

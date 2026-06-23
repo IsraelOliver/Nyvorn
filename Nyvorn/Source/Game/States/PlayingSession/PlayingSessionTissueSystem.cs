@@ -50,6 +50,11 @@ namespace Nyvorn.Source.Game.States
             ResonanceController.Update(dt);
         }
 
+        public void SetPropagationViewport(float viewWidth, float viewHeight)
+        {
+            ResonanceController.SetViewport(viewWidth, viewHeight);
+        }
+
         public void TriggerReveal()
         {
             TissueRevealController.Trigger();
