@@ -362,7 +362,33 @@ namespace Nyvorn.Source.Game.States
             string normalized = command.ToLowerInvariant();
             if (normalized == "/help" || normalized == "help")
             {
-                SetConsoleMessage("Comandos: /help, /tissuevisual on|off, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
+                SetConsoleMessage("Comandos: /help, /debugfly [on|off], /tissuevisual on|off, spawn pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "/debugfly" || normalized == "debugfly")
+            {
+                bool enabled = session.ToggleDebugFly();
+                SetConsoleMessage(enabled
+                    ? "Debug fly ativado: W/A/S/D para voar e atravessar blocos"
+                    : "Debug fly desativado: movimento normal restaurado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "/debugfly on" || normalized == "debugfly on")
+            {
+                session.SetDebugFly(true);
+                SetConsoleMessage("Debug fly ativado: W/A/S/D para voar e atravessar blocos");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "/debugfly off" || normalized == "debugfly off")
+            {
+                session.SetDebugFly(false);
+                SetConsoleMessage("Debug fly desativado: movimento normal restaurado");
                 consoleInput = string.Empty;
                 return;
             }

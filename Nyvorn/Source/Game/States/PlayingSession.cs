@@ -67,6 +67,7 @@ namespace Nyvorn.Source.Game.States
         public IReadOnlySet<int> ActivatedTissueHubKeys => TissueSystem.ActivatedTissueHubKeys;
         public bool IsConstructionMode { get; private set; }
         public bool TissueVisualEnabled { get; private set; }
+        public bool DebugFlyEnabled => Player.DebugFlyEnabled;
 
         public void InitializeRuntimeState()
         {
@@ -101,6 +102,17 @@ namespace Nyvorn.Source.Game.States
         public void SetTissueVisualEnabled(bool enabled)
         {
             TissueVisualEnabled = enabled;
+        }
+
+        public void SetDebugFly(bool enabled)
+        {
+            Player.SetDebugFly(enabled);
+        }
+
+        public bool ToggleDebugFly()
+        {
+            SetDebugFly(!DebugFlyEnabled);
+            return DebugFlyEnabled;
         }
 
         public void RespawnPlayerAtWorldCenter()
