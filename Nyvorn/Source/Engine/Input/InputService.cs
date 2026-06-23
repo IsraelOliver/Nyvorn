@@ -17,10 +17,6 @@ namespace Nyvorn.Source.Engine.Input
             if (keyboard.IsKeyDown(Keys.D)) moveDir = 1;
             else if (keyboard.IsKeyDown(Keys.A)) moveDir = -1;
 
-            int verticalMoveDir = 0;
-            if (keyboard.IsKeyDown(Keys.S)) verticalMoveDir = 1;
-            else if (keyboard.IsKeyDown(Keys.W)) verticalMoveDir = -1;
-
             bool jumpPressed = keyboard.IsKeyDown(Keys.Space);
             bool attackPressed = mouse.LeftButton == ButtonState.Pressed;
             bool attackJustPressed = mouse.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton != ButtonState.Pressed;
@@ -46,7 +42,6 @@ namespace Nyvorn.Source.Engine.Input
 
             return new InputState(
                 moveDir,
-                verticalMoveDir,
                 jumpPressed,
                 attackPressed,
                 attackJustPressed,

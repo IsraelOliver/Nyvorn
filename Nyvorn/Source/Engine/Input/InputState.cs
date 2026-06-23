@@ -5,7 +5,6 @@ namespace Nyvorn.Source.Engine.Input
     public readonly struct InputState
     {
         public int MoveDir { get; }
-        public int VerticalMoveDir { get; }
         public bool JumpPressed { get; }
         public bool AttackPressed { get; }
         public bool AttackJustPressed { get; }
@@ -27,7 +26,6 @@ namespace Nyvorn.Source.Engine.Input
 
         public InputState(
             int moveDir,
-            int verticalMoveDir,
             bool jumpPressed,
             bool attackPressed,
             bool attackJustPressed,
@@ -48,7 +46,6 @@ namespace Nyvorn.Source.Engine.Input
             int mouseWheelDelta)
         {
             MoveDir = moveDir;
-            VerticalMoveDir = verticalMoveDir;
             JumpPressed = jumpPressed;
             AttackPressed = attackPressed;
             AttackJustPressed = attackJustPressed;
@@ -73,7 +70,6 @@ namespace Nyvorn.Source.Engine.Input
         {
             return new InputState(
                 MoveDir,
-                VerticalMoveDir,
                 JumpPressed,
                 false,
                 false,
@@ -97,7 +93,6 @@ namespace Nyvorn.Source.Engine.Input
         public InputState ConsumeGameplayInput()
         {
             return new InputState(
-                0,
                 0,
                 false,
                 false,

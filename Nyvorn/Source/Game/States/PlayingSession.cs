@@ -27,7 +27,6 @@ namespace Nyvorn.Source.Game.States
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required SessionRuntimeContext RuntimeContext { get; init; }
         public SandSystem SandSystem { get; private set; }
-        public TissueSystem WorldTissueSystem { get; private set; }
         public required WorldItemRuntimeSystem WorldItemRuntimeSystem { get; init; }
         public required PlayingSessionEntityRuntimeSystem EntityRuntimeSystem { get; init; }
         public required PlayingSessionBlockInteractionSystem BlockInteractionSystem { get; init; }
@@ -64,7 +63,6 @@ namespace Nyvorn.Source.Game.States
         public TissueNetwork TissueNetwork => TissueSystem.TissueNetwork;
         public IReadOnlySet<int> ActivatedTissueHubKeys => TissueSystem.ActivatedTissueHubKeys;
         public bool IsConstructionMode { get; private set; }
-        public bool IsDebugFlyEnabled => Player.DebugFlyEnabled;
 
         public void InitializeRuntimeState()
         {
@@ -94,11 +92,6 @@ namespace Nyvorn.Source.Game.States
         public void ToggleConstructionMode()
         {
             IsConstructionMode = !IsConstructionMode;
-        }
-
-        public void SetDebugFly(bool enabled)
-        {
-            Player.SetDebugFly(enabled);
         }
 
         public void RespawnPlayerAtWorldCenter()
@@ -195,11 +188,6 @@ namespace Nyvorn.Source.Game.States
         public void DrawEntities(SpriteBatch spriteBatch)
         {
             ViewCoordinator.DrawEntities(spriteBatch);
-        }
-
-        public void DrawWorldTissueDebug(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
-        {
-            ViewCoordinator.DrawWorldTissueDebug(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -328,13 +316,6 @@ namespace Nyvorn.Source.Game.States
             BlockInteractionSystem.SandSystem = SandSystem;
             ViewCoordinator.SandSystem = SandSystem;
             WorldTickCoordinator.SandSystem = SandSystem;
-        }
-
-        public void InitializeTissueSystem(int seed)
-        {
-            WorldTissueSystem = new TissueSystem(WorldMap);
-            WorldTissueSystem.GenerateDebugPlanetaryNetwork(seed);
-            ViewCoordinator.WorldTissueSystem = WorldTissueSystem;
         }
     }
 }

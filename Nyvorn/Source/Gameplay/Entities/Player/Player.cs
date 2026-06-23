@@ -10,7 +10,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 {
     public class Player : IDamageable, IHitSource
     {
-        private const float DebugFlySpeed = 520f;
         private readonly PlayerConfig config;
         private readonly PlayerCombat combat;
         private readonly PlayerMotor motor;
@@ -36,7 +35,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float WorldBreakRange => combat.WorldBreakRangeOverride ?? config.WorldInteractionRange;
         public int MiningPower => combat.MiningPower;
         public float MiningSpeed => combat.MiningSpeed;
-        public bool DebugFlyEnabled { get; private set; }
 
         public const int SpriteW = 32;
         public const int SpriteH = 32;
@@ -75,19 +73,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             combat.UpdateAttack(dt, moveDir, ref facingRight);
             playerAnimator.SetFacing(facingRight);
 
-            if (DebugFlyEnabled)
-            {
-                motor.UpdateDebugFly(dt, worldMap, new Vector2(input.MoveDir, input.VerticalMoveDir), DebugFlySpeed);
-            }
-            else
-            {
-                float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
-                motor.Update(dt, worldMap, sandSystem, horizontalVelocity, combat.IsDodging);
-                ApplyFallDamage(motor.LastLandingImpactVelocity);
+            float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
+            motor.Update(dt, worldMap, sandSystem, horizontalVelocity, combat.IsDodging);
+            ApplyFallDamage(motor.LastLandingImpactVelocity);
 
-                if (motor.IsGrounded && jumpPressed)
-                    motor.TryJump();
-            }
+            if (motor.IsGrounded && jumpPressed)
+                motor.TryJump();
 
             bool useUpperAttackPose = combat.IsAttacking && combat.UsesPlayerAttackUpperPose;
             playerAnimator.Update(dt, motor.Velocity, moveDir, motor.IsGrounded, useUpperAttackPose);
@@ -199,15 +190,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             motor.TeleportTo(targetPosition);
         }
 
-        public void SetDebugFly(bool enabled)
-        {
-            if (DebugFlyEnabled == enabled)
-                return;
-
-            DebugFlyEnabled = enabled;
-            motor.TeleportTo(Position);
-        }
-
         public void RespawnAt(Vector2 targetPosition)
         {
             combat.Respawn();
@@ -225,7 +207,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             moveDir = input.MoveDir;
             jumpPressed = !combat.IsDodging && input.JumpPressed;
 
-            if (!DebugFlyEnabled && input.DodgePressed && combat.TryStartDodge(motor.IsGrounded, input.DodgeDir, playerAnimator.FacingRight, out bool dodgeFacingRight))
+            if (input.DodgePressed && combat.TryStartDodge(motor.IsGrounded, input.DodgeDir, playerAnimator.FacingRight, out bool dodgeFacingRight))
                 playerAnimator.SetFacing(dodgeFacingRight);
 
             if (input.AttackPressed && combat.TryStartAttack(Position, mouseWorld, out bool attackFacingRight))

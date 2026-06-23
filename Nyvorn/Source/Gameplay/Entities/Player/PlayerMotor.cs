@@ -86,25 +86,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             MoveVertically(collision, sandSystem, velocity.Y * dt);
         }
 
-        public void UpdateDebugFly(float dt, WorldMap worldMap, Vector2 direction, float speed)
-        {
-            LastLandingImpactVelocity = 0f;
-            IsGrounded = false;
-            knockbackVelocityX = 0f;
-            stepVisualOffsetY = 0f;
-
-            if (direction.LengthSquared() > 1f)
-                direction.Normalize();
-
-            velocity = direction * speed;
-            position += velocity * dt;
-            position.Y = MathHelper.Clamp(
-                position.Y,
-                currentHurtboxSize.Y,
-                System.MathF.Max(currentHurtboxSize.Y, (worldMap.Height * worldMap.TileSize) - 1f));
-            kinematicMotor.Reset(position);
-        }
-
         public void TryJump()
         {
             if (!IsGrounded)

@@ -244,6 +244,10 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+            session.DrawEntities(spriteBatch);
+            spriteBatch.End();
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -265,21 +269,6 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTerrain(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
-
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                session.DrawWorldTissueDebug(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-            }
-
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch);
-            spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -358,30 +347,7 @@ namespace Nyvorn.Source.Game.States
             string normalized = command.ToLowerInvariant();
             if (normalized == "/help" || normalized == "help")
             {
-                SetConsoleMessage("Comandos: /help, /debugfly on|off, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "/debugfly on" || normalized == "debugfly on")
-            {
-                session.SetDebugFly(true);
-                SetConsoleMessage("Debug fly ativado: W/A/S/D para voar e atravessar blocos");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "/debugfly off" || normalized == "debugfly off")
-            {
-                session.SetDebugFly(false);
-                SetConsoleMessage("Debug fly desativado: movimento normal restaurado");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "/debugfly" || normalized == "debugfly")
-            {
-                SetConsoleMessage("Uso: /debugfly on ou /debugfly off");
+                SetConsoleMessage("Comandos: /help, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
                 consoleInput = string.Empty;
                 return;
             }

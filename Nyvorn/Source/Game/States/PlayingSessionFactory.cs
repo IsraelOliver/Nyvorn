@@ -482,12 +482,10 @@ namespace Nyvorn.Source.Game.States
 
         private PlayingSession CreateSession(BuildContext build, PlanetWorldMetadata planetMetadata)
         {
-            Vector2 defaultPlayerSpawn = build.WorldGenerator.GetLayerSpawnPosition(
+            Vector2 defaultPlayerSpawn = build.WorldGenerator.GetSurfaceSpawnPosition(
                 build.WorldMap,
-                build.WorldGenConfig,
-                WorldLayerType.DeepCavern,
                 build.PlayerSpawnTileX,
-                tilesAboveGround: 2);
+                tilesAboveSurface: 2);
             Vector2 playerSpawn = ResolvePlayerSpawn(build, defaultPlayerSpawn);
             Vector2 pickaxeSpawn = build.WorldGenerator.GetLayerSpawnPosition(
                 build.WorldMap,
@@ -656,7 +654,6 @@ namespace Nyvorn.Source.Game.States
             };
 
             session.InitializeSandSystem();
-            session.InitializeTissueSystem(build.WorldGenConfig.Seed);
             if (build.SavedSandSnapshot != null && build.SavedSandSnapshot.Length > 0)
                 session.SandSystem.ImportSnapshot(build.SavedSandSnapshot);
 
