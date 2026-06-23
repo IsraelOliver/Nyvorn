@@ -261,7 +261,6 @@ namespace Nyvorn.Source.Game.States
         {
             BuildContext build = new();
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
-            bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
             build.SavedBackgroundTileSnapshot = saveData != null && saveData.Version >= 10
                 ? saveData.BackgroundTileSnapshot
@@ -312,22 +311,23 @@ namespace Nyvorn.Source.Game.States
             steps.Add(new BuildOperation.BuildStep("Preparando mundo para jogo", () =>
             {
                 PrepareWorld(build, hasWorldSnapshot ? null : saveData?.TileChanges);
+                if (build.GenerationContext?.TissueGeneration != null)
+                {
+                    build.TissueGeneration = build.GenerationContext.TissueGeneration;
+                    build.TissueNetwork = build.TissueGeneration.Network;
+                }
                 if (saveData != null)
                     build.WorldMap.MarkPersisted();
             }, weight: 5f, runInBackground: true));
 
-              if (!hasTissueSnapshot)
+            steps.Add(new BuildOperation.BuildStep("Preparando tecido cosmico", () =>
             {
-                steps.Add(new BuildOperation.BuildStep("Preparando tecido do planeta", () =>
+                if (build.TissueGeneration == null)
                 {
-                    if (build.WorldMap.TissueField == null)
-                    {
-                        build.WorldMap.SetTissueField(new TissueField(build.WorldMap.Width, build.WorldMap.Height));
-                        build.WorldMap.RebuildTissueAnalysis();
-                        build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
-                    }
-                }, weight: 8f, runInBackground: true));
-            }
+                    build.TissueGeneration = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
+                    build.TissueNetwork = build.TissueGeneration.Network;
+                }
+            }, weight: 8f, runInBackground: true));
 
             steps.Add(new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build), weight: 4f));
             steps.Add(new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata)), weight: 1f));
@@ -614,6 +614,7 @@ namespace Nyvorn.Source.Game.States
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
+                TissueNetworkRenderer = new TissueNetworkRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
@@ -642,6 +643,7 @@ namespace Nyvorn.Source.Game.States
                 BlockInteractionSystem = blockInteractionSystem,
                 ViewCoordinator = viewCoordinator,
                 TissueSystem = tissueSystem,
+                CosmicTissueGeneration = build.TissueGeneration,
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
@@ -896,6 +898,7 @@ namespace Nyvorn.Source.Game.States
             public int ItemSpawnTileX { get; set; }
             public int EnemySpawnTileX { get; set; }
             public TissueNetwork TissueNetwork { get; set; }
+            public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
             public byte[] SavedBackgroundTileSnapshot { get; set; }

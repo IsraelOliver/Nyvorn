@@ -32,6 +32,7 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionBlockInteractionSystem BlockInteractionSystem { get; init; }
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required PlayingSessionTissueSystem TissueSystem { get; init; }
+        public required TissueGenerationResult CosmicTissueGeneration { get; init; }
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
@@ -61,8 +62,11 @@ namespace Nyvorn.Source.Game.States
         public HudRenderer HudRenderer => ViewCoordinator.HudRenderer;
         public WorldMinimapRenderer WorldMinimapRenderer => ViewCoordinator.WorldMinimapRenderer;
         public TissueNetwork TissueNetwork => TissueSystem.TissueNetwork;
+        public TissueField CosmicTissueField => CosmicTissueGeneration.RasterizedField;
+        public TissueGenerationStats CosmicTissueStats => CosmicTissueGeneration.Stats;
         public IReadOnlySet<int> ActivatedTissueHubKeys => TissueSystem.ActivatedTissueHubKeys;
         public bool IsConstructionMode { get; private set; }
+        public bool TissueVisualEnabled { get; private set; }
 
         public void InitializeRuntimeState()
         {
@@ -92,6 +96,11 @@ namespace Nyvorn.Source.Game.States
         public void ToggleConstructionMode()
         {
             IsConstructionMode = !IsConstructionMode;
+        }
+
+        public void SetTissueVisualEnabled(bool enabled)
+        {
+            TissueVisualEnabled = enabled;
         }
 
         public void RespawnPlayerAtWorldCenter()
@@ -188,6 +197,18 @@ namespace Nyvorn.Source.Game.States
         public void DrawEntities(SpriteBatch spriteBatch)
         {
             ViewCoordinator.DrawEntities(spriteBatch);
+        }
+
+        public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (TissueVisualEnabled)
+                ViewCoordinator.DrawTissueHalo(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
+        public void DrawTissueCore(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (TissueVisualEnabled)
+                ViewCoordinator.DrawTissueCore(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)

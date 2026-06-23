@@ -244,10 +244,6 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch);
-            spriteBatch.End();
-
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -269,6 +265,25 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTerrain(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+            session.DrawEntities(spriteBatch);
+            spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -347,7 +362,30 @@ namespace Nyvorn.Source.Game.States
             string normalized = command.ToLowerInvariant();
             if (normalized == "/help" || normalized == "help")
             {
-                SetConsoleMessage("Comandos: /help, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
+                SetConsoleMessage("Comandos: /help, /tissuevisual on|off, spawn pickaxe, spawn stone pickaxe, spawn iron pickaxe, tick status/speed/pause/resume/reset/step, grass grow, debug ticks, world save");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "/tissuevisual on" || normalized == "tissuevisual on")
+            {
+                session.SetTissueVisualEnabled(true);
+                SetConsoleMessage("Tissue cosmic web ativado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "/tissuevisual off" || normalized == "tissuevisual off")
+            {
+                session.SetTissueVisualEnabled(false);
+                SetConsoleMessage("Tissue cosmic web desativado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "/tissuevisual" || normalized == "tissuevisual")
+            {
+                SetConsoleMessage("Uso: /tissuevisual on ou /tissuevisual off");
                 consoleInput = string.Empty;
                 return;
             }

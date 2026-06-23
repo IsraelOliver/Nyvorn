@@ -55,6 +55,7 @@ namespace Nyvorn.Source.Game.States
         public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
         public required PowerHUD PowerHUD { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
+        public required TissueNetworkRenderer TissueNetworkRenderer { get; init; }
         public required IReadOnlySet<int> ActivatedTissueHubKeys { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
@@ -184,6 +185,16 @@ namespace Nyvorn.Source.Game.States
             Player.Draw(spriteBatch);
         }
 
+        public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            TissueNetworkRenderer.DrawHalo(spriteBatch, TissueNetwork, GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX));
+        }
+
+        public void DrawTissueCore(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            TissueNetworkRenderer.DrawCore(spriteBatch, TissueNetwork, GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX));
+        }
+
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
@@ -267,6 +278,17 @@ namespace Nyvorn.Source.Game.States
             endTileX = (int)System.MathF.Ceiling(localRight / WorldMap.TileSize) + tilePadding;
             startTileY = (int)System.MathF.Floor(localTop / WorldMap.TileSize) - tilePadding;
             endTileY = (int)System.MathF.Ceiling(localBottom / WorldMap.TileSize) + tilePadding;
+        }
+
+        private Rectangle GetVisiblePixelBounds(int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            return new Rectangle(
+                (int)System.MathF.Floor(Camera.Position.X - worldOffsetX),
+                (int)System.MathF.Floor(Camera.Position.Y),
+                System.Math.Max(1, (int)System.MathF.Ceiling(viewWidth)),
+                System.Math.Max(1, (int)System.MathF.Ceiling(viewHeight)));
         }
 
         private void DrawSandPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)

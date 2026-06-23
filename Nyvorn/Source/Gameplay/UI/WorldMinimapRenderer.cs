@@ -18,7 +18,14 @@ namespace Nyvorn.Source.Gameplay.UI
         private readonly GraphicsDevice graphicsDevice;
         private readonly Texture2D pixel;
         private Texture2D minimapTexture;
+        private Texture2D tissueOverlayTexture;
+        private Texture2D tissueDetailTexture;
         private Color[] minimapPixels = System.Array.Empty<Color>();
+        private Color[] tissueOverlayPixels = System.Array.Empty<Color>();
+        private Color[] tissueDetailPixels = System.Array.Empty<Color>();
+        private int cachedTissueSeed = int.MinValue;
+        private int cachedTissueNodeCount = -1;
+        private int cachedTissueBranchCount = -1;
         private int cachedTileRevision = -1;
         private int cachedSourceWidth;
         private int cachedSourceHeight;
@@ -103,7 +110,17 @@ namespace Nyvorn.Source.Gameplay.UI
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
                 DrawRect(spriteBatch, panel, new Color(5, 8, 10, 120));
-                DrawTissueOverlay(spriteBatch, worldMap, tissueNetwork, panel, sourceRect, activatedHubKeys);
+                if (tissueNetwork != null && (tissueNetwork.Nodes.Count > 0 || tissueNetwork.Branches.Count > 0))
+                {
+                    EnsureTissueOverlayTexture(worldMap, tissueNetwork);
+                    spriteBatch.Draw(tissueOverlayTexture, panel, sourceRect, Color.White);
+                    if (zoom >= 3f)
+                        spriteBatch.Draw(tissueDetailTexture, panel, sourceRect, Color.White);
+                }
+                else
+                {
+                    DrawTissueOverlay(spriteBatch, worldMap, tissueNetwork, panel, sourceRect, activatedHubKeys);
+                }
             }
             else
             {
@@ -119,6 +136,118 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawRect(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), new Color(8, 18, 24, 235));
             DrawRectOutline(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), 1, new Color(133, 179, 191));
             DrawModeButtons(spriteBatch, panel, tissueMode);
+        }
+
+        private void EnsureTissueOverlayTexture(WorldMap worldMap, TissueNetwork tissueNetwork)
+        {
+            int width = worldMap.Width;
+            int height = worldMap.Height;
+            bool needsResize = tissueOverlayTexture == null || tissueOverlayTexture.Width != width || tissueOverlayTexture.Height != height;
+            bool networkChanged = cachedTissueSeed != tissueNetwork.Seed ||
+                                  cachedTissueNodeCount != tissueNetwork.Nodes.Count ||
+                                  cachedTissueBranchCount != tissueNetwork.Branches.Count;
+            if (!needsResize && !networkChanged)
+                return;
+
+            if (needsResize)
+            {
+                tissueOverlayTexture?.Dispose();
+                tissueDetailTexture?.Dispose();
+                tissueOverlayTexture = new Texture2D(graphicsDevice, width, height, false, SurfaceFormat.Color);
+                tissueDetailTexture = new Texture2D(graphicsDevice, width, height, false, SurfaceFormat.Color);
+                tissueOverlayPixels = new Color[width * height];
+                tissueDetailPixels = new Color[width * height];
+            }
+            else
+            {
+                System.Array.Clear(tissueOverlayPixels);
+                System.Array.Clear(tissueDetailPixels);
+            }
+
+            for (int branchIndex = 0; branchIndex < tissueNetwork.Branches.Count; branchIndex++)
+            {
+                TissueBranch branch = tissueNetwork.Branches[branchIndex];
+                Color[] target = branch.Kind == TissueBranch.TissueBranchKind.Micro ? tissueDetailPixels : tissueOverlayPixels;
+                Color color = branch.Kind == TissueBranch.TissueBranchKind.Micro
+                    ? new Color(160, 52, 205, 115)
+                    : Color.Lerp(new Color(202, 58, 215, 210), new Color(255, 154, 130, 245), branch.Intensity);
+                int thickness = branch.Kind == TissueBranch.TissueBranchKind.Micro ? 1 : (branch.IsPrimary ? 2 : 1);
+                for (int pointIndex = 0; pointIndex < branch.Points.Count - 1; pointIndex++)
+                {
+                    Point start = WorldPixelToWrappedTile(branch.Points[pointIndex], worldMap);
+                    Point end = WorldPixelToWrappedTile(branch.Points[pointIndex + 1], worldMap);
+                    DrawOverlayLine(target, width, height, start, end, color, thickness);
+                }
+            }
+
+            for (int nodeIndex = 0; nodeIndex < tissueNetwork.Nodes.Count; nodeIndex++)
+            {
+                TissueNode node = tissueNetwork.Nodes[nodeIndex];
+                if (!node.IsPrimary)
+                    continue;
+                Point center = WorldPixelToWrappedTile(node.Position, worldMap);
+                int radius = System.Math.Clamp(1 + (node.Degree / 3), 2, 4);
+                DrawOverlayDisc(tissueOverlayPixels, width, height, center, radius, new Color(255, 205, 82, 255));
+            }
+
+            tissueOverlayTexture.SetData(tissueOverlayPixels);
+            tissueDetailTexture.SetData(tissueDetailPixels);
+            cachedTissueSeed = tissueNetwork.Seed;
+            cachedTissueNodeCount = tissueNetwork.Nodes.Count;
+            cachedTissueBranchCount = tissueNetwork.Branches.Count;
+        }
+
+        private static Point WorldPixelToWrappedTile(Vector2 position, WorldMap worldMap)
+        {
+            int tileX = (int)System.MathF.Floor(position.X / worldMap.TileSize);
+            tileX = worldMap.WrapTileX(tileX);
+            int tileY = System.Math.Clamp((int)System.MathF.Floor(position.Y / worldMap.TileSize), 0, worldMap.Height - 1);
+            return new Point(tileX, tileY);
+        }
+
+        private static void DrawOverlayLine(Color[] pixels, int width, int height, Point start, Point end, Color color, int thickness)
+        {
+            int dxWrapped = end.X - start.X;
+            if (dxWrapped > width / 2) end.X -= width;
+            else if (dxWrapped < -width / 2) end.X += width;
+            int dx = System.Math.Abs(end.X - start.X);
+            int sx = start.X < end.X ? 1 : -1;
+            int dy = -System.Math.Abs(end.Y - start.Y);
+            int sy = start.Y < end.Y ? 1 : -1;
+            int error = dx + dy;
+            int x = start.X;
+            int y = start.Y;
+
+            while (true)
+            {
+                DrawOverlayDisc(pixels, width, height, new Point(x, y), System.Math.Max(0, thickness - 1), color);
+                if (x == end.X && y == end.Y)
+                    break;
+                int twiceError = error * 2;
+                if (twiceError >= dy) { error += dy; x += sx; }
+                if (twiceError <= dx) { error += dx; y += sy; }
+            }
+        }
+
+        private static void DrawOverlayDisc(Color[] pixels, int width, int height, Point center, int radius, Color color)
+        {
+            for (int y = center.Y - radius; y <= center.Y + radius; y++)
+            {
+                if (y < 0 || y >= height)
+                    continue;
+                for (int x = center.X - radius; x <= center.X + radius; x++)
+                {
+                    int dx = x - center.X;
+                    int dy = y - center.Y;
+                    if ((dx * dx) + (dy * dy) > radius * radius)
+                        continue;
+                    int wrappedX = x % width;
+                    if (wrappedX < 0) wrappedX += width;
+                    int index = (y * width) + wrappedX;
+                    if (pixels[index].A <= color.A)
+                        pixels[index] = color;
+                }
+            }
         }
 
         private void DrawTissueOverlay(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Rectangle panel, Rectangle sourceRect, IReadOnlySet<int> activatedHubKeys)
