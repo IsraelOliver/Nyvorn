@@ -9,6 +9,7 @@ int[] seeds = previewOnly ? [1337] : [1337, 2468, 9001];
 WorldSizePreset[] presets = previewOnly ? [WorldSizePreset.Medium] : [WorldSizePreset.Small, WorldSizePreset.Medium, WorldSizePreset.Large];
 
 ValidateLegacySaveCompatibility();
+ValidateTissueQueryApi();
 
 foreach (WorldSizePreset preset in presets)
 {
@@ -33,6 +34,7 @@ foreach (WorldSizePreset preset in presets)
         Require(HasSameField(first.RasterizedField, second.RasterizedField), $"non-deterministic field for {preset}/{seed}");
         map.SetTissueField(first.RasterizedField);
         Require(ReferenceEquals(map.TissueField, first.RasterizedField), $"world map does not reference generated field for {preset}/{seed}");
+        ValidateGeneratedQueries(map, first, preset, seed);
         ValidateMutableField(map, first, preset, seed);
         ValidateDeltaRoundTrip(map, second, preset, seed);
 
@@ -216,6 +218,125 @@ static void ValidateDeltaRoundTrip(WorldMap map, TissueGenerationResult generati
     Require(System.MathF.Abs(restored.Corruption - changed.Corruption) <= tolerance, $"corruption quantization exceeded tolerance for {preset}/{seed}");
     Require(System.MathF.Abs(restored.MemoryDensity - changed.MemoryDensity) <= tolerance, $"memory quantization exceeded tolerance for {preset}/{seed}");
     Require(System.MathF.Abs(restored.Flow - changed.Flow) <= tolerance, $"flow quantization exceeded tolerance for {preset}/{seed}");
+}
+
+static void ValidateTissueQueryApi()
+{
+    const int width = 5;
+    const int height = 4;
+    const int tileSize = 8;
+    WorldMap map = new(width, height, tileSize);
+    byte[] solidTiles = Enumerable.Repeat((byte)TileType.Stone, width * height).ToArray();
+    map.ImportTileSnapshot(solidTiles);
+
+    TissueField field = new(width, height);
+    map.SetTissueField(field);
+    TissueCellState leftEdge = new(0.8f, 0.6f, 0.2f, 0.4f, 1f);
+    TissueCellState rightEdge = new(0.4f, 0.2f, 0.6f, 0.8f, 0.5f);
+    TissueCellState lower = new(0.6f, 1f, 0f, 0.2f, 0.25f);
+    Require(field.SetState(4, 1, leftEdge), "query fixture rejected left-edge tissue");
+    Require(field.SetState(0, 1, rightEdge), "query fixture rejected right-edge tissue");
+    Require(field.SetState(1, 2, lower), "query fixture rejected lower tissue");
+    field.MarkPersisted();
+
+    TissueNode[] nodes =
+    [
+        new TissueNode(7, new Vector2(39f, 8f), true, 0.9f, 5, 0.7f),
+        new TissueNode(9, new Vector2(10f, 8f), false, 0.4f, 2, 0.1f),
+        new TissueNode(3, new Vector2(36f, 16f), true, 0.8f, 4, 0.5f),
+        new TissueNode(8, new Vector2(4f, 16f), true, 0.8f, 4, 0.5f)
+    ];
+    TissueNetwork network = new(
+        1337,
+        new Rectangle(0, 0, map.PixelWidth, map.Height * map.TileSize),
+        nodes,
+        Array.Empty<TissueBranch>());
+    ITissueQueryService queries = new TissueQueryService(map, field, network);
+
+    Require(StatesEqual(queries.GetState(-1, 1), leftEdge), "tile query did not wrap negative X");
+    Require(StatesEqual(queries.GetState(width, 1), rightEdge), "tile query did not wrap positive X");
+    Require(StatesEqual(queries.GetState(0, -1), TissueCellState.Neutral), "tile query did not reject negative Y");
+    Require(StatesEqual(queries.GetState(0, height), TissueCellState.Neutral), "tile query did not reject Y past world");
+    Require(queries.HasTissue(-1, 1, 0.8f), "minimum presence rejected an equal value");
+    Require(!queries.HasTissue(-1, 1, 0.81f), "minimum presence accepted a lower value");
+    Require(queries.HasTissue(-1, 1, float.NaN), "invalid presence threshold did not use the default");
+    Require(!queries.HasTissue(2, 1, 0f), "neutral tile was reported as tissue");
+
+    TissueAreaSample wrapped = queries.SampleArea(new Rectangle(4, 0, 3, 3));
+    Require(wrapped.TotalTileCount == 9, "wrapped area total count mismatch");
+    Require(wrapped.ActiveTileCount == 3, "wrapped area active count mismatch");
+    Require(Approximately(wrapped.Coverage, 1f / 3f), "wrapped area coverage mismatch");
+    Require(Approximately(wrapped.AveragePresence, 0.6f), "wrapped area presence average mismatch");
+    Require(Approximately(wrapped.MaximumPresence, 0.8f), "wrapped area maximum presence mismatch");
+    Require(Approximately(wrapped.AverageVitality, 0.6f), "wrapped area vitality average mismatch");
+    Require(Approximately(wrapped.AverageCorruption, 0.8f / 3f), "wrapped area corruption average mismatch");
+    Require(Approximately(wrapped.AverageMemory, 1.4f / 3f), "wrapped area memory average mismatch");
+    Require(Approximately(wrapped.AverageFlow, 1.75f / 3f), "wrapped area flow average mismatch");
+    Require(wrapped.HasTissue, "wrapped area did not report tissue");
+
+    TissueAreaSample clipped = queries.SampleArea(new Rectangle(4, -1, 3, 3));
+    Require(clipped.TotalTileCount == 6 && clipped.ActiveTileCount == 2, "vertical clipping mismatch");
+    TissueAreaSample overwide = queries.SampleArea(new Rectangle(0, 0, width * 2, 1));
+    Require(overwide.TotalTileCount == width, "overwide area sampled the planet more than once");
+    Require(queries.SampleArea(new Rectangle(0, 0, 0, 4)) == default, "empty area did not return an empty sample");
+    Require(queries.IsDenseRegion(new Rectangle(4, 0, 3, 3), 0.33f), "dense region rejected sufficient coverage");
+    Require(!queries.IsDenseRegion(new Rectangle(4, 0, 3, 3), 0.34f), "dense region accepted insufficient coverage");
+    Require(!queries.IsDenseRegion(new Rectangle(0, height, 2, 2), 0f), "empty clipped region was reported as dense");
+
+    Require(queries.TryFindNearestNode(new Vector2(1f, 8f), 3f, out TissueNodeInfo wrappedNode), "seam-aware nearest node was not found");
+    Require(wrappedNode.Id == 7 && wrappedNode.Degree == 5 && wrappedNode.IsPrimary, "nearest node DTO mismatch");
+    Require(queries.TryFindNearestNode(new Vector2(0f, 16f), 4f, out TissueNodeInfo tiedNode), "tied nearest node was not found");
+    Require(tiedNode.Id == 3, "nearest node tie was not resolved by ID");
+    Require(!queries.TryFindNearestNode(new Vector2(20f, 8f), 5f, out _), "nearest node ignored maximum distance");
+    Require(!queries.TryFindNearestNode(new Vector2(float.NaN, 8f), 5f, out _), "nearest node accepted invalid position");
+    Require(!queries.TryFindNearestNode(new Vector2(1f, 8f), 0f, out _), "nearest node accepted zero distance");
+
+    int revisionBeforeQueries = field.Revision;
+    int overridesBeforeQueries = field.OverrideCount;
+    bool dirtyBeforeQueries = field.HasUnsavedChanges;
+    _ = queries.GetState(4, 1);
+    _ = queries.SampleArea(new Rectangle(0, 0, width, height));
+    _ = queries.TryFindNearestNode(new Vector2(1f, 8f), 3f, out _);
+    Require(field.Revision == revisionBeforeQueries, "read-only queries changed field revision");
+    Require(field.OverrideCount == overridesBeforeQueries, "read-only queries changed field overrides");
+    Require(field.HasUnsavedChanges == dirtyBeforeQueries, "read-only queries changed field dirty state");
+
+    Require(map.ClearTissueAt(4, 1), "query fixture tombstone was rejected");
+    Require(!queries.HasTissue(4, 1), "query API did not observe a live tombstone");
+    int tombstoneRevision = field.Revision;
+    int tombstoneOverrides = field.OverrideCount;
+    Require(field.HasUnsavedChanges, "query fixture tombstone was not marked dirty");
+    _ = queries.GetState(4, 1);
+    Require(field.Revision == tombstoneRevision && field.OverrideCount == tombstoneOverrides && field.HasUnsavedChanges,
+        "querying a tombstone changed mutable field state");
+}
+
+static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)
+{
+    ITissueQueryService queries = new TissueQueryService(map, generation.RasterizedField, generation.Network);
+    TissueFieldCell activeCell = generation.RasterizedField.EnumerateActiveCells().First();
+    Require(
+        StatesEqual(queries.GetState(activeCell.X, activeCell.Y), activeCell.State),
+        $"query API state differs from generated field for {preset}/{seed}");
+    Require(queries.HasTissue(activeCell.X, activeCell.Y), $"query API missed generated tissue for {preset}/{seed}");
+
+    TissueNode firstNode = generation.Network.Nodes[0];
+    Require(
+        queries.TryFindNearestNode(firstNode.Position, 1f, out TissueNodeInfo nearest) && nearest.Id == firstNode.Id,
+        $"query API missed an exact generated node for {preset}/{seed}");
+
+    int revision = generation.RasterizedField.Revision;
+    int overrides = generation.RasterizedField.OverrideCount;
+    bool dirty = generation.RasterizedField.HasUnsavedChanges;
+    _ = queries.SampleArea(new Rectangle(activeCell.X - 2, activeCell.Y - 2, 5, 5));
+    Require(generation.RasterizedField.Revision == revision, $"generated query changed revision for {preset}/{seed}");
+    Require(generation.RasterizedField.OverrideCount == overrides, $"generated query changed overrides for {preset}/{seed}");
+    Require(generation.RasterizedField.HasUnsavedChanges == dirty, $"generated query changed dirty state for {preset}/{seed}");
+}
+
+static bool Approximately(float actual, float expected)
+{
+    return MathF.Abs(actual - expected) <= 0.00001f;
 }
 
 static void Require(bool condition, string message)

@@ -50,6 +50,74 @@ namespace Nyvorn.Source.World.Tissue
             }
         }
 
+        internal bool TryFindNearestNode(Vector2 position, float maximumDistance, out TissueNode nearestNode)
+        {
+            nearestNode = null;
+            if (Nodes.Count == 0 || maximumDistance <= 0f)
+                return false;
+
+            float worldLeft = WorldBounds.Left;
+            float worldRight = WorldBounds.Right;
+            float worldWidth = WorldBounds.Width;
+            if (worldWidth <= 0f)
+                return false;
+
+            float wrappedX = WrapCoordinate(position.X, worldLeft, worldWidth);
+            float minimumY = MathF.Max(WorldBounds.Top, position.Y - maximumDistance);
+            float maximumY = MathF.Min(WorldBounds.Bottom, position.Y + maximumDistance);
+            if (minimumY > maximumY)
+                return false;
+
+            HashSet<int> candidates = new();
+            if (maximumDistance * 2f >= worldWidth)
+            {
+                CollectChunkIndices(worldLeft, minimumY, worldRight, maximumY, nodeChunks, candidates);
+            }
+            else
+            {
+                float minimumX = wrappedX - maximumDistance;
+                float maximumX = wrappedX + maximumDistance;
+                if (minimumX < worldLeft)
+                {
+                    CollectChunkIndices(worldLeft, minimumY, maximumX, maximumY, nodeChunks, candidates);
+                    CollectChunkIndices(minimumX + worldWidth, minimumY, worldRight, maximumY, nodeChunks, candidates);
+                }
+                else if (maximumX > worldRight)
+                {
+                    CollectChunkIndices(minimumX, minimumY, worldRight, maximumY, nodeChunks, candidates);
+                    CollectChunkIndices(worldLeft, minimumY, maximumX - worldWidth, maximumY, nodeChunks, candidates);
+                }
+                else
+                {
+                    CollectChunkIndices(minimumX, minimumY, maximumX, maximumY, nodeChunks, candidates);
+                }
+            }
+
+            double maximumDistanceSquared = (double)maximumDistance * maximumDistance;
+            double nearestDistanceSquared = double.MaxValue;
+            foreach (int index in candidates)
+            {
+                TissueNode candidate = Nodes[index];
+                float candidateX = WrapCoordinate(candidate.Position.X, worldLeft, worldWidth);
+                double deltaX = Math.Abs(candidateX - wrappedX);
+                deltaX = Math.Min(deltaX, worldWidth - deltaX);
+                double deltaY = candidate.Position.Y - position.Y;
+                double distanceSquared = (deltaX * deltaX) + (deltaY * deltaY);
+                if (distanceSquared > maximumDistanceSquared)
+                    continue;
+
+                if (nearestNode == null ||
+                    distanceSquared < nearestDistanceSquared ||
+                    (distanceSquared == nearestDistanceSquared && candidate.Id < nearestNode.Id))
+                {
+                    nearestNode = candidate;
+                    nearestDistanceSquared = distanceSquared;
+                }
+            }
+
+            return nearestNode != null;
+        }
+
         private void BuildSpatialIndex()
         {
             for (int i = 0; i < Branches.Count; i++)
@@ -89,6 +157,29 @@ namespace Nyvorn.Source.World.Tissue
             }
         }
 
+        private static void CollectChunkIndices(
+            float minimumX,
+            float minimumY,
+            float maximumX,
+            float maximumY,
+            Dictionary<long, List<int>> chunks,
+            HashSet<int> destination)
+        {
+            Point min = GetChunk(minimumX, minimumY);
+            Point max = GetChunk(maximumX, maximumY);
+            for (int y = min.Y; y <= max.Y; y++)
+            {
+                for (int x = min.X; x <= max.X; x++)
+                {
+                    if (!chunks.TryGetValue(CreateChunkKey(x, y), out List<int> indices))
+                        continue;
+
+                    for (int i = 0; i < indices.Count; i++)
+                        destination.Add(indices[i]);
+                }
+            }
+        }
+
         private static void AddIndex(int x, int y, int index, Dictionary<long, List<int>> chunks)
         {
             long key = CreateChunkKey(x, y);
@@ -110,6 +201,14 @@ namespace Nyvorn.Source.World.Tissue
         private static long CreateChunkKey(int x, int y)
         {
             return ((long)y << 32) | (uint)x;
+        }
+
+        private static float WrapCoordinate(float value, float origin, float width)
+        {
+            float wrapped = (value - origin) % width;
+            if (wrapped < 0f)
+                wrapped += width;
+            return origin + wrapped;
         }
     }
 }

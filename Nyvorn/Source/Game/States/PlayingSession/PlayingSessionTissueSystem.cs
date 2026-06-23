@@ -21,6 +21,7 @@ namespace Nyvorn.Source.Game.States
         public required WorldMap WorldMap { get; init; }
         public required Player Player { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
+        public required ITissueQueryService TissueQueries { get; init; }
         public required TissueRevealController TissueRevealController { get; init; }
         public required TissueFieldDebugRenderer TissueDebugRenderer { get; init; }
         public required HashSet<int> ActivatedTissueHubKeys { get; init; }
@@ -92,14 +93,6 @@ namespace Nyvorn.Source.Game.States
             if (ambientTissuePresenceTimer > 0f)
                 return ambientTissuePresenceCache;
 
-            TissueField tissueField = WorldMap.TissueField;
-            if (tissueField == null)
-            {
-                ambientTissuePresenceCache = 0f;
-                ambientTissuePresenceTimer = AmbientTissueSampleInterval;
-                return 0f;
-            }
-
             Point centerTile = WorldMap.WorldToTile(Player.Position);
             int radiusTiles = System.Math.Max(2, (int)System.MathF.Round(AmbientTissueRadiusInTiles));
             float bestSignal = 0f;
@@ -112,7 +105,7 @@ namespace Nyvorn.Source.Game.States
                 for (int x = centerTile.X - radiusTiles; x <= centerTile.X + radiusTiles; x++)
                 {
                     int wrappedX = WorldMap.WrapTileX(x);
-                    TissueCellState tissueState = tissueField.GetState(wrappedX, y);
+                    TissueCellState tissueState = TissueQueries.GetState(x, y);
                     if (!tissueState.HasBiologicalPresence)
                         continue;
 

@@ -571,12 +571,17 @@ namespace Nyvorn.Source.Game.States
             {
                 throw new InvalidOperationException("TissueField da sessao nao corresponde ao campo gerado.");
             }
+            ITissueQueryService tissueQueries = new TissueQueryService(
+                build.WorldMap,
+                build.WorldMap.TissueField,
+                tissueNetwork);
             HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
             PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
             {
                 WorldMap = build.WorldMap,
                 Player = player,
                 TissueNetwork = tissueNetwork,
+                TissueQueries = tissueQueries,
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys
@@ -674,6 +679,7 @@ namespace Nyvorn.Source.Game.States
                 BlockInteractionSystem = blockInteractionSystem,
                 ViewCoordinator = viewCoordinator,
                 TissueSystem = tissueSystem,
+                TissueQueries = tissueQueries,
                 CosmicTissueGeneration = build.TissueGeneration,
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
