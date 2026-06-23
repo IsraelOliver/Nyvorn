@@ -56,6 +56,7 @@ namespace Nyvorn.Source.Game.States
         {
             return new InputState(
                 input.MoveDir,
+                input.VerticalMoveDir,
                 input.JumpPressed,
                 false,
                 false,

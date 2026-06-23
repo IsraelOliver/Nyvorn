@@ -21,6 +21,7 @@ using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Nyvorn.Source.Game.States
@@ -261,8 +262,20 @@ namespace Nyvorn.Source.Game.States
         {
             BuildContext build = new();
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
-            bool hasTissueSnapshot = saveData?.TissueFieldSnapshot != null && saveData.TissueFieldSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
+            build.SavedTissueFieldDeltaSnapshot = saveData != null && saveData.Version >= 11
+                ? saveData.TissueFieldDeltaSnapshot
+                : null;
+            build.SavedConsoleCommandHistory = saveData != null &&
+                                                saveData.Version >= 12 &&
+                                                saveData.ConsoleCommandHistory != null
+                ? saveData.ConsoleCommandHistory
+                    .Where(command => !string.IsNullOrWhiteSpace(command))
+                    .Select(command => command.Trim())
+                    .Select(command => command.StartsWith('/') ? command : "/" + command)
+                    .TakeLast(100)
+                    .ToList()
+                : new List<string>();
             build.SavedBackgroundTileSnapshot = saveData != null && saveData.Version >= 10
                 ? saveData.BackgroundTileSnapshot
                 : null;
@@ -312,22 +325,43 @@ namespace Nyvorn.Source.Game.States
             steps.Add(new BuildOperation.BuildStep("Preparando mundo para jogo", () =>
             {
                 PrepareWorld(build, hasWorldSnapshot ? null : saveData?.TileChanges);
+                if (build.GenerationContext?.TissueGeneration != null)
+                {
+                    build.TissueGeneration = build.GenerationContext.TissueGeneration;
+                    build.TissueNetwork = build.TissueGeneration.Network;
+                }
                 if (saveData != null)
                     build.WorldMap.MarkPersisted();
             }, weight: 5f, runInBackground: true));
 
-              if (!hasTissueSnapshot)
+            steps.Add(new BuildOperation.BuildStep("Preparando tecido cosmico", () =>
             {
-                steps.Add(new BuildOperation.BuildStep("Preparando tecido do planeta", () =>
+                if (build.TissueGeneration == null)
                 {
-                    if (build.WorldMap.TissueField == null)
-                    {
-                        build.WorldMap.SetTissueField(new TissueField(build.WorldMap.Width, build.WorldMap.Height));
-                        build.WorldMap.RebuildTissueAnalysis();
-                        build.TissueNetwork = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
-                    }
-                }, weight: 8f, runInBackground: true));
-            }
+                    build.TissueGeneration = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
+                    build.TissueNetwork = build.TissueGeneration.Network;
+                }
+
+                TissueField generatedField = build.TissueGeneration.RasterizedField;
+                if (!ReferenceEquals(build.WorldMap.TissueField, generatedField))
+                    build.WorldMap.SetTissueField(generatedField);
+
+                if (build.GenerationContext != null)
+                    build.GenerationContext.TissueField = generatedField;
+
+                if (build.SavedTissueFieldDeltaSnapshot != null && build.SavedTissueFieldDeltaSnapshot.Length > 0)
+                {
+                    TissueFieldDeltaCodec.Import(
+                        build.SavedTissueFieldDeltaSnapshot,
+                        generatedField,
+                        build.WorldMap,
+                        build.WorldGenConfig.Seed,
+                        build.TissueGeneration.Stats.DeterministicHash,
+                        TissueGenerator.AlgorithmVersion);
+                }
+
+                generatedField.MarkPersisted();
+            }, weight: 8f, runInBackground: true));
 
             steps.Add(new BuildOperation.BuildStep("Carregando entidades e interface", () => LoadGameplayAssets(build), weight: 4f));
             steps.Add(new BuildOperation.BuildStep("Posicionando spawns e finalizando sessao", () => operation.SetResult(CreateSession(build, planetMetadata)), weight: 1f));
@@ -376,16 +410,7 @@ namespace Nyvorn.Source.Game.States
         {
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
             build.WorldMap.ImportBackgroundTileSnapshot(build.SavedBackgroundTileSnapshot);
-            build.WorldMap.ImportTissueSnapshot(saveData.TissueFieldSnapshot);
             RestoreTrees(build, saveData.Trees);
-
-            if (build.WorldMap.TissueField != null)
-            {
-                if (saveData.TissueAnalysisSnapshot != null && saveData.TissueAnalysisSnapshot.Length > 0)
-                    build.WorldMap.ImportTissueAnalysisSnapshot(saveData.TissueAnalysisSnapshot);
-                else
-                    build.WorldMap.RebuildTissueAnalysis();
-            }
         }
 
         private static int WrapTileX(int tileX, int worldWidth)
@@ -541,12 +566,28 @@ namespace Nyvorn.Source.Game.States
                 EnemyRespawnController = enemyRespawnController
             };
             TissueNetwork tissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed);
+            if (build.TissueGeneration == null ||
+                !ReferenceEquals(build.WorldMap.TissueField, build.TissueGeneration.RasterizedField))
+            {
+                throw new InvalidOperationException("TissueField da sessao nao corresponde ao campo gerado.");
+            }
+            ITissueQueryService tissueQueries = new TissueQueryService(
+                build.WorldMap,
+                build.WorldMap.TissueField,
+                tissueNetwork);
+            TissueEnvironmentSensor tissueEnvironmentSensor = new(build.WorldMap, tissueQueries);
+            TissueResonanceController tissueResonanceController = new(
+                tissueQueries,
+                tissueEnvironmentSensor);
             HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
             PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
             {
                 WorldMap = build.WorldMap,
                 Player = player,
                 TissueNetwork = tissueNetwork,
+                TissueQueries = tissueQueries,
+                EnvironmentSensor = tissueEnvironmentSensor,
+                ResonanceController = tissueResonanceController,
                 TissueRevealController = new TissueRevealController(build.WorldMap.TileSize * 28f, fadeDuration: 0.16f, activeDuration: 4.2f),
                 TissueDebugRenderer = new TissueFieldDebugRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys
@@ -614,6 +655,8 @@ namespace Nyvorn.Source.Game.States
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
+                TissueNetworkRenderer = new TissueNetworkRenderer(graphicsDevice),
+                TissueFieldOverlayRenderer = new TissueFieldOverlayRenderer(graphicsDevice),
                 ActivatedTissueHubKeys = activatedTissueHubKeys,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
@@ -642,6 +685,8 @@ namespace Nyvorn.Source.Game.States
                 BlockInteractionSystem = blockInteractionSystem,
                 ViewCoordinator = viewCoordinator,
                 TissueSystem = tissueSystem,
+                TissueQueries = tissueQueries,
+                CosmicTissueGeneration = build.TissueGeneration,
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
@@ -650,7 +695,8 @@ namespace Nyvorn.Source.Game.States
                 DoorRuntimeSystem = doorRuntimeSystem,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
-                PowerSystem = powerSystem
+                PowerSystem = powerSystem,
+                ConsoleCommandHistory = build.SavedConsoleCommandHistory
             };
 
             session.InitializeSandSystem();
@@ -896,8 +942,11 @@ namespace Nyvorn.Source.Game.States
             public int ItemSpawnTileX { get; set; }
             public int EnemySpawnTileX { get; set; }
             public TissueNetwork TissueNetwork { get; set; }
+            public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
+            public byte[] SavedTissueFieldDeltaSnapshot { get; set; }
+            public List<string> SavedConsoleCommandHistory { get; set; }
             public byte[] SavedBackgroundTileSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public List<WorkbenchSaveData> SavedWorkbenches { get; set; }

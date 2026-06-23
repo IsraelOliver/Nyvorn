@@ -1,5 +1,6 @@
 using Nyvorn.Source.Game.States;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.World.Tissue;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -128,15 +129,20 @@ namespace Nyvorn.Source.World.Persistence
                         OpensRight = door.OpensRight
                     })
                     .ToList(),
+                ConsoleCommandHistory = session.ConsoleCommandHistory.ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 BackgroundTileSnapshot = session.WorldMap.ExportBackgroundTileSnapshot(),
                 SandSnapshot = session.SandSystem?.ExportSnapshot(),
-                TissueFieldSnapshot = session.WorldMap.ExportTissueSnapshot(),
-                TissueAnalysisSnapshot = session.WorldMap.ExportTissueAnalysisSnapshot()
+                TissueFieldDeltaSnapshot = TissueFieldDeltaCodec.Export(
+                    session.TissueField,
+                    session.TissueNetwork.Seed,
+                    session.CosmicTissueStats.DeterministicHash,
+                    TissueGenerator.AlgorithmVersion)
             });
 
             playerSaveService.Save(session);
             session.WorldMap.MarkPersisted();
+            session.MarkConsoleCommandHistoryPersisted();
             session.WorkbenchRuntimeSystem.MarkPersisted();
             session.DoorRuntimeSystem.MarkPersisted();
         }
@@ -195,9 +201,11 @@ namespace Nyvorn.Source.World.Persistence
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
+                ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 BackgroundTileSnapshot = CompressBytes(saveData.BackgroundTileSnapshot),
                 SandSnapshot = CompressBytes(saveData.SandSnapshot),
+                TissueFieldDeltaSnapshot = CompressBytes(saveData.TissueFieldDeltaSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
             };
@@ -215,9 +223,11 @@ namespace Nyvorn.Source.World.Persistence
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
+                ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 BackgroundTileSnapshot = DecompressBytes(saveData.BackgroundTileSnapshot),
                 SandSnapshot = DecompressBytes(saveData.SandSnapshot),
+                TissueFieldDeltaSnapshot = DecompressBytes(saveData.TissueFieldDeltaSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)
             };

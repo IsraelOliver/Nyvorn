@@ -5,13 +5,26 @@ namespace Nyvorn.Source.World.Tissue
 {
     public sealed class TissueBranch
     {
+        public enum TissueBranchKind
+        {
+            Main,
+            Micro
+        }
+
         public TissueBranch(int id, int startNodeId, int endNodeId, bool isPrimary, float thickness, IReadOnlyList<Vector2> points)
+            : this(id, startNodeId, endNodeId, isPrimary, thickness, 1f, TissueBranchKind.Main, points)
+        {
+        }
+
+        public TissueBranch(int id, int startNodeId, int endNodeId, bool isPrimary, float thickness, float intensity, TissueBranchKind kind, IReadOnlyList<Vector2> points)
         {
             Id = id;
             StartNodeId = startNodeId;
             EndNodeId = endNodeId;
             IsPrimary = isPrimary;
             Thickness = thickness;
+            Intensity = intensity;
+            Kind = kind;
             Points = points;
             Bounds = CreateBounds(points, thickness);
         }
@@ -21,6 +34,8 @@ namespace Nyvorn.Source.World.Tissue
         public int EndNodeId { get; }
         public bool IsPrimary { get; }
         public float Thickness { get; }
+        public float Intensity { get; }
+        public TissueBranchKind Kind { get; }
         public IReadOnlyList<Vector2> Points { get; }
         public Rectangle Bounds { get; }
 
