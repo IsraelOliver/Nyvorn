@@ -300,12 +300,16 @@ namespace Nyvorn.Source.World.Tissue
                         spriteBatch,
                         start,
                         end,
-                        afterglowColor * (biologicalStrength * afterglowAlpha),
+                        afterglowColor * (
+                            biologicalStrength *
+                            afterglowAlpha *
+                            TissueConfig.Resonance.MemoryIntensity *
+                            resonance.MemoryStrength),
                         thickness);
                     continue;
                 }
 
-                float trailProgress = (resonance.PulseFront - pointDistance) / TissueConfig.Resonance.TrailLength;
+                float trailProgress = (resonance.PulseFront - pointDistance) / TissueConfig.Resonance.PulseTrailLength;
                 float trailAlpha = 1f - MathHelper.Clamp(trailProgress, 0f, 1f);
                 DrawLine(
                     spriteBatch,
@@ -332,7 +336,9 @@ namespace Nyvorn.Source.World.Tissue
                 resonance.MaximumDistance);
             intensity = resonance.VisualStrength *
                 propagationStrength *
-                propagation.Node.Strength;
+                propagation.Node.Strength *
+                TissueConfig.Resonance.MemoryIntensity *
+                resonance.NodeAfterglowStrength;
             if (intensity <= 0.001f)
                 return false;
 
@@ -385,7 +391,7 @@ namespace Nyvorn.Source.World.Tissue
                 : distance / maximumDistance;
             return MathF.Pow(
                 MathHelper.Clamp(1f - normalizedDistance, 0f, 1f),
-                TissueConfig.Resonance.DistanceFalloffPower);
+                TissueConfig.Resonance.PulseFadePower);
         }
 
         private static Rectangle GetResonanceCullingBounds(Rectangle visibleBounds)

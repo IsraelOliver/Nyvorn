@@ -9,6 +9,8 @@ namespace Nyvorn.Source.World.Tissue
         TissuePropagationMap Propagation,
         float ResponseStrength,
         float VisualStrength,
+        float MemoryStrength,
+        float NodeAfterglowStrength,
         float ElapsedTime,
         float PulseFront,
         float PulseBack,
@@ -107,8 +109,11 @@ namespace Nyvorn.Source.World.Tissue
                 return;
 
             elapsed += MathF.Max(0f, dt);
-            float pulseBack = (elapsed * TissueConfig.Resonance.PulseSpeed) - TissueConfig.Resonance.TrailLength;
-            if (pulseBack >= activeMaximumDistance)
+            float pulseCompletionTime = GetPulseCompletionTime();
+            float maximumAfterglowLifetime = MathF.Max(
+                TissueConfig.Resonance.MemoryLifetime,
+                TissueConfig.Resonance.NodeAfterglowLifetime);
+            if (elapsed >= pulseCompletionTime + maximumAfterglowLifetime)
             {
                 Clear();
                 return;
@@ -134,16 +139,42 @@ namespace Nyvorn.Source.World.Tissue
                 0f,
                 1f);
             float pulseFront = elapsed * TissueConfig.Resonance.PulseSpeed;
+            float timeAfterPulse = elapsed - GetPulseCompletionTime();
+            float memoryStrength = CalculateMemoryFade(
+                timeAfterPulse,
+                TissueConfig.Resonance.MemoryLifetime);
+            float nodeAfterglowStrength = CalculateMemoryFade(
+                timeAfterPulse,
+                TissueConfig.Resonance.NodeAfterglowLifetime);
             CurrentState = new TissueResonanceState(
                 true,
                 activeNode,
                 propagation,
                 responseStrength,
                 visualStrength,
+                memoryStrength,
+                nodeAfterglowStrength,
                 elapsed,
                 pulseFront,
-                pulseFront - TissueConfig.Resonance.TrailLength,
+                pulseFront - TissueConfig.Resonance.PulseTrailLength,
                 activeMaximumDistance);
+        }
+
+        private float GetPulseCompletionTime()
+        {
+            return (activeMaximumDistance + TissueConfig.Resonance.PulseTrailLength) /
+                TissueConfig.Resonance.PulseSpeed;
+        }
+
+        private static float CalculateMemoryFade(float elapsedAfterPulse, float lifetime)
+        {
+            if (elapsedAfterPulse <= 0f)
+                return 1f;
+            if (lifetime <= 0f)
+                return 0f;
+
+            float progress = MathHelper.Clamp(elapsedAfterPulse / lifetime, 0f, 1f);
+            return MathF.Pow(1f - progress, TissueConfig.Resonance.MemoryFadeCurve);
         }
     }
 }

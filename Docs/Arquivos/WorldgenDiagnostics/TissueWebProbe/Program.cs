@@ -363,6 +363,8 @@ static void ValidateTissueQueryApi()
     Require(Approximately(healthyResonance.MaximumDistance, TissueConfig.Resonance.MinimumPropagationDistance),
         "resonance did not derive its range from the viewport");
     Require(healthyResonance.ResponseStrength > 0f && healthyResonance.VisualStrength > 0f, "resonance strength was not calculated");
+    Require(Approximately(healthyResonance.MemoryStrength, 1f) && Approximately(healthyResonance.NodeAfterglowStrength, 1f),
+        "resonance memory did not start at full strength");
     Require(field.Revision == revisionBeforeResonance, "resonance mutated the tissue field");
     resonance.SetViewport(1000f, 1000f);
     resonance.Update(0.1f);
@@ -370,10 +372,19 @@ static void ValidateTissueQueryApi()
         resonance.CurrentState.IsActive &&
         Approximately(resonance.CurrentState.MaximumDistance, healthyResonance.MaximumDistance) &&
         Approximately(resonance.CurrentState.PulseFront, TissueConfig.Resonance.PulseSpeed * 0.1f) &&
-        Approximately(resonance.CurrentState.PulseBack, (TissueConfig.Resonance.PulseSpeed * 0.1f) - TissueConfig.Resonance.TrailLength),
+        Approximately(resonance.CurrentState.PulseBack, (TissueConfig.Resonance.PulseSpeed * 0.1f) - TissueConfig.Resonance.PulseTrailLength),
         "resonance front and trail did not advance");
+    float pulseCompletionTime =
+        (healthyResonance.MaximumDistance + TissueConfig.Resonance.PulseTrailLength) /
+        TissueConfig.Resonance.PulseSpeed;
+    resonance.Update(pulseCompletionTime);
+    Require(
+        resonance.CurrentState.IsActive &&
+        resonance.CurrentState.MemoryStrength > 0f && resonance.CurrentState.MemoryStrength < 1f &&
+        resonance.CurrentState.NodeAfterglowStrength > 0f && resonance.CurrentState.NodeAfterglowStrength < 1f,
+        "resonance memory did not remain and fade after pulse completion");
     resonance.Update(
-        ((healthyResonance.MaximumDistance + TissueConfig.Resonance.TrailLength) / TissueConfig.Resonance.PulseSpeed) + 0.1f);
+        MathF.Max(TissueConfig.Resonance.MemoryLifetime, TissueConfig.Resonance.NodeAfterglowLifetime) + 0.1f);
     Require(!resonance.CurrentState.IsActive, "resonance did not expire");
 
     Require(map.ClearTissueAt(4, 1), "query fixture tombstone was rejected");

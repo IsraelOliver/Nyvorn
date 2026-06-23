@@ -130,9 +130,13 @@ namespace Nyvorn.Source.World.Tissue
             public const float MinimumPropagationDistance = 320f;
             public const float ViewportDistanceScale = 1.25f;
             public const float PulseSpeed = 320f;
-            public const float TrailLength = 100f;
-            public const float DistanceFalloffPower = 1.4f;
+            public const float PulseTrailLength = 100f;
+            public const float PulseFadePower = 1.4f;
+            public const float MemoryLifetime = 2.8f;
+            public const float MemoryFadeCurve = 1.35f;
+            public const float MemoryIntensity = 0.82f;
             public const float NodePulseDuration = 0.58f;
+            public const float NodeAfterglowLifetime = 3.2f;
             public const float CoverageAtFullStrength = 0.18f;
             public const float MinimumCoverageInfluence = 0.30f;
             public const float MinimumResponseStrength = 0.008f;
