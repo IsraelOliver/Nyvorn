@@ -50,10 +50,15 @@ namespace Nyvorn.Source.Gameplay.Items
 
         public bool TryStoreItem(ItemId itemId, int quantity, bool preferInventory)
         {
-            if (quantity <= 0 || !ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
-                return false;
+            return StoreItem(itemId, quantity, preferInventory) == quantity;
+        }
 
-            return TryStoreDefinition(definition, quantity, preferInventory);
+        public int StoreItem(ItemId itemId, int quantity, bool preferInventory)
+        {
+            if (quantity <= 0 || !ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
+                return 0;
+
+            return StoreDefinition(definition, quantity, preferInventory);
         }
 
         public void SpawnBrokenBlockDrop(TileType removedTile, Vector2 tileCenter)
@@ -111,10 +116,10 @@ namespace Nyvorn.Source.Gameplay.Items
                 WorldItems.RemoveAt(index);
         }
 
-        private bool TryStoreDefinition(ItemDefinition definition, int quantity, bool preferInventory)
+        private int StoreDefinition(ItemDefinition definition, int quantity, bool preferInventory)
         {
             if (definition == null || quantity <= 0)
-                return false;
+                return 0;
 
             Inventory primary = preferInventory ? Inventory : Hotbar;
             Inventory secondary = preferInventory ? Hotbar : Inventory;
@@ -125,7 +130,7 @@ namespace Nyvorn.Source.Gameplay.Items
             remaining -= primary.AddToEmptySlots(definition, remaining);
             remaining -= secondary.AddToEmptySlots(definition, remaining);
 
-            return remaining == 0;
+            return quantity - remaining;
         }
 
         private void SpawnWorldItem(

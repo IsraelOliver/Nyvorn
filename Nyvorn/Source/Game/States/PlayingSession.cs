@@ -380,6 +380,11 @@ namespace Nyvorn.Source.Game.States
             return WorldItemRuntimeSystem.TryStoreItem(itemId, quantity, preferInventory);
         }
 
+        public int StoreItem(ItemId itemId, int quantity, bool preferInventory)
+        {
+            return WorldItemRuntimeSystem.StoreItem(itemId, quantity, preferInventory);
+        }
+
         public int CountItem(ItemId itemId)
         {
             return Hotbar.CountItem(itemId) + Inventory.CountItem(itemId);

@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
@@ -10,6 +11,7 @@ WorldSizePreset[] presets = previewOnly ? [WorldSizePreset.Medium] : [WorldSizeP
 
 ValidateLegacySaveCompatibility();
 ValidateResonanceTuning();
+ValidateItemCommandIds();
 ValidateTissueQueryApi();
 
 foreach (WorldSizePreset preset in presets)
@@ -432,6 +434,58 @@ static void ValidateResonanceTuning()
     Require(Approximately(TissueConfig.Resonance.MemoryFadeCurve, 1.35f), "memory curve reset mismatch");
     Require(Approximately(TissueConfig.Resonance.MemoryIntensity, 0.82f), "memory intensity reset mismatch");
     Require(Approximately(TissueConfig.Resonance.NodeAfterglowLifetime, 3.2f), "node afterglow reset mismatch");
+}
+
+static void ValidateItemCommandIds()
+{
+    HashSet<string> commandIds = new(StringComparer.OrdinalIgnoreCase);
+    foreach (ItemDefinition definition in ItemDefinitions.GetAll())
+    {
+        string commandId = ItemDefinitions.GetCommandId(definition.Id);
+        Require(!string.IsNullOrWhiteSpace(commandId), $"empty command ID for {definition.Id}");
+        Require(commandIds.Add(commandId), $"duplicate command ID: {commandId}");
+        Require(
+            ItemDefinitions.TryResolveCommandId(commandId, out ItemDefinition byCommandId) && byCommandId.Id == definition.Id,
+            $"command ID did not resolve: {commandId}");
+        Require(
+            ItemDefinitions.TryResolveCommandId(definition.Name, out ItemDefinition byName) && byName.Id == definition.Id,
+            $"display name did not resolve: {definition.Name}");
+        Require(
+            ItemDefinitions.TryResolveCommandId(((byte)definition.Id).ToString(), out ItemDefinition byNumericId) && byNumericId.Id == definition.Id,
+            $"numeric item ID did not resolve: {definition.Id}");
+    }
+
+    Require(
+        ItemDefinitions.TryResolveCommandId("iron-pickaxe", out ItemDefinition normalizedIron) &&
+        normalizedIron.Id == ItemId.IronPickaxe,
+        "normalized iron pickaxe ID did not resolve");
+    Require(!ItemDefinitions.TryResolveCommandId("missingitem", out _), "unknown item ID unexpectedly resolved");
+
+    WorldItemRuntimeSystem runtime = new()
+    {
+        WorldMap = null!,
+        Player = null!,
+        WorldItems = [],
+        Hotbar = new Hotbar(1),
+        Inventory = new Inventory(2),
+        ItemTextures = []
+    };
+    int addedPickaxes = runtime.StoreItem(ItemId.IronPickaxe, 6, preferInventory: true);
+    Require(addedPickaxes == 3, "non-stackable partial inventory insertion mismatch");
+    Require(runtime.Inventory.CountItem(ItemId.IronPickaxe) == 2, "pickaxes did not prefer inventory slots");
+    Require(runtime.Hotbar.CountItem(ItemId.IronPickaxe) == 1, "pickaxe overflow did not use hotbar");
+
+    WorldItemRuntimeSystem stackRuntime = new()
+    {
+        WorldMap = null!,
+        Player = null!,
+        WorldItems = [],
+        Hotbar = new Hotbar(1),
+        Inventory = new Inventory(1),
+        ItemTextures = []
+    };
+    Require(stackRuntime.StoreItem(ItemId.DirtBlock, 1500, preferInventory: true) == 1500,
+        "stackable item insertion did not span inventory and hotbar");
 }
 
 static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)

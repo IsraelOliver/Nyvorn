@@ -1,6 +1,8 @@
 using Microsoft.Xna.Framework;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Text;
 
 namespace Nyvorn.Source.Gameplay.Items
 {
@@ -156,6 +158,7 @@ namespace Nyvorn.Source.Gameplay.Items
 
         private static readonly IReadOnlyCollection<ItemDefinition> allDefinitions =
             new ReadOnlyCollection<ItemDefinition>(new List<ItemDefinition>(definitions.Values));
+        private static readonly Dictionary<string, ItemDefinition> commandDefinitions = BuildCommandDefinitions();
 
         public static ItemDefinition Get(ItemId id)
         {
@@ -170,6 +173,52 @@ namespace Nyvorn.Source.Gameplay.Items
         public static IReadOnlyCollection<ItemDefinition> GetAll()
         {
             return allDefinitions;
+        }
+
+        public static string GetCommandId(ItemId id)
+        {
+            return NormalizeCommandId(id.ToString());
+        }
+
+        public static bool TryResolveCommandId(string value, out ItemDefinition definition)
+        {
+            definition = null;
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            if (byte.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte numericId) &&
+                TryGet((ItemId)numericId, out definition))
+            {
+                return true;
+            }
+
+            return commandDefinitions.TryGetValue(NormalizeCommandId(value), out definition);
+        }
+
+        private static Dictionary<string, ItemDefinition> BuildCommandDefinitions()
+        {
+            Dictionary<string, ItemDefinition> result = new();
+            foreach (ItemDefinition definition in definitions.Values)
+            {
+                result[GetCommandId(definition.Id)] = definition;
+                result[NormalizeCommandId(definition.Name)] = definition;
+            }
+            return result;
+        }
+
+        private static string NormalizeCommandId(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            StringBuilder normalized = new(value.Length);
+            for (int i = 0; i < value.Length; i++)
+            {
+                char character = value[i];
+                if (char.IsLetterOrDigit(character))
+                    normalized.Append(char.ToLowerInvariant(character));
+            }
+            return normalized.ToString();
         }
     }
 }
