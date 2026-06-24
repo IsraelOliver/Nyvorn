@@ -134,6 +134,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     playerAnimator.MovementFrame,
                     drawPos,
                     playerAnimator.Effects);
+
+                if (combat.EquippedWeapon.DrawsPlayerUpperBodyOverlay &&
+                    combat.EquippedWeapon.PlayerUpperBodyOverlayTexture != null)
+                {
+                    playerAnimator.DrawLayer(
+                        spriteBatch,
+                        combat.EquippedWeapon.PlayerUpperBodyOverlayTexture,
+                        weaponUpperFrame,
+                        playerAnimator.MovementFrame,
+                        drawPos,
+                        playerAnimator.Effects);
+                }
             }
             else
             {
