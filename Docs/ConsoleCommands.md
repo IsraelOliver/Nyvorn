@@ -51,6 +51,39 @@ Exemplo de configuração:
 /tissuepulse intensity 0.7
 ```
 
+## Adicionar itens ao inventário
+
+| Comando | Efeito |
+|---|---|
+| `/get <item> [quantidade]` | Adiciona de `1` a `9999` unidades diretamente ao inventário e, se necessário, à hotbar. A quantidade default é `1`. |
+| `/get list` | Lista todos os IDs disponíveis, IDs numéricos e limites de stack. |
+
+O ID textual é o nome do `ItemId` em minúsculas. Espaços, hífens e `_` são ignorados. O ID numérico persistente também é aceito.
+
+Exemplos:
+
+```text
+/get ironpickaxe 6
+/get iron-pickaxe 6
+/get "Iron Pickaxe" 6
+/get 2 6
+/get dirtblock 999
+```
+
+IDs atuais:
+
+| ID textual | ID numérico | Item | Stack máximo |
+|---|---:|---|---:|
+| `ironpickaxe` | `2` | Iron Pickaxe | `1` |
+| `dirtblock` | `3` | Dirt Block | `999` |
+| `stoneblock` | `4` | Stone Block | `999` |
+| `sandblock` | `5` | Sand Block | `999` |
+| `rawwood` | `6` | Raw Wood | `999` |
+| `workbench` | `7` | Workbench | `99` |
+| `woodpickaxe` | `8` | Wood Pickaxe | `1` |
+| `stonepickaxe` | `9` | Stone Pickaxe | `1` |
+| `wooddoor` | `10` | Wood Door | `99` |
+
 ## Spawn de itens
 
 | Comando | Efeito |

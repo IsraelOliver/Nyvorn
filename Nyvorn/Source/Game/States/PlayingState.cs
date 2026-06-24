@@ -705,6 +705,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryExecuteGetCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
             if (normalized == "spawn pickaxe" || normalized == "spawn picareta" || normalized == "spawn wood pickaxe")
             {
                 SetConsoleMessage(session.TryDropItem(ItemId.WoodPickaxe)
@@ -797,6 +803,8 @@ namespace Nyvorn.Source.Game.States
                 "/tissuepulse",
                 "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
                 "/tissuepulse reset",
+                "/get <item> [quantidade]",
+                "/get list",
                 "/spawn pickaxe",
                 "/spawn picareta",
                 "/spawn wood pickaxe",
@@ -979,6 +987,83 @@ namespace Nyvorn.Source.Game.States
 
             SetConsoleMessage($"Tissue pulse {parameter}: {appliedValue:0.###}");
             return true;
+        }
+
+        private bool TryExecuteGetCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("get", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1)
+            {
+                ShowGetUsage();
+                return true;
+            }
+
+            if (parts.Length == 2 && parts[1].Equals("list", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ShowGetItemList();
+                return true;
+            }
+
+            int identifierPartCount = parts.Length - 1;
+            int quantity = 1;
+            if (parts.Length >= 3 &&
+                int.TryParse(parts[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedQuantity))
+            {
+                quantity = parsedQuantity;
+                identifierPartCount--;
+            }
+
+            if (quantity < 1 || quantity > 9999 || identifierPartCount <= 0)
+            {
+                ShowGetUsage();
+                return true;
+            }
+
+            string itemIdentifier = string.Join(' ', parts, 1, identifierPartCount);
+            if (!ItemDefinitions.TryResolveCommandId(itemIdentifier, out ItemDefinition definition))
+            {
+                SetConsoleMessage($"Item desconhecido: {itemIdentifier}. Use /get list");
+                return true;
+            }
+
+            int added = session.StoreItem(definition.Id, quantity, preferInventory: true);
+            string commandId = ItemDefinitions.GetCommandId(definition.Id);
+            if (added == quantity)
+            {
+                SetConsoleMessage($"Adicionado: {added}x {definition.Name} [{commandId}]");
+            }
+            else if (added > 0)
+            {
+                SetConsoleMessage($"Inventario cheio: adicionado {added}/{quantity}x {definition.Name} [{commandId}]");
+            }
+            else
+            {
+                SetConsoleMessage($"Inventario cheio: nenhum {definition.Name} foi adicionado");
+            }
+
+            return true;
+        }
+
+        private void ShowGetUsage()
+        {
+            SetConsoleMessage("Uso: /get <item> [quantidade 1..9999]");
+            AddConsoleHistory("Use /get list para ver todos os IDs disponíveis");
+        }
+
+        private void ShowGetItemList()
+        {
+            SetConsoleMessage("Itens disponiveis para /get:");
+            foreach (ItemDefinition definition in ItemDefinitions.GetAll())
+            {
+                string stack = definition.Stackable
+                    ? $"stack {definition.MaxStack}"
+                    : "nao empilhavel";
+                AddConsoleHistory(
+                    $"{ItemDefinitions.GetCommandId(definition.Id)} (#{(byte)definition.Id}) - {definition.Name}, {stack}");
+            }
         }
 
         private void ShowTissuePulseStatus()
