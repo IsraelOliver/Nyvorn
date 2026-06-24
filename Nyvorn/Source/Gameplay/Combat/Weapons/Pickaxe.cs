@@ -6,6 +6,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 {
     public sealed class Pickaxe : Weapon
     {
+        private readonly Texture2D playerUpperBodyMoveset;
         private readonly int powerTier;
         private readonly int miningPower;
         private readonly float miningSpeed;
@@ -13,12 +14,15 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 
         public Pickaxe(
             Texture2D texture,
+            Texture2D playerUpperBodyMoveset,
             int miningPower = 1,
             float miningSpeed = 1.5f,
             int powerTier = 1,
             int hitDamage = 8)
             : base(texture, frameW: 32, frameH: 32, pivot: new Point(9, 19))
         {
+            this.playerUpperBodyMoveset = playerUpperBodyMoveset ??
+                throw new System.ArgumentNullException(nameof(playerUpperBodyMoveset));
             this.powerTier = powerTier;
             this.miningPower = miningPower;
             this.miningSpeed = miningSpeed;
@@ -29,6 +33,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public override bool UsesAttackHandPose => true;
         public override bool UsesPlayerAttackUpperPose => true;
         public override bool ReplacesPlayerUpperBody => true;
+        public override Texture2D PlayerUpperBodyTexture => playerUpperBodyMoveset;
+        public override bool DrawsPlayerUpperBodyOverlay => true;
+        public override Texture2D PlayerUpperBodyOverlayTexture => texture;
         public override float? WorldBreakRangeOverride => 56f;
         public override int PowerTier => powerTier;
         public override ToolType ToolType => ToolType.Pickaxe;
