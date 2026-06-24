@@ -84,15 +84,13 @@ IDs atuais:
 | `stonepickaxe` | `9` | Stone Pickaxe | `1` |
 | `wooddoor` | `10` | Wood Door | `99` |
 
-## Spawn de itens
+## Spawn de entidades
 
 | Comando | Efeito |
 |---|---|
-| `/spawn pickaxe` | Solta uma picareta de madeira próxima ao jogador. |
-| `/spawn picareta` | Alias de `/spawn pickaxe`. |
-| `/spawn wood pickaxe` | Solta uma picareta de madeira. |
-| `/spawn stone pickaxe` | Solta uma picareta de pedra. |
-| `/spawn iron pickaxe` | Solta uma picareta de ferro. |
+| `/spawn <entidade>` | Reservado exclusivamente para entidades. Ainda não existem entidades debug registradas para esse comando. |
+
+Itens nunca usam `/spawn`. Para adicionar itens ao jogador, use `/get`.
 
 ## Simulação do mundo
 

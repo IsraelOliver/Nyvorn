@@ -711,29 +711,8 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "spawn pickaxe" || normalized == "spawn picareta" || normalized == "spawn wood pickaxe")
+            if (TryExecuteSpawnCommand(commandBody))
             {
-                SetConsoleMessage(session.TryDropItem(ItemId.WoodPickaxe)
-                    ? "Spawned: wood pickaxe"
-                    : "Falha ao spawnar wood pickaxe");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "spawn stone pickaxe")
-            {
-                SetConsoleMessage(session.TryDropItem(ItemId.StonePickaxe)
-                    ? "Spawned: stone pickaxe"
-                    : "Falha ao spawnar stone pickaxe");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "spawn iron pickaxe")
-            {
-                SetConsoleMessage(session.TryDropItem(ItemId.IronPickaxe)
-                    ? "Spawned: iron pickaxe"
-                    : "Falha ao spawnar iron pickaxe");
                 consoleInput = string.Empty;
                 return;
             }
@@ -805,11 +784,7 @@ namespace Nyvorn.Source.Game.States
                 "/tissuepulse reset",
                 "/get <item> [quantidade]",
                 "/get list",
-                "/spawn pickaxe",
-                "/spawn picareta",
-                "/spawn wood pickaxe",
-                "/spawn stone pickaxe",
-                "/spawn iron pickaxe",
+                "/spawn <entidade> (reservado)",
                 "/tick status",
                 "/tick",
                 "/tick speed <1..16>",
@@ -1064,6 +1039,30 @@ namespace Nyvorn.Source.Game.States
                 AddConsoleHistory(
                     $"{ItemDefinitions.GetCommandId(definition.Id)} (#{(byte)definition.Id}) - {definition.Name}, {stack}");
             }
+        }
+
+        private bool TryExecuteSpawnCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("spawn", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1)
+            {
+                SetConsoleMessage("Uso: /spawn <entidade>. Nenhuma entidade debug registrada ainda");
+                return true;
+            }
+
+            string identifier = string.Join(' ', parts, 1, parts.Length - 1);
+            if (ItemDefinitions.TryResolveCommandId(identifier, out ItemDefinition item))
+            {
+                SetConsoleMessage(
+                    $"{item.Name} e item. Use /get {ItemDefinitions.GetCommandId(item.Id)} [quantidade]");
+                return true;
+            }
+
+            SetConsoleMessage($"Entidade desconhecida: {identifier}. /spawn aceita somente entidades");
+            return true;
         }
 
         private void ShowTissuePulseStatus()
