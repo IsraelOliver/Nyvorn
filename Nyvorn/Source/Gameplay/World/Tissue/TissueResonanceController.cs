@@ -6,7 +6,7 @@ namespace Nyvorn.Source.World.Tissue
     public readonly record struct TissueResonanceState(
         bool IsActive,
         TissueNodeInfo OriginNode,
-        TissuePropagationMap Propagation,
+        TissuePropagationResult Propagation,
         float ResponseStrength,
         float VisualStrength,
         float MemoryStrength,
@@ -19,9 +19,10 @@ namespace Nyvorn.Source.World.Tissue
     public sealed class TissueResonanceController
     {
         private readonly ITissueQueryService tissueQueries;
+        private readonly ITissuePropagationService tissuePropagation;
         private readonly TissueEnvironmentSensor environmentSensor;
         private TissueNodeInfo activeNode;
-        private TissuePropagationMap propagation;
+        private TissuePropagationResult propagation;
         private float responseStrength;
         private float elapsed;
         private float configuredMaximumDistance = TissueConfig.Resonance.DefaultMaxPropagationDistance;
@@ -29,9 +30,11 @@ namespace Nyvorn.Source.World.Tissue
 
         public TissueResonanceController(
             ITissueQueryService tissueQueries,
+            ITissuePropagationService tissuePropagation,
             TissueEnvironmentSensor environmentSensor)
         {
             this.tissueQueries = tissueQueries ?? throw new ArgumentNullException(nameof(tissueQueries));
+            this.tissuePropagation = tissuePropagation ?? throw new ArgumentNullException(nameof(tissuePropagation));
             this.environmentSensor = environmentSensor ?? throw new ArgumentNullException(nameof(environmentSensor));
         }
 
@@ -85,17 +88,23 @@ namespace Nyvorn.Source.World.Tissue
                 return false;
             }
 
-            if (!tissueQueries.TryBuildPropagation(
-                    node.Id,
-                    configuredMaximumDistance,
-                    out TissuePropagationMap propagationMap))
+            TissuePropagationRequest request = new(
+                node.Id,
+                configuredMaximumDistance,
+                response,
+                TissueConfig.Resonance.PulseFadePower,
+                TissueConfig.Propagation.DefaultMinimumConductivity,
+                TissueSignalChannel.Native);
+            if (!tissuePropagation.TryPropagate(
+                    request,
+                    out TissuePropagationResult propagationResult))
             {
                 Clear();
                 return false;
             }
 
             activeNode = node;
-            propagation = propagationMap;
+            propagation = propagationResult;
             activeMaximumDistance = configuredMaximumDistance;
             responseStrength = MathHelper.Clamp(response, 0f, 1f);
             elapsed = 0f;

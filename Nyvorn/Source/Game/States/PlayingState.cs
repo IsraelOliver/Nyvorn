@@ -44,11 +44,12 @@ namespace Nyvorn.Source.Game.States
         private int commandHistoryIndex;
         private string commandHistoryDraft = string.Empty;
         private float consoleCursorBlinkTimer;
+        private Vector2 consoleTargetWorld;
         private KeyboardState previousConsoleKeyboard;
         private float autoSaveTimer;
         private const float AutoSaveInterval = 60f;
         private const int MaxConsoleInputLength = 96;
-        private const int MaxConsoleHistoryLines = 20;
+        private const int MaxConsoleHistoryLines = 40;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -91,6 +92,7 @@ namespace Nyvorn.Source.Game.States
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
 
             InputState input = inputService.Update();
+            consoleTargetWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
             KeyboardState keyboard = Keyboard.GetState();
             bool handledConsoleThisFrame = false;
 
@@ -705,29 +707,14 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "spawn pickaxe" || normalized == "spawn picareta" || normalized == "spawn wood pickaxe")
+            if (TryExecuteGetCommand(commandBody))
             {
-                SetConsoleMessage(session.TryDropItem(ItemId.WoodPickaxe)
-                    ? "Spawned: wood pickaxe"
-                    : "Falha ao spawnar wood pickaxe");
                 consoleInput = string.Empty;
                 return;
             }
 
-            if (normalized == "spawn stone pickaxe")
+            if (TryExecuteSpawnCommand(commandBody))
             {
-                SetConsoleMessage(session.TryDropItem(ItemId.StonePickaxe)
-                    ? "Spawned: stone pickaxe"
-                    : "Falha ao spawnar stone pickaxe");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "spawn iron pickaxe")
-            {
-                SetConsoleMessage(session.TryDropItem(ItemId.IronPickaxe)
-                    ? "Spawned: iron pickaxe"
-                    : "Falha ao spawnar iron pickaxe");
                 consoleInput = string.Empty;
                 return;
             }
@@ -739,6 +726,12 @@ namespace Nyvorn.Source.Game.States
             }
 
             if (TryExecuteTissuePulseCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (TryExecuteTissueMutationCommand(commandBody))
             {
                 consoleInput = string.Empty;
                 return;
@@ -797,11 +790,16 @@ namespace Nyvorn.Source.Game.States
                 "/tissuepulse",
                 "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
                 "/tissuepulse reset",
-                "/spawn pickaxe",
-                "/spawn picareta",
-                "/spawn wood pickaxe",
-                "/spawn stone pickaxe",
-                "/spawn iron pickaxe",
+                "/tissuedamage <valor> [raio]",
+                "/tissueheal <valor> [raio]",
+                "/tissuecorrupt <valor> [raio]",
+                "/tissuememory <valor> [raio]",
+                "/tissueflow <valor> [raio]",
+                "/tissueremove [raio]",
+                "/tissuereset [raio]",
+                "/get <item> [quantidade]",
+                "/get list",
+                "/spawn <entidade> (reservado)",
                 "/tick status",
                 "/tick",
                 "/tick speed <1..16>",
@@ -978,6 +976,221 @@ namespace Nyvorn.Source.Game.States
             }
 
             SetConsoleMessage($"Tissue pulse {parameter}: {appliedValue:0.###}");
+            return true;
+        }
+
+        private bool TryExecuteTissueMutationCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return false;
+
+            string operation = parts[0].ToLowerInvariant();
+            bool hasValue = operation is
+                "tissuedamage" or
+                "tissueheal" or
+                "tissuecorrupt" or
+                "tissuememory" or
+                "tissueflow";
+            bool isSimpleOperation = operation is "tissueremove" or "tissuereset";
+            if (!hasValue && !isSimpleOperation)
+                return false;
+
+            float value = 0f;
+            int radiusPartIndex;
+            if (hasValue)
+            {
+                if (parts.Length < 2 || parts.Length > 3 ||
+                    !float.TryParse(
+                        parts[1].Replace(',', '.'),
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out value) ||
+                    float.IsNaN(value) ||
+                    float.IsInfinity(value) ||
+                    value < 0f ||
+                    value > 1f ||
+                    (operation != "tissueflow" && value <= 0f))
+                {
+                    ShowTissueMutationUsage(operation);
+                    return true;
+                }
+
+                radiusPartIndex = 2;
+            }
+            else
+            {
+                if (parts.Length > 2)
+                {
+                    ShowTissueMutationUsage(operation);
+                    return true;
+                }
+
+                radiusPartIndex = 1;
+            }
+
+            int radius = 0;
+            if (parts.Length > radiusPartIndex &&
+                (!int.TryParse(
+                    parts[radiusPartIndex],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out radius) ||
+                 radius < 0 || radius > 16))
+            {
+                ShowTissueMutationUsage(operation);
+                return true;
+            }
+
+            Point target = session.WorldMap.WorldToTile(consoleTargetWorld);
+            int centerX = session.WorldMap.WrapTileX(target.X);
+            int changedCount = 0;
+            int radiusSquared = radius * radius;
+            for (int offsetY = -radius; offsetY <= radius; offsetY++)
+            {
+                int tileY = target.Y + offsetY;
+                if (tileY < 0 || tileY >= session.WorldMap.Height)
+                    continue;
+
+                for (int offsetX = -radius; offsetX <= radius; offsetX++)
+                {
+                    if (radius > 0 &&
+                        ((offsetX * offsetX) + (offsetY * offsetY)) > radiusSquared)
+                    {
+                        continue;
+                    }
+
+                    int tileX = centerX + offsetX;
+                    bool changed = operation switch
+                    {
+                        "tissuedamage" => session.TissueMutations.DamageTile(tileX, tileY, value),
+                        "tissueheal" => session.TissueMutations.RestoreTile(tileX, tileY, value),
+                        "tissuecorrupt" => session.TissueMutations.AddCorruption(tileX, tileY, value),
+                        "tissuememory" => session.TissueMutations.AddMemory(tileX, tileY, value),
+                        "tissueflow" => session.TissueMutations.SetFlow(tileX, tileY, value),
+                        "tissueremove" => session.TissueMutations.RemoveTissue(tileX, tileY),
+                        "tissuereset" => session.TissueMutations.ResetTile(tileX, tileY),
+                        _ => false
+                    };
+                    if (changed)
+                        changedCount++;
+                }
+            }
+
+            SetConsoleMessage(
+                $"{operation}: {changedCount} tile(s) alterado(s) em ({centerX}, {target.Y}), raio {radius}");
+            return true;
+        }
+
+        private void ShowTissueMutationUsage(string operation)
+        {
+            if (operation is "tissueremove" or "tissuereset")
+            {
+                SetConsoleMessage($"Uso: /{operation} [raio 0..16]");
+                return;
+            }
+
+            SetConsoleMessage($"Uso: /{operation} <valor 0..1> [raio 0..16]");
+        }
+
+        private bool TryExecuteGetCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("get", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1)
+            {
+                ShowGetUsage();
+                return true;
+            }
+
+            if (parts.Length == 2 && parts[1].Equals("list", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ShowGetItemList();
+                return true;
+            }
+
+            int identifierPartCount = parts.Length - 1;
+            int quantity = 1;
+            if (parts.Length >= 3 &&
+                int.TryParse(parts[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedQuantity))
+            {
+                quantity = parsedQuantity;
+                identifierPartCount--;
+            }
+
+            if (quantity < 1 || quantity > 9999 || identifierPartCount <= 0)
+            {
+                ShowGetUsage();
+                return true;
+            }
+
+            string itemIdentifier = string.Join(' ', parts, 1, identifierPartCount);
+            if (!ItemDefinitions.TryResolveCommandId(itemIdentifier, out ItemDefinition definition))
+            {
+                SetConsoleMessage($"Item desconhecido: {itemIdentifier}. Use /get list");
+                return true;
+            }
+
+            int added = session.StoreItem(definition.Id, quantity, preferInventory: true);
+            string commandId = ItemDefinitions.GetCommandId(definition.Id);
+            if (added == quantity)
+            {
+                SetConsoleMessage($"Adicionado: {added}x {definition.Name} [{commandId}]");
+            }
+            else if (added > 0)
+            {
+                SetConsoleMessage($"Inventario cheio: adicionado {added}/{quantity}x {definition.Name} [{commandId}]");
+            }
+            else
+            {
+                SetConsoleMessage($"Inventario cheio: nenhum {definition.Name} foi adicionado");
+            }
+
+            return true;
+        }
+
+        private void ShowGetUsage()
+        {
+            SetConsoleMessage("Uso: /get <item> [quantidade 1..9999]");
+            AddConsoleHistory("Use /get list para ver todos os IDs disponíveis");
+        }
+
+        private void ShowGetItemList()
+        {
+            SetConsoleMessage("Itens disponiveis para /get:");
+            foreach (ItemDefinition definition in ItemDefinitions.GetAll())
+            {
+                string stack = definition.Stackable
+                    ? $"stack {definition.MaxStack}"
+                    : "nao empilhavel";
+                AddConsoleHistory(
+                    $"{ItemDefinitions.GetCommandId(definition.Id)} (#{(byte)definition.Id}) - {definition.Name}, {stack}");
+            }
+        }
+
+        private bool TryExecuteSpawnCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("spawn", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1)
+            {
+                SetConsoleMessage("Uso: /spawn <entidade>. Nenhuma entidade debug registrada ainda");
+                return true;
+            }
+
+            string identifier = string.Join(' ', parts, 1, parts.Length - 1);
+            if (ItemDefinitions.TryResolveCommandId(identifier, out ItemDefinition item))
+            {
+                SetConsoleMessage(
+                    $"{item.Name} e item. Use /get {ItemDefinitions.GetCommandId(item.Id)} [quantidade]");
+                return true;
+            }
+
+            SetConsoleMessage($"Entidade desconhecida: {identifier}. /spawn aceita somente entidades");
             return true;
         }
 

@@ -37,6 +37,8 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required PlayingSessionTissueSystem TissueSystem { get; init; }
         public required ITissueQueryService TissueQueries { get; init; }
+        public required ITissueMutationService TissueMutations { get; init; }
+        public required ITissuePropagationService TissuePropagation { get; init; }
         public required TissueGenerationResult CosmicTissueGeneration { get; init; }
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
@@ -378,6 +380,11 @@ namespace Nyvorn.Source.Game.States
         public bool TryStoreItem(ItemId itemId, int quantity, bool preferInventory)
         {
             return WorldItemRuntimeSystem.TryStoreItem(itemId, quantity, preferInventory);
+        }
+
+        public int StoreItem(ItemId itemId, int quantity, bool preferInventory)
+        {
+            return WorldItemRuntimeSystem.StoreItem(itemId, quantity, preferInventory);
         }
 
         public int CountItem(ItemId itemId)

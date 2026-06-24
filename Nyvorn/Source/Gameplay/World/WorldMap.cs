@@ -33,6 +33,8 @@ namespace Nyvorn.Source.World
         public int ChunkCountY => (Height + ChunkTileSize - 1) / ChunkTileSize;
         public IReadOnlyList<TreeInstance> Trees => _trees;
 
+        internal event Action<TissueChangedEvent> TissueChanged;
+
         private Texture2D _dirt;
         private Texture2D _grass;
         private Texture2D _sand;
@@ -268,6 +270,18 @@ namespace Nyvorn.Source.World
             return _tissueField.Clear(WrapTileX(x), y);
         }
 
+        public bool ResetTissueAt(int x, int y)
+        {
+            if (_tissueField == null || !InBounds(x, y))
+                return false;
+
+            int wrappedX = WrapTileX(x);
+            if (!IsSolidAt(wrappedX, y))
+                return false;
+
+            return _tissueField.ResetOverride(wrappedX, y);
+        }
+
         public void SetTissueAnalysis(TissueAnalysisResult analysis)
         {
             _tissueAnalysis = analysis;
@@ -294,10 +308,15 @@ namespace Nyvorn.Source.World
                 _tissueField.Clear(x, y);
         }
 
-        private void HandleTissueFieldChanged()
+        private void HandleTissueFieldChanged(TissueFieldChange change)
         {
             _tissueAnalysis = null;
             TissueRevision++;
+            TissueChanged?.Invoke(new TissueChangedEvent(
+                new Point(change.X, change.Y),
+                change.Previous,
+                change.Current,
+                TissueRevision));
         }
 
         public TissueAnalysisResult GetOrCreateTissueAnalysis()

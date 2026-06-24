@@ -25,7 +25,18 @@ namespace Nyvorn.Source.World.Tissue
                     "TissueField e WorldMap precisam ter as mesmas dimensoes.",
                     nameof(tissueField));
             }
+
+            if (!ReferenceEquals(tissueField, worldMap.TissueField))
+            {
+                throw new ArgumentException(
+                    "TissueQueryService precisa usar o TissueField oficial do WorldMap.",
+                    nameof(tissueField));
+            }
+
+            worldMap.TissueChanged += HandleTissueChanged;
         }
+
+        public event Action<TissueChangedEvent> Changed;
 
         public TissueCellState GetState(int tileX, int tileY)
         {
@@ -165,21 +176,6 @@ namespace Nyvorn.Source.World.Tissue
             return true;
         }
 
-        public bool TryBuildPropagation(
-            int originNodeId,
-            float maximumDistance,
-            out TissuePropagationMap propagation)
-        {
-            propagation = null;
-            if (!IsFinite(maximumDistance) || maximumDistance <= 0f)
-                return false;
-
-            return tissueNetwork.TryBuildPropagation(
-                originNodeId,
-                maximumDistance,
-                out propagation);
-        }
-
         private static float NormalizeThreshold(float value)
         {
             if (!IsFinite(value))
@@ -191,6 +187,11 @@ namespace Nyvorn.Source.World.Tissue
         private static bool IsFinite(float value)
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        private void HandleTissueChanged(TissueChangedEvent change)
+        {
+            Changed?.Invoke(change);
         }
     }
 }
