@@ -13,7 +13,18 @@ namespace Nyvorn.Source.World.Generation
             float memoryDensity,
             float flow)
         {
-            Presence = Clamp01(presence);
+            float normalizedPresence = Clamp01(presence);
+            if (normalizedPresence <= PresenceThreshold)
+            {
+                Presence = 0f;
+                Vitality = 0f;
+                Corruption = 0f;
+                MemoryDensity = 0f;
+                Flow = 0f;
+                return;
+            }
+
+            Presence = normalizedPresence;
             Vitality = Clamp01(vitality);
             Corruption = Clamp01(corruption);
             MemoryDensity = Clamp01(memoryDensity);
@@ -27,6 +38,9 @@ namespace Nyvorn.Source.World.Generation
         public float Corruption { get; }
         public float MemoryDensity { get; }
         public float Flow { get; }
+        public float SignalCapacity => Presence * Vitality * Flow;
+        public float NativeConductivity => SignalCapacity * (1f - Corruption);
+        public float CorruptedConductivity => SignalCapacity * Corruption;
         public bool HasBiologicalPresence => Presence > PresenceThreshold;
         public bool IsNeutral => Presence <= PresenceThreshold &&
                                  Vitality <= PresenceThreshold &&

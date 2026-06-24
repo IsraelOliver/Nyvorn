@@ -51,15 +51,75 @@ Exemplo de configuração:
 /tissuepulse intensity 0.7
 ```
 
-## Spawn de itens
+## Mutação debug do Tissue
+
+Estes comandos alteram o `TissueField` persistente no tile sob o mouse. O raio é
+opcional, usa uma área circular e aceita valores de `0` a `16` tiles. O raio
+default é `0`, afetando somente o tile apontado.
 
 | Comando | Efeito |
 |---|---|
-| `/spawn pickaxe` | Solta uma picareta de madeira próxima ao jogador. |
-| `/spawn picareta` | Alias de `/spawn pickaxe`. |
-| `/spawn wood pickaxe` | Solta uma picareta de madeira. |
-| `/spawn stone pickaxe` | Solta uma picareta de pedra. |
-| `/spawn iron pickaxe` | Solta uma picareta de ferro. |
+| `/tissuedamage <valor> [raio]` | Reduz `Vitality` pelo valor indicado. |
+| `/tissueheal <valor> [raio]` | Aumenta `Vitality` sem recriar Tissue removido. |
+| `/tissuecorrupt <valor> [raio]` | Aumenta `Corruption`. |
+| `/tissuememory <valor> [raio]` | Aumenta `MemoryDensity`. |
+| `/tissueflow <valor> [raio]` | Define `Flow` para o valor indicado. |
+| `/tissueremove [raio]` | Remove o Tissue físico e cria o tombstone persistente. |
+| `/tissuereset [raio]` | Remove overrides e restaura o estado original gerado. Exige tile sólido. |
+
+Valores biológicos ficam entre `0` e `1`. Os comandos informam quantos tiles
+foram realmente alterados. Alterações são salvas normalmente no mundo.
+
+Exemplos:
+
+```text
+/tissuedamage 0.5
+/tissuecorrupt 0.35 3
+/tissueflow 0 2
+/tissueremove
+/tissuereset 3
+```
+
+## Adicionar itens ao inventário
+
+| Comando | Efeito |
+|---|---|
+| `/get <item> [quantidade]` | Adiciona de `1` a `9999` unidades diretamente ao inventário e, se necessário, à hotbar. A quantidade default é `1`. |
+| `/get list` | Lista todos os IDs disponíveis, IDs numéricos e limites de stack. |
+
+O ID textual é o nome do `ItemId` em minúsculas. Espaços, hífens e `_` são ignorados. O ID numérico persistente também é aceito.
+
+Exemplos:
+
+```text
+/get ironpickaxe 6
+/get iron-pickaxe 6
+/get "Iron Pickaxe" 6
+/get 2 6
+/get dirtblock 999
+```
+
+IDs atuais:
+
+| ID textual | ID numérico | Item | Stack máximo |
+|---|---:|---|---:|
+| `ironpickaxe` | `2` | Iron Pickaxe | `1` |
+| `dirtblock` | `3` | Dirt Block | `999` |
+| `stoneblock` | `4` | Stone Block | `999` |
+| `sandblock` | `5` | Sand Block | `999` |
+| `rawwood` | `6` | Raw Wood | `999` |
+| `workbench` | `7` | Workbench | `99` |
+| `woodpickaxe` | `8` | Wood Pickaxe | `1` |
+| `stonepickaxe` | `9` | Stone Pickaxe | `1` |
+| `wooddoor` | `10` | Wood Door | `99` |
+
+## Spawn de entidades
+
+| Comando | Efeito |
+|---|---|
+| `/spawn <entidade>` | Reservado exclusivamente para entidades. Ainda não existem entidades debug registradas para esse comando. |
+
+Itens nunca usam `/spawn`. Para adicionar itens ao jogador, use `/get`.
 
 ## Simulação do mundo
 
