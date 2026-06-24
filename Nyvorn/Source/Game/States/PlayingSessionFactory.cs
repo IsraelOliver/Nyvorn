@@ -575,6 +575,9 @@ namespace Nyvorn.Source.Game.States
                 build.WorldMap,
                 build.WorldMap.TissueField,
                 tissueNetwork);
+            ITissueMutationService tissueMutations = new TissueMutationService(
+                build.WorldMap,
+                tissueQueries);
             TissueEnvironmentSensor tissueEnvironmentSensor = new(build.WorldMap, tissueQueries);
             TissueResonanceController tissueResonanceController = new(
                 tissueQueries,
@@ -686,6 +689,7 @@ namespace Nyvorn.Source.Game.States
                 ViewCoordinator = viewCoordinator,
                 TissueSystem = tissueSystem,
                 TissueQueries = tissueQueries,
+                TissueMutations = tissueMutations,
                 CosmicTissueGeneration = build.TissueGeneration,
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
