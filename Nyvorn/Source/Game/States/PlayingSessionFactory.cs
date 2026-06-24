@@ -578,9 +578,14 @@ namespace Nyvorn.Source.Game.States
             ITissueMutationService tissueMutations = new TissueMutationService(
                 build.WorldMap,
                 tissueQueries);
+            ITissuePropagationService tissuePropagation = new TissuePropagationService(
+                build.WorldMap,
+                build.WorldMap.TissueField,
+                tissueNetwork);
             TissueEnvironmentSensor tissueEnvironmentSensor = new(build.WorldMap, tissueQueries);
             TissueResonanceController tissueResonanceController = new(
                 tissueQueries,
+                tissuePropagation,
                 tissueEnvironmentSensor);
             HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
             PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
@@ -690,6 +695,7 @@ namespace Nyvorn.Source.Game.States
                 TissueSystem = tissueSystem,
                 TissueQueries = tissueQueries,
                 TissueMutations = tissueMutations,
+                TissuePropagation = tissuePropagation,
                 CosmicTissueGeneration = build.TissueGeneration,
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,

@@ -1,6 +1,6 @@
 # Arquitetura do Tissue
 
-O Tissue é dividido em quatro responsabilidades:
+O Tissue é dividido em cinco responsabilidades:
 
 | Camada | Responsabilidade |
 |---|---|
@@ -8,6 +8,7 @@ O Tissue é dividido em quatro responsabilidades:
 | `TissueField` | Estado biológico atual e persistente nos tiles sólidos. |
 | `ITissueQueryService` | Porta oficial de leitura para sistemas de gameplay. |
 | `ITissueMutationService` | Porta oficial para alterações biológicas controladas. |
+| `ITissuePropagationService` | Calcula sinais sobre a topologia usando o estado biológico atual. |
 
 Sistemas de gameplay não devem receber ou modificar diretamente `TissueField` ou `TissueNetwork`.
 
@@ -49,7 +50,17 @@ A instância oficial é exposta como:
 session.TissueQueries
 ```
 
-Ela consulta células, agrega regiões, encontra nós conectados e constrói mapas imutáveis de propagação sem expor índices ou coleções internas.
+Ela consulta células, agrega regiões e encontra nós conectados sem expor índices ou coleções internas.
+
+Alterações em runtime também são publicadas por essa porta:
+
+```csharp
+session.TissueQueries.Changed += OnTissueChanged;
+```
+
+Cada `TissueChangedEvent` contém tile, estado anterior, estado atual e a revisão
+do mundo. O evento é emitido para mutações oficiais e mineração. Geração e
+carregamento inicial são silenciosos.
 
 ## API de mutação
 
@@ -69,6 +80,7 @@ ReduceCorruption(tileX, tileY, amount);
 AddMemory(tileX, tileY, amount);
 SetFlow(tileX, tileY, value);
 RemoveTissue(tileX, tileY);
+ResetTile(tileX, tileY);
 ```
 
 Regras:
@@ -77,6 +89,7 @@ Regras:
 - Nenhuma restauração recria Tissue com `Presence = 0`.
 - Corrupção, memória e fluxo permanecem independentes.
 - `RemoveTissue` cria o estado neutro/tombstone efetivo sem alterar a `TissueNetwork`.
+- `ResetTile` remove o override e restaura a célula-base gerada; não atua em ar.
 - X usa o wrap horizontal do mundo; Y inválido e tiles de ar são rejeitados.
 - Valores incrementais negativos, `NaN` e infinitos são rejeitados.
 - Resultados são limitados entre `0` e `1`.
@@ -85,3 +98,30 @@ Regras:
 
 Mineração continua removendo Tissue pelo fluxo interno do `WorldMap`, porque a transição sólido → ar é uma regra de infraestrutura. Criaturas, bosses, biomas e eventos devem usar exclusivamente `ITissueMutationService`.
 
+## API de propagação
+
+A instância oficial é exposta como:
+
+```csharp
+session.TissuePropagation
+```
+
+Ela recebe um `TissuePropagationRequest` e devolve um `TissuePropagationResult`
+imutável com os nós e ramos alcançados, distâncias, forças de chegada e
+condutividade. O serviço não altera o `TissueField`.
+
+Os canais disponíveis são:
+
+- `Native`: perde condução conforme a corrupção aumenta.
+- `Corrupted`: conduz pela fração reescrita do Tissue.
+- `Raw`: considera a capacidade biológica total, independentemente da corrupção.
+
+A busca favorece o sinal restante mais forte; em empates, prefere menor distância
+e IDs menores para manter determinismo. Distância, atenuação e gargalos do campo
+reduzem a força. Um tile que nunca teve Tissue é ignorado, preservando travessias
+decorativas por cavernas naturais. Um tile-base removido vira gargalo zero e pode
+interromper o ramo.
+
+O Reveal é o primeiro consumidor dessa API e usa o canal `Native`. Corrupção
+automática não existe nesta fase: um futuro sistema poderá calcular um resultado
+no canal desejado e aplicar mudanças separadamente por `TissueMutations`.

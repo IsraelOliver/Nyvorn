@@ -127,6 +127,10 @@ static bool HasSameField(TissueField first, TissueField second)
 static void ValidateMutableField(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)
 {
     TissueField field = generation.RasterizedField;
+    ITissueQueryService queries = new TissueQueryService(map, field, generation.Network);
+    ITissueMutationService mutations = new TissueMutationService(map, queries);
+    List<TissueChangedEvent> changes = new();
+    queries.Changed += changes.Add;
     TissueFieldCell[] samples = field.EnumerateActiveCells().Take(2).ToArray();
     Require(samples.Length == 2, $"not enough field cells for mutation test for {preset}/{seed}");
 
@@ -143,9 +147,22 @@ static void ValidateMutableField(WorldMap map, TissueGenerationResult generation
     Require(field.HasUnsavedChanges, $"field mutation was not marked dirty for {preset}/{seed}");
     Require(field.OverrideCount == 1, $"field mutation changed more than one override for {preset}/{seed}");
     Require(field.GetState(target.X, target.Y).Corruption == 0.5f, $"field mutation was not retained for {preset}/{seed}");
+    Require(
+        changes.Count == 1 &&
+        changes[0].Tile == new Point(target.X, target.Y) &&
+        StatesEqual(changes[0].Previous, target.State) &&
+        StatesEqual(changes[0].Current, changed) &&
+        changes[0].Revision == map.TissueRevision,
+        $"detailed tissue event mismatch for {preset}/{seed}");
 
-    Require(map.TrySetTissueState(target.X, target.Y, target.State), $"field baseline restore rejected for {preset}/{seed}");
+    Require(mutations.ResetTile(target.X, target.Y), $"field baseline reset rejected for {preset}/{seed}");
     Require(field.OverrideCount == 0, $"baseline restore did not remove override for {preset}/{seed}");
+    Require(
+        changes.Count == 2 &&
+        StatesEqual(changes[1].Previous, changed) &&
+        StatesEqual(changes[1].Current, target.State) &&
+        changes[1].Revision == map.TissueRevision,
+        $"baseline reset event mismatch for {preset}/{seed}");
     field.MarkPersisted();
     Require(!field.HasUnsavedChanges, $"field persisted marker did not reset dirty state for {preset}/{seed}");
 
@@ -155,6 +172,12 @@ static void ValidateMutableField(WorldMap map, TissueGenerationResult generation
     Require(field.OverrideCount == 1, $"mining did not create one tombstone for {preset}/{seed}");
     Require(field.Revision == revisionBeforeMining + 1, $"mining changed field revision incorrectly for {preset}/{seed}");
     Require(field.HasUnsavedChanges, $"mining did not mark field dirty for {preset}/{seed}");
+    Require(
+        changes.Count == 3 &&
+        changes[2].Tile == new Point(target.X, target.Y) &&
+        changes[2].Current.IsNeutral &&
+        changes[2].Revision == map.TissueRevision,
+        $"mining did not publish a tissue event for {preset}/{seed}");
 
     Require(map.TryPlaceTile(target.X, target.Y, TileType.Stone), $"replacement tile could not be placed for {preset}/{seed}");
     Require(!field.HasTissue(target.X, target.Y), $"placing a tile restored tissue for {preset}/{seed}");
@@ -270,6 +293,7 @@ static void ValidateTissueQueryApi()
         nodes,
         branches);
     ITissueQueryService queries = new TissueQueryService(map, field, network);
+    ITissuePropagationService propagationService = new TissuePropagationService(map, field, network);
 
     Require(StatesEqual(queries.GetState(-1, 1), leftEdge), "tile query did not wrap negative X");
     Require(StatesEqual(queries.GetState(width, 1), rightEdge), "tile query did not wrap positive X");
@@ -314,24 +338,32 @@ static void ValidateTissueQueryApi()
     Require(!queries.TryFindNearestNode(new Vector2(1f, 8f), 0f, out _), "nearest node accepted zero distance");
     Require(!queries.TryFindNearestConnectedNode(new Vector2(20f, 8f), 5f, out _), "connected nearest node ignored maximum distance");
 
-    Require(queries.TryBuildPropagation(7, 25f, out TissuePropagationMap propagation), "Dijkstra propagation was not built");
-    Require(propagation.Nodes.Count == 3, "Dijkstra included a node beyond maximum distance");
-    Require(propagation.Branches.Count == 5, "Dijkstra did not preserve reachable branches and microfilaments");
-    Require(propagation.TryGetNode(7, out TissueNodePropagation originArrival) && Approximately(originArrival.ArrivalDistance, 0f),
+    TissuePropagationRequest request = new(7, 25f, 1f, 1f, 0.05f, TissueSignalChannel.Native);
+    Require(propagationService.TryPropagate(request, out TissuePropagationResult propagation), "generic propagation was not built");
+    Require(propagation.Nodes.Count == 3, "propagation included a node beyond maximum distance");
+    Require(propagation.Branches.Count == 5, "propagation did not preserve reachable branches and microfilaments");
+    Require(propagation.TryGetNode(7, out TissueReachedNode originArrival) &&
+        Approximately(originArrival.ArrivalDistance, 0f) && Approximately(originArrival.ArrivalStrength, 1f),
         "origin node arrival distance mismatch");
-    Require(propagation.TryGetNode(9, out TissueNodePropagation secondArrival) && Approximately(secondArrival.ArrivalDistance, 11f),
+    Require(propagation.TryGetNode(9, out TissueReachedNode secondArrival) &&
+        Approximately(secondArrival.ArrivalDistance, 11f) && Approximately(secondArrival.ArrivalStrength, 0.56f),
         "second node arrival distance mismatch");
-    Require(propagation.TryGetNode(8, out TissueNodePropagation thirdArrival) && Approximately(thirdArrival.ArrivalDistance, 21f),
+    Require(propagation.TryGetNode(8, out TissueReachedNode thirdArrival) &&
+        Approximately(thirdArrival.ArrivalDistance, 21f) && Approximately(thirdArrival.ArrivalStrength, 0.16f),
         "third node arrival distance mismatch");
-    Require(!propagation.TryGetNode(3, out _), "Dijkstra crossed the propagation distance limit");
-    Require(propagation.TryGetBranch(100, out TissueBranchPropagation firstBranch) &&
-        firstBranch.FromNodeId == 7 && !firstBranch.Reverse && Approximately(firstBranch.StartDistance, 0f),
+    Require(!propagation.TryGetNode(3, out _), "propagation crossed the distance limit");
+    Require(propagation.TryGetBranch(100, out TissueReachedBranch firstBranch) &&
+        firstBranch.FromNodeId == 7 && !firstBranch.Reverse && Approximately(firstBranch.StartDistance, 0f) &&
+        Approximately(firstBranch.Conductivity, 1f),
         "first branch propagation direction mismatch");
-    Require(propagation.TryGetBranch(104, out TissueBranchPropagation microBranch) &&
+    Require(propagation.TryGetBranch(104, out TissueReachedBranch microBranch) &&
         microBranch.FromNodeId == 8 && Approximately(microBranch.StartDistance, 21f),
         "microfilament did not inherit its node arrival");
-    Require(!queries.TryBuildPropagation(999, 25f, out _), "propagation accepted an unknown origin");
-    Require(!queries.TryBuildPropagation(7, float.NaN, out _), "propagation accepted an invalid distance");
+    Require(!propagationService.TryPropagate(request with { OriginNodeId = 999 }, out _), "propagation accepted an unknown origin");
+    Require(!propagationService.TryPropagate(request with { MaximumDistance = float.NaN }, out _), "propagation accepted an invalid distance");
+    Require(!propagationService.TryPropagate(request with { InitialStrength = 0f }, out _), "propagation accepted zero strength");
+    Require(!propagationService.TryPropagate(request with { AttenuationPower = -1f }, out _), "propagation accepted invalid attenuation");
+    Require(!propagationService.TryPropagate(request with { MinimumConductivity = 2f }, out _), "propagation accepted invalid conductivity");
 
     int revisionBeforeQueries = field.Revision;
     int overridesBeforeQueries = field.OverrideCount;
@@ -340,7 +372,7 @@ static void ValidateTissueQueryApi()
     _ = queries.SampleArea(new Rectangle(0, 0, width, height));
     _ = queries.TryFindNearestNode(new Vector2(1f, 8f), 3f, out _);
     _ = queries.TryFindNearestConnectedNode(new Vector2(1f, 8f), 3f, out _);
-    _ = queries.TryBuildPropagation(7, 25f, out _);
+    _ = propagationService.TryPropagate(request, out _);
     Require(field.Revision == revisionBeforeQueries, "read-only queries changed field revision");
     Require(field.OverrideCount == overridesBeforeQueries, "read-only queries changed field overrides");
     Require(field.HasUnsavedChanges == dirtyBeforeQueries, "read-only queries changed field dirty state");
@@ -356,7 +388,7 @@ static void ValidateTissueQueryApi()
     Require(Approximately(environment.DistanceToNearestNode, 1f), "environment nearest-node distance mismatch");
     Require(environment.Revision == map.TissueRevision, "environment revision mismatch");
 
-    TissueResonanceController resonance = new(queries, environmentSensor);
+    TissueResonanceController resonance = new(queries, propagationService, environmentSensor);
     resonance.SetViewport(100f, 100f);
     int revisionBeforeResonance = field.Revision;
     Require(resonance.Trigger(sensorPosition), "healthy local tissue did not trigger resonance");
@@ -512,12 +544,21 @@ static void ValidateTissueMutationApi()
         Array.Empty<TissueBranch>());
     ITissueQueryService queries = new TissueQueryService(map, field, network);
     ITissueMutationService mutations = new TissueMutationService(map, queries);
+    List<TissueChangedEvent> changes = new();
+    queries.Changed += changes.Add;
     int initialRevision = field.Revision;
 
     Require(mutations.DamageTile(-1, 1, 0.25f), "damage mutation failed across wrap");
     TissueCellState damaged = queries.GetState(3, 1);
     Require(Approximately(damaged.Presence, 0.8f), "damage changed physical presence");
     Require(Approximately(damaged.Vitality, 0.35f), "damage did not reduce vitality");
+    Require(
+        changes.Count == 1 &&
+        changes[0].Tile == new Point(3, 1) &&
+        StatesEqual(changes[0].Previous, initial) &&
+        StatesEqual(changes[0].Current, damaged) &&
+        changes[0].Revision == map.TissueRevision,
+        "mutation API did not publish the damage event");
 
     Require(mutations.RestoreTile(3, 1, 0.1f), "restore mutation failed");
     Require(Approximately(queries.GetState(3, 1).Vitality, 0.45f), "restore did not increase vitality");
@@ -531,6 +572,7 @@ static void ValidateTissueMutationApi()
     Require(Approximately(queries.GetState(3, 1).Flow, 1f), "flow was not clamped");
 
     int revisionBeforeNoOps = field.Revision;
+    int changesBeforeNoOps = changes.Count;
     Require(!mutations.SetFlow(3, 1, 1f), "unchanged flow reported a mutation");
     Require(!mutations.DamageTile(3, 1, -1f), "negative damage was accepted");
     Require(!mutations.RestoreTile(3, 1, float.NaN), "invalid restore was accepted");
@@ -538,6 +580,7 @@ static void ValidateTissueMutationApi()
     Require(!mutations.AddMemory(3, -1, 0.1f), "invalid Y mutation was accepted");
     Require(!mutations.AddCorruption(2, 1, 0.1f), "air mutation was accepted");
     Require(field.Revision == revisionBeforeNoOps, "rejected mutations changed revision");
+    Require(changes.Count == changesBeforeNoOps, "rejected mutations published tissue events");
 
     Require(mutations.DamageTile(3, 1, 5f), "lethal vitality damage failed");
     Require(queries.HasTissue(3, 1), "zero vitality removed physical tissue");
@@ -547,9 +590,15 @@ static void ValidateTissueMutationApi()
 
     Require(mutations.RemoveTissue(3, 1), "official tissue removal failed");
     Require(queries.GetState(3, 1).IsNeutral, "removed tissue did not become neutral");
+    Require(
+        changes[^1].Tile == new Point(3, 1) &&
+        changes[^1].Current.IsNeutral &&
+        changes[^1].Revision == map.TissueRevision,
+        "tissue removal event mismatch");
     Require(!mutations.RestoreTile(3, 1, 0.5f), "restore resurrected removed tissue");
     Require(!mutations.AddMemory(3, 1, 0.5f), "memory recreated removed tissue");
     Require(!mutations.RemoveTissue(3, 1), "second removal reported a mutation");
+    Require(!mutations.ResetTile(3, 1), "reset recreated Tissue without a generated base cell");
     Require(field.Revision > initialRevision && field.HasUnsavedChanges, "official mutations did not mark the field dirty");
 
     TissueCellState impossible = new(0f, 1f, 1f, 1f, 1f);
@@ -566,6 +615,10 @@ static void ValidateTissueMutationApi()
 static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)
 {
     ITissueQueryService queries = new TissueQueryService(map, generation.RasterizedField, generation.Network);
+    ITissuePropagationService propagationService = new TissuePropagationService(
+        map,
+        generation.RasterizedField,
+        generation.Network);
     TissueFieldCell activeCell = generation.RasterizedField.EnumerateActiveCells().First();
     Require(
         StatesEqual(queries.GetState(activeCell.X, activeCell.Y), activeCell.State),
@@ -576,11 +629,19 @@ static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult genera
     Require(
         queries.TryFindNearestNode(firstNode.Position, 1f, out TissueNodeInfo nearest) && nearest.Id == firstNode.Id,
         $"query API missed an exact generated node for {preset}/{seed}");
+    TissuePropagationRequest request = new(
+        firstNode.Id,
+        500f,
+        1f,
+        TissueConfig.Propagation.DefaultAttenuationPower,
+        TissueConfig.Propagation.DefaultMinimumConductivity,
+        TissueSignalChannel.Native);
     Require(
-        queries.TryBuildPropagation(firstNode.Id, 500f, out TissuePropagationMap propagation),
-        $"query API failed to build generated propagation for {preset}/{seed}");
+        propagationService.TryPropagate(request, out TissuePropagationResult propagation),
+        $"propagation service failed for {preset}/{seed}");
     Require(
-        propagation.TryGetNode(firstNode.Id, out TissueNodePropagation origin) && Approximately(origin.ArrivalDistance, 0f),
+        propagation.TryGetNode(firstNode.Id, out TissueReachedNode origin) &&
+        Approximately(origin.ArrivalDistance, 0f) && Approximately(origin.ArrivalStrength, 1f),
         $"generated propagation lost its origin for {preset}/{seed}");
     Require(
         propagation.Nodes.Select(node => node.Node.Id).Distinct().Count() == propagation.Nodes.Count,
@@ -592,7 +653,7 @@ static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult genera
         propagation.Nodes.All(node => node.ArrivalDistance <= propagation.MaximumDistance),
         $"generated propagation exceeded its distance limit for {preset}/{seed}");
     Require(
-        queries.TryBuildPropagation(firstNode.Id, 500f, out TissuePropagationMap repeatedPropagation) &&
+        propagationService.TryPropagate(request, out TissuePropagationResult repeatedPropagation) &&
         propagation.Nodes.SequenceEqual(repeatedPropagation.Nodes) &&
         propagation.Branches.SequenceEqual(repeatedPropagation.Branches),
         $"generated propagation is not deterministic for {preset}/{seed}");
@@ -601,9 +662,131 @@ static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult genera
     int overrides = generation.RasterizedField.OverrideCount;
     bool dirty = generation.RasterizedField.HasUnsavedChanges;
     _ = queries.SampleArea(new Rectangle(activeCell.X - 2, activeCell.Y - 2, 5, 5));
+    _ = propagationService.TryPropagate(request, out _);
     Require(generation.RasterizedField.Revision == revision, $"generated query changed revision for {preset}/{seed}");
     Require(generation.RasterizedField.OverrideCount == overrides, $"generated query changed overrides for {preset}/{seed}");
     Require(generation.RasterizedField.HasUnsavedChanges == dirty, $"generated query changed dirty state for {preset}/{seed}");
+
+    ValidateGeneratedPropagationChannels(map, generation, propagationService, preset, seed);
+}
+
+static void ValidateGeneratedPropagationChannels(
+    WorldMap map,
+    TissueGenerationResult generation,
+    ITissuePropagationService propagationService,
+    WorldSizePreset preset,
+    int seed)
+{
+    TissueBranch branch = generation.Network.Branches.First(candidate =>
+        candidate.Kind == TissueBranch.TissueBranchKind.Main &&
+        candidate.EndNodeId >= 0 &&
+        candidate.Points.Any(point =>
+        {
+            int pixelX = ((int)MathF.Round(point.X) % map.PixelWidth + map.PixelWidth) % map.PixelWidth;
+            int pixelY = (int)MathF.Round(point.Y);
+            return pixelY >= 0 && pixelY < map.Height * map.TileSize &&
+                   generation.RasterizedField.HasTissue(pixelX / map.TileSize, pixelY / map.TileSize);
+        }));
+
+    Dictionary<int, TissueFieldCell> affected = new();
+    foreach (Vector2 point in branch.Points)
+    {
+        int pixelX = ((int)MathF.Round(point.X) % map.PixelWidth + map.PixelWidth) % map.PixelWidth;
+        int pixelY = (int)MathF.Round(point.Y);
+        if (pixelY < 0 || pixelY >= map.Height * map.TileSize)
+            continue;
+
+        int tileX = pixelX / map.TileSize;
+        int tileY = pixelY / map.TileSize;
+        TissueCellState state = generation.RasterizedField.GetState(tileX, tileY);
+        if (!state.HasBiologicalPresence)
+            continue;
+
+        int key = (tileY * map.Width) + tileX;
+        affected.TryAdd(key, new TissueFieldCell(tileX, tileY, state));
+    }
+
+    TissuePropagationRequest nativeRequest = new(
+        branch.StartNodeId,
+        500f,
+        1f,
+        1f,
+        0.05f,
+        TissueSignalChannel.Native);
+    Require(affected.Count > 0, $"propagation branch has no real field samples for {preset}/{seed}");
+    Require(
+        propagationService.TryPropagate(nativeRequest, out TissuePropagationResult healthy),
+        $"healthy Tissue propagation failed for {preset}/{seed}");
+    Require(
+        healthy.TryGetBranch(branch.Id, out TissueReachedBranch healthyBranch) &&
+        Approximately(healthyBranch.Conductivity, 1f),
+        $"healthy Tissue did not conduct normally for {preset}/{seed}");
+
+    foreach (TissueFieldCell cell in affected.Values)
+    {
+        Require(
+            map.TrySetTissueState(cell.X, cell.Y, cell.State.With(vitality: cell.State.Vitality * 0.5f)),
+            $"could not damage propagation sample for {preset}/{seed}");
+    }
+    Require(
+        propagationService.TryPropagate(nativeRequest, out TissuePropagationResult damaged) &&
+        damaged.TryGetBranch(branch.Id, out TissueReachedBranch damagedBranch) &&
+        Approximately(damagedBranch.Conductivity, 0.5f) &&
+        damagedBranch.ExitStrength < healthyBranch.ExitStrength,
+        $"damaged Tissue did not weaken propagation for {preset}/{seed}");
+    foreach (TissueFieldCell cell in affected.Values)
+        Require(map.TrySetTissueState(cell.X, cell.Y, cell.State), $"could not restore damaged sample for {preset}/{seed}");
+
+    TissueFieldCell severedCell = affected.Values.First();
+    Require(map.ClearTissueAt(severedCell.X, severedCell.Y), $"could not sever propagation branch for {preset}/{seed}");
+    Require(
+        propagationService.TryPropagate(nativeRequest, out TissuePropagationResult severed) &&
+        !severed.TryGetBranch(branch.Id, out _),
+        $"destroyed Tissue did not stop propagation for {preset}/{seed}");
+    Require(
+        map.TrySetTissueState(severedCell.X, severedCell.Y, severedCell.State),
+        $"could not restore severed propagation sample for {preset}/{seed}");
+
+    foreach (TissueFieldCell cell in affected.Values)
+    {
+        Require(
+            map.TrySetTissueState(cell.X, cell.Y, cell.State.With(corruption: 1f)),
+            $"could not corrupt propagation sample for {preset}/{seed}");
+    }
+
+    TissuePropagationRequest corruptedRequest = nativeRequest with { Channel = TissueSignalChannel.Corrupted };
+    TissuePropagationRequest rawRequest = nativeRequest with { Channel = TissueSignalChannel.Raw };
+    Require(
+        propagationService.TryPropagate(nativeRequest, out TissuePropagationResult native) &&
+        !native.TryGetBranch(branch.Id, out _),
+        $"native signal crossed fully corrupted Tissue for {preset}/{seed}");
+    Require(
+        propagationService.TryPropagate(corruptedRequest, out TissuePropagationResult corrupted) &&
+        corrupted.TryGetBranch(branch.Id, out TissueReachedBranch corruptedBranch) &&
+        Approximately(corruptedBranch.Conductivity, 1f),
+        $"corrupted signal did not use rewritten Tissue for {preset}/{seed}");
+    Require(
+        propagationService.TryPropagate(rawRequest, out TissuePropagationResult raw) &&
+        raw.TryGetBranch(branch.Id, out TissueReachedBranch rawBranch) &&
+        Approximately(rawBranch.Conductivity, 1f),
+        $"raw signal did not preserve total capacity for {preset}/{seed}");
+
+    int revisionAfterPropagation = generation.RasterizedField.Revision;
+    int overrideCountAfterPropagation = generation.RasterizedField.OverrideCount;
+    _ = propagationService.TryPropagate(corruptedRequest, out _);
+    Require(
+        generation.RasterizedField.Revision == revisionAfterPropagation &&
+        generation.RasterizedField.OverrideCount == overrideCountAfterPropagation,
+        $"propagation mutated the field for {preset}/{seed}");
+
+    foreach (TissueFieldCell cell in affected.Values)
+    {
+        Require(
+            map.TrySetTissueState(cell.X, cell.Y, cell.State),
+            $"could not restore propagation sample for {preset}/{seed}");
+    }
+    Require(generation.RasterizedField.OverrideCount == 0, $"propagation test left overrides for {preset}/{seed}");
+    generation.RasterizedField.MarkPersisted();
 }
 
 static bool Approximately(float actual, float expected)

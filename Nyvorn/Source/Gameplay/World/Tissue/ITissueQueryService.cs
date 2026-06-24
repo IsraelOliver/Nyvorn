@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.World.Generation;
+using System;
 
 namespace Nyvorn.Source.World.Tissue
 {
@@ -25,8 +26,16 @@ namespace Nyvorn.Source.World.Tissue
         int Degree,
         float NestInfluence);
 
+    public readonly record struct TissueChangedEvent(
+        Point Tile,
+        TissueCellState Previous,
+        TissueCellState Current,
+        int Revision);
+
     public interface ITissueQueryService
     {
+        event Action<TissueChangedEvent> Changed;
+
         TissueCellState GetState(int tileX, int tileY);
 
         bool HasTissue(
@@ -47,10 +56,5 @@ namespace Nyvorn.Source.World.Tissue
             Vector2 worldPosition,
             float maximumDistance,
             out TissueNodeInfo node);
-
-        bool TryBuildPropagation(
-            int originNodeId,
-            float maximumDistance,
-            out TissuePropagationMap propagation);
     }
 }

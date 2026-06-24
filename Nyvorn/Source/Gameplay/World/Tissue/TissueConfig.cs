@@ -123,6 +123,12 @@ namespace Nyvorn.Source.World.Tissue
             public const float NearestNodeDistance = 300f;
         }
 
+        public static class Propagation
+        {
+            public const float DefaultAttenuationPower = 1.35f;
+            public const float DefaultMinimumConductivity = 0.05f;
+        }
+
         public static class Resonance
         {
             private const float DefaultPulseSpeed = 320f;

@@ -44,11 +44,12 @@ namespace Nyvorn.Source.Game.States
         private int commandHistoryIndex;
         private string commandHistoryDraft = string.Empty;
         private float consoleCursorBlinkTimer;
+        private Vector2 consoleTargetWorld;
         private KeyboardState previousConsoleKeyboard;
         private float autoSaveTimer;
         private const float AutoSaveInterval = 60f;
         private const int MaxConsoleInputLength = 96;
-        private const int MaxConsoleHistoryLines = 20;
+        private const int MaxConsoleHistoryLines = 40;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -91,6 +92,7 @@ namespace Nyvorn.Source.Game.States
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
 
             InputState input = inputService.Update();
+            consoleTargetWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
             KeyboardState keyboard = Keyboard.GetState();
             bool handledConsoleThisFrame = false;
 
@@ -729,6 +731,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryExecuteTissueMutationCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
             if (TryExecuteGrassCommand(commandBody))
             {
                 consoleInput = string.Empty;
@@ -782,6 +790,13 @@ namespace Nyvorn.Source.Game.States
                 "/tissuepulse",
                 "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
                 "/tissuepulse reset",
+                "/tissuedamage <valor> [raio]",
+                "/tissueheal <valor> [raio]",
+                "/tissuecorrupt <valor> [raio]",
+                "/tissuememory <valor> [raio]",
+                "/tissueflow <valor> [raio]",
+                "/tissueremove [raio]",
+                "/tissuereset [raio]",
                 "/get <item> [quantidade]",
                 "/get list",
                 "/spawn <entidade> (reservado)",
@@ -962,6 +977,120 @@ namespace Nyvorn.Source.Game.States
 
             SetConsoleMessage($"Tissue pulse {parameter}: {appliedValue:0.###}");
             return true;
+        }
+
+        private bool TryExecuteTissueMutationCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return false;
+
+            string operation = parts[0].ToLowerInvariant();
+            bool hasValue = operation is
+                "tissuedamage" or
+                "tissueheal" or
+                "tissuecorrupt" or
+                "tissuememory" or
+                "tissueflow";
+            bool isSimpleOperation = operation is "tissueremove" or "tissuereset";
+            if (!hasValue && !isSimpleOperation)
+                return false;
+
+            float value = 0f;
+            int radiusPartIndex;
+            if (hasValue)
+            {
+                if (parts.Length < 2 || parts.Length > 3 ||
+                    !float.TryParse(
+                        parts[1].Replace(',', '.'),
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out value) ||
+                    float.IsNaN(value) ||
+                    float.IsInfinity(value) ||
+                    value < 0f ||
+                    value > 1f ||
+                    (operation != "tissueflow" && value <= 0f))
+                {
+                    ShowTissueMutationUsage(operation);
+                    return true;
+                }
+
+                radiusPartIndex = 2;
+            }
+            else
+            {
+                if (parts.Length > 2)
+                {
+                    ShowTissueMutationUsage(operation);
+                    return true;
+                }
+
+                radiusPartIndex = 1;
+            }
+
+            int radius = 0;
+            if (parts.Length > radiusPartIndex &&
+                (!int.TryParse(
+                    parts[radiusPartIndex],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out radius) ||
+                 radius < 0 || radius > 16))
+            {
+                ShowTissueMutationUsage(operation);
+                return true;
+            }
+
+            Point target = session.WorldMap.WorldToTile(consoleTargetWorld);
+            int centerX = session.WorldMap.WrapTileX(target.X);
+            int changedCount = 0;
+            int radiusSquared = radius * radius;
+            for (int offsetY = -radius; offsetY <= radius; offsetY++)
+            {
+                int tileY = target.Y + offsetY;
+                if (tileY < 0 || tileY >= session.WorldMap.Height)
+                    continue;
+
+                for (int offsetX = -radius; offsetX <= radius; offsetX++)
+                {
+                    if (radius > 0 &&
+                        ((offsetX * offsetX) + (offsetY * offsetY)) > radiusSquared)
+                    {
+                        continue;
+                    }
+
+                    int tileX = centerX + offsetX;
+                    bool changed = operation switch
+                    {
+                        "tissuedamage" => session.TissueMutations.DamageTile(tileX, tileY, value),
+                        "tissueheal" => session.TissueMutations.RestoreTile(tileX, tileY, value),
+                        "tissuecorrupt" => session.TissueMutations.AddCorruption(tileX, tileY, value),
+                        "tissuememory" => session.TissueMutations.AddMemory(tileX, tileY, value),
+                        "tissueflow" => session.TissueMutations.SetFlow(tileX, tileY, value),
+                        "tissueremove" => session.TissueMutations.RemoveTissue(tileX, tileY),
+                        "tissuereset" => session.TissueMutations.ResetTile(tileX, tileY),
+                        _ => false
+                    };
+                    if (changed)
+                        changedCount++;
+                }
+            }
+
+            SetConsoleMessage(
+                $"{operation}: {changedCount} tile(s) alterado(s) em ({centerX}, {target.Y}), raio {radius}");
+            return true;
+        }
+
+        private void ShowTissueMutationUsage(string operation)
+        {
+            if (operation is "tissueremove" or "tissuereset")
+            {
+                SetConsoleMessage($"Uso: /{operation} [raio 0..16]");
+                return;
+            }
+
+            SetConsoleMessage($"Uso: /{operation} <valor 0..1> [raio 0..16]");
         }
 
         private bool TryExecuteGetCommand(string command)
