@@ -472,6 +472,8 @@ namespace Nyvorn.Source.Game.States
         {
             build.PlayerDownTexture = content.Load<Texture2D>("entities/player/playerDown_sheet");
             build.PlayerUpTexture = content.Load<Texture2D>("entities/player/playerUp_sheet");
+            build.PlayerPickaxeMovesetTexture = content.Load<Texture2D>(
+                "entities/player/movesets/player_moveset_pickaxe-Sheet");
             build.WorkbenchTexture = content.Load<Texture2D>("blocks/worktable-sheet");
             build.DoorTexture = content.Load<Texture2D>("blocks/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
@@ -479,7 +481,7 @@ namespace Nyvorn.Source.Game.States
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
 
             build.ItemTextures = LoadItemTextures();
-            build.Weapons = CreateWeapons(build.ItemTextures);
+            build.Weapons = CreateWeapons(build.ItemTextures, build.PlayerPickaxeMovesetTexture);
         }
 
         private Dictionary<ItemId, Texture2D> LoadItemTextures()
@@ -491,7 +493,9 @@ namespace Nyvorn.Source.Game.States
             return itemTextures;
         }
 
-        private Dictionary<ItemId, Weapon> CreateWeapons(IReadOnlyDictionary<ItemId, Texture2D> itemTextures)
+        private Dictionary<ItemId, Weapon> CreateWeapons(
+            IReadOnlyDictionary<ItemId, Texture2D> itemTextures,
+            Texture2D playerPickaxeMovesetTexture)
         {
             Texture2D nullWeaponTexture = new Texture2D(graphicsDevice, 1, 1);
             nullWeaponTexture.SetData(new[] { Color.Transparent });
@@ -499,9 +503,9 @@ namespace Nyvorn.Source.Game.States
             return new Dictionary<ItemId, Weapon>
             {
                 [ItemId.None] = new HandWeapon(nullWeaponTexture),
-                [ItemId.WoodPickaxe] = new Pickaxe(itemTextures[ItemId.WoodPickaxe], miningPower: 1, miningSpeed: 1.5f, powerTier: 1, hitDamage: 5),
-                [ItemId.StonePickaxe] = new Pickaxe(itemTextures[ItemId.StonePickaxe], miningPower: 2, miningSpeed: 2.2f, powerTier: 2, hitDamage: 7),
-                [ItemId.IronPickaxe] = new Pickaxe(itemTextures[ItemId.IronPickaxe], miningPower: 3, miningSpeed: 3.2f, powerTier: 3, hitDamage: 9)
+                [ItemId.WoodPickaxe] = new Pickaxe(itemTextures[ItemId.WoodPickaxe], playerPickaxeMovesetTexture, miningPower: 1, miningSpeed: 1.5f, powerTier: 1, hitDamage: 5),
+                [ItemId.StonePickaxe] = new Pickaxe(itemTextures[ItemId.StonePickaxe], playerPickaxeMovesetTexture, miningPower: 2, miningSpeed: 2.2f, powerTier: 2, hitDamage: 7),
+                [ItemId.IronPickaxe] = new Pickaxe(itemTextures[ItemId.IronPickaxe], playerPickaxeMovesetTexture, miningPower: 3, miningSpeed: 3.2f, powerTier: 3, hitDamage: 9)
             };
         }
 
@@ -938,6 +942,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D TreeTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
+            public Texture2D PlayerPickaxeMovesetTexture { get; set; }
             public Texture2D WorkbenchTexture { get; set; }
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }

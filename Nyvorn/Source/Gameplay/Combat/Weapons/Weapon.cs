@@ -33,6 +33,8 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual bool DrawsWithPlayerRoot => false;
         public virtual bool ReplacesPlayerUpperBody => false;
         public virtual Texture2D PlayerUpperBodyTexture => texture;
+        public virtual bool DrawsPlayerUpperBodyOverlay => false;
+        public virtual Texture2D PlayerUpperBodyOverlayTexture => null;
         public virtual float? WorldBreakRangeOverride => null;
         public virtual int PowerTier => 1;
         public virtual ToolType ToolType => ToolType.None;
