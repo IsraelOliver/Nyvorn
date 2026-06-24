@@ -88,6 +88,15 @@ namespace Nyvorn.Source.World.Tissue
             return worldMap.ClearTissueAt(wrappedX, tileY);
         }
 
+        public bool ResetTile(int tileX, int tileY)
+        {
+            if (tileY < 0 || tileY >= worldMap.Height)
+                return false;
+
+            int wrappedX = worldMap.WrapTileX(tileX);
+            return worldMap.ResetTissueAt(wrappedX, tileY);
+        }
+
         private bool MutateExistingTissue(
             int tileX,
             int tileY,

@@ -5,6 +5,13 @@ namespace Nyvorn.Source.World.Generation
 {
     public readonly record struct TissueFieldCell(int X, int Y, TissueCellState State);
 
+    internal readonly record struct TissueFieldChange(
+        int X,
+        int Y,
+        TissueCellState Previous,
+        TissueCellState Current,
+        int Revision);
+
     public sealed class TissueField
     {
         private readonly Dictionary<int, TissueCellState> baseCells = new();
@@ -12,7 +19,7 @@ namespace Nyvorn.Source.World.Generation
         private Func<int, int, bool> canContainTissue;
         private int persistedRevision;
 
-        internal event Action Changed;
+        internal event Action<TissueFieldChange> Changed;
 
         public TissueField(int width, int height)
         {
@@ -62,6 +69,13 @@ namespace Nyvorn.Source.World.Generation
                 : TissueCellState.Neutral;
         }
 
+        internal bool TryGetBaseState(int x, int y, out TissueCellState state)
+        {
+            state = TissueCellState.Neutral;
+            return IsInBounds(x, y) &&
+                   baseCells.TryGetValue(CreateKey(x, y), out state);
+        }
+
         public bool SetState(int x, int y, TissueCellState state)
         {
             if (!IsInBounds(x, y))
@@ -83,7 +97,7 @@ namespace Nyvorn.Source.World.Generation
             else
                 overrides[key] = state;
 
-            RegisterChange();
+            RegisterChange(x, y, current, state);
             return true;
         }
 
@@ -107,6 +121,23 @@ namespace Nyvorn.Source.World.Generation
         internal void SetOccupancyValidator(Func<int, int, bool> validator)
         {
             canContainTissue = validator;
+        }
+
+        internal bool ResetOverride(int x, int y)
+        {
+            if (!IsInBounds(x, y))
+                return false;
+
+            int key = CreateKey(x, y);
+            if (!overrides.TryGetValue(key, out TissueCellState previous))
+                return false;
+
+            overrides.Remove(key);
+            TissueCellState current = baseCells.TryGetValue(key, out TissueCellState baseState)
+                ? baseState
+                : TissueCellState.Neutral;
+            RegisterChange(x, y, previous, current);
+            return true;
         }
 
         public void MarkPersisted()
@@ -175,10 +206,14 @@ namespace Nyvorn.Source.World.Generation
             return new TissueFieldCell(key % Width, key / Width, state);
         }
 
-        private void RegisterChange()
+        private void RegisterChange(
+            int x,
+            int y,
+            TissueCellState previous,
+            TissueCellState current)
         {
             Revision++;
-            Changed?.Invoke();
+            Changed?.Invoke(new TissueFieldChange(x, y, previous, current, Revision));
         }
 
         private static bool StatesEqual(TissueCellState a, TissueCellState b)

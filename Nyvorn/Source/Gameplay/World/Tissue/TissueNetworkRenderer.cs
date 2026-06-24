@@ -135,7 +135,7 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < visibleBranches.Count; i++)
             {
                 TissueBranch branch = visibleBranches[i];
-                if (!resonance.Propagation.TryGetBranch(branch.Id, out TissueBranchPropagation propagation))
+                if (!resonance.Propagation.TryGetBranch(branch.Id, out TissueReachedBranch propagation))
                     continue;
 
                 float kindScale = branch.Kind == TissueBranch.TissueBranchKind.Micro
@@ -158,7 +158,7 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < visibleNodes.Count; i++)
             {
                 TissueNode node = visibleNodes[i];
-                if (!resonance.Propagation.TryGetNode(node.Id, out TissueNodePropagation propagation) ||
+                if (!resonance.Propagation.TryGetNode(node.Id, out TissueReachedNode propagation) ||
                     propagation.ArrivalDistance > resonance.PulseFront)
                 {
                     continue;
@@ -200,7 +200,7 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < visibleBranches.Count; i++)
             {
                 TissueBranch branch = visibleBranches[i];
-                if (!resonance.Propagation.TryGetBranch(branch.Id, out TissueBranchPropagation propagation))
+                if (!resonance.Propagation.TryGetBranch(branch.Id, out TissueReachedBranch propagation))
                     continue;
 
                 float kindScale = branch.Kind == TissueBranch.TissueBranchKind.Micro
@@ -223,7 +223,7 @@ namespace Nyvorn.Source.World.Tissue
             for (int i = 0; i < visibleNodes.Count; i++)
             {
                 TissueNode node = visibleNodes[i];
-                if (!resonance.Propagation.TryGetNode(node.Id, out TissueNodePropagation propagation) ||
+                if (!resonance.Propagation.TryGetNode(node.Id, out TissueReachedNode propagation) ||
                     propagation.ArrivalDistance > resonance.PulseFront)
                 {
                     continue;
@@ -259,7 +259,7 @@ namespace Nyvorn.Source.World.Tissue
         private void DrawResonancePath(
             SpriteBatch spriteBatch,
             TissueBranch branch,
-            TissueBranchPropagation propagation,
+            TissueReachedBranch propagation,
             TissueResonanceState resonance,
             Color color,
             float baseAlpha,
@@ -290,9 +290,17 @@ namespace Nyvorn.Source.World.Tissue
                 if (pointDistance > resonance.PulseFront)
                     continue;
 
-                float propagationStrength = GetPropagationStrength(pointDistance, resonance.MaximumDistance);
-                float biologicalStrength = resonance.VisualStrength *
-                    propagationStrength *
+                float branchProgress = propagation.Length <= 0f
+                    ? 0f
+                    : MathHelper.Clamp(localDistance / propagation.Length, 0f, 1f);
+                float signalStrength = MathHelper.Lerp(
+                    propagation.EntryStrength,
+                    propagation.ExitStrength,
+                    branchProgress);
+                float biologicalStrength = MathHelper.Clamp(
+                    signalStrength * TissueConfig.Resonance.VisualGain,
+                    0f,
+                    1f) *
                     MathHelper.Clamp(branchStrength, 0f, 1f);
                 if (pointDistance <= resonance.PulseBack)
                 {
@@ -322,7 +330,7 @@ namespace Nyvorn.Source.World.Tissue
 
         private static bool TryGetNodeAfterglow(
             TissueResonanceState resonance,
-            TissueNodePropagation propagation,
+            TissueReachedNode propagation,
             out float intensity,
             out float radius)
         {
@@ -331,11 +339,10 @@ namespace Nyvorn.Source.World.Tissue
             if (propagation.ArrivalDistance > resonance.PulseBack)
                 return false;
 
-            float propagationStrength = GetPropagationStrength(
-                propagation.ArrivalDistance,
-                resonance.MaximumDistance);
-            intensity = resonance.VisualStrength *
-                propagationStrength *
+            intensity = MathHelper.Clamp(
+                propagation.ArrivalStrength * TissueConfig.Resonance.VisualGain,
+                0f,
+                1f) *
                 propagation.Node.Strength *
                 TissueConfig.Resonance.MemoryIntensity *
                 resonance.NodeAfterglowStrength;
@@ -349,7 +356,7 @@ namespace Nyvorn.Source.World.Tissue
 
         private static bool TryGetNodePulse(
             TissueResonanceState resonance,
-            TissueNodePropagation propagation,
+            TissueReachedNode propagation,
             out float intensity,
             out float radius)
         {
@@ -362,11 +369,10 @@ namespace Nyvorn.Source.World.Tissue
 
             float pulseProgress = pulseAge / TissueConfig.Resonance.NodePulseDuration;
             float pulseEnvelope = 1f - pulseProgress;
-            float propagationStrength = GetPropagationStrength(
-                propagation.ArrivalDistance,
-                resonance.MaximumDistance);
-            intensity = resonance.VisualStrength *
-                propagationStrength *
+            intensity = MathHelper.Clamp(
+                propagation.ArrivalStrength * TissueConfig.Resonance.VisualGain,
+                0f,
+                1f) *
                 propagation.Node.Strength *
                 pulseEnvelope;
             if (intensity <= 0.001f)
@@ -382,16 +388,6 @@ namespace Nyvorn.Source.World.Tissue
         {
             return TissueConfig.ResonanceVisual.NodeRadiusBase +
                 (node.Degree * TissueConfig.ResonanceVisual.NodeDegreeRadius);
-        }
-
-        private static float GetPropagationStrength(float distance, float maximumDistance)
-        {
-            float normalizedDistance = maximumDistance <= 0f
-                ? 1f
-                : distance / maximumDistance;
-            return MathF.Pow(
-                MathHelper.Clamp(1f - normalizedDistance, 0f, 1f),
-                TissueConfig.Resonance.PulseFadePower);
         }
 
         private static Rectangle GetResonanceCullingBounds(Rectangle visibleBounds)

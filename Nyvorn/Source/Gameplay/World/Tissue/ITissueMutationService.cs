@@ -15,5 +15,7 @@ namespace Nyvorn.Source.World.Tissue
         bool SetFlow(int tileX, int tileY, float value);
 
         bool RemoveTissue(int tileX, int tileY);
+
+        bool ResetTile(int tileX, int tileY);
     }
 }

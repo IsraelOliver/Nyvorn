@@ -51,6 +51,35 @@ Exemplo de configuração:
 /tissuepulse intensity 0.7
 ```
 
+## Mutação debug do Tissue
+
+Estes comandos alteram o `TissueField` persistente no tile sob o mouse. O raio é
+opcional, usa uma área circular e aceita valores de `0` a `16` tiles. O raio
+default é `0`, afetando somente o tile apontado.
+
+| Comando | Efeito |
+|---|---|
+| `/tissuedamage <valor> [raio]` | Reduz `Vitality` pelo valor indicado. |
+| `/tissueheal <valor> [raio]` | Aumenta `Vitality` sem recriar Tissue removido. |
+| `/tissuecorrupt <valor> [raio]` | Aumenta `Corruption`. |
+| `/tissuememory <valor> [raio]` | Aumenta `MemoryDensity`. |
+| `/tissueflow <valor> [raio]` | Define `Flow` para o valor indicado. |
+| `/tissueremove [raio]` | Remove o Tissue físico e cria o tombstone persistente. |
+| `/tissuereset [raio]` | Remove overrides e restaura o estado original gerado. Exige tile sólido. |
+
+Valores biológicos ficam entre `0` e `1`. Os comandos informam quantos tiles
+foram realmente alterados. Alterações são salvas normalmente no mundo.
+
+Exemplos:
+
+```text
+/tissuedamage 0.5
+/tissuecorrupt 0.35 3
+/tissueflow 0 2
+/tissueremove
+/tissuereset 3
+```
+
 ## Adicionar itens ao inventário
 
 | Comando | Efeito |
