@@ -12,6 +12,7 @@ WorldSizePreset[] presets = previewOnly ? [WorldSizePreset.Medium] : [WorldSizeP
 ValidateLegacySaveCompatibility();
 ValidateResonanceTuning();
 ValidateItemCommandIds();
+ValidateTissueMutationApi();
 ValidateTissueQueryApi();
 
 foreach (WorldSizePreset preset in presets)
@@ -486,6 +487,80 @@ static void ValidateItemCommandIds()
     };
     Require(stackRuntime.StoreItem(ItemId.DirtBlock, 1500, preferInventory: true) == 1500,
         "stackable item insertion did not span inventory and hotbar");
+}
+
+static void ValidateTissueMutationApi()
+{
+    const int width = 4;
+    const int height = 3;
+    const int tileSize = 8;
+    WorldMap map = new(width, height, tileSize);
+    byte[] tiles = Enumerable.Repeat((byte)TileType.Stone, width * height).ToArray();
+    tiles[(1 * width) + 2] = (byte)TileType.Empty;
+    map.ImportTileSnapshot(tiles);
+
+    TissueField field = new(width, height);
+    map.SetTissueField(field);
+    TissueCellState initial = new(0.8f, 0.6f, 0.2f, 0.1f, 0.7f);
+    Require(field.SetState(3, 1, initial), "mutation fixture rejected initial tissue");
+    field.MarkPersisted();
+
+    TissueNetwork network = new(
+        91,
+        new Rectangle(0, 0, map.PixelWidth, map.Height * map.TileSize),
+        Array.Empty<TissueNode>(),
+        Array.Empty<TissueBranch>());
+    ITissueQueryService queries = new TissueQueryService(map, field, network);
+    ITissueMutationService mutations = new TissueMutationService(map, queries);
+    int initialRevision = field.Revision;
+
+    Require(mutations.DamageTile(-1, 1, 0.25f), "damage mutation failed across wrap");
+    TissueCellState damaged = queries.GetState(3, 1);
+    Require(Approximately(damaged.Presence, 0.8f), "damage changed physical presence");
+    Require(Approximately(damaged.Vitality, 0.35f), "damage did not reduce vitality");
+
+    Require(mutations.RestoreTile(3, 1, 0.1f), "restore mutation failed");
+    Require(Approximately(queries.GetState(3, 1).Vitality, 0.45f), "restore did not increase vitality");
+    Require(mutations.AddCorruption(3, 1, 0.9f), "corruption mutation failed");
+    Require(Approximately(queries.GetState(3, 1).Corruption, 1f), "corruption was not clamped");
+    Require(mutations.ReduceCorruption(3, 1, 0.3f), "corruption reduction failed");
+    Require(Approximately(queries.GetState(3, 1).Corruption, 0.7f), "corruption reduction mismatch");
+    Require(mutations.AddMemory(3, 1, 2f), "memory mutation failed");
+    Require(Approximately(queries.GetState(3, 1).MemoryDensity, 1f), "memory was not clamped");
+    Require(mutations.SetFlow(3, 1, 1.5f), "flow mutation failed");
+    Require(Approximately(queries.GetState(3, 1).Flow, 1f), "flow was not clamped");
+
+    int revisionBeforeNoOps = field.Revision;
+    Require(!mutations.SetFlow(3, 1, 1f), "unchanged flow reported a mutation");
+    Require(!mutations.DamageTile(3, 1, -1f), "negative damage was accepted");
+    Require(!mutations.RestoreTile(3, 1, float.NaN), "invalid restore was accepted");
+    Require(!mutations.SetFlow(3, 1, -0.1f), "negative flow was accepted");
+    Require(!mutations.AddMemory(3, -1, 0.1f), "invalid Y mutation was accepted");
+    Require(!mutations.AddCorruption(2, 1, 0.1f), "air mutation was accepted");
+    Require(field.Revision == revisionBeforeNoOps, "rejected mutations changed revision");
+
+    Require(mutations.DamageTile(3, 1, 5f), "lethal vitality damage failed");
+    Require(queries.HasTissue(3, 1), "zero vitality removed physical tissue");
+    Require(Approximately(queries.GetState(3, 1).Vitality, 0f), "lethal damage did not reach zero vitality");
+    Require(mutations.RestoreTile(3, 1, 0.2f), "dead physical tissue could not be restored");
+    Require(Approximately(queries.GetState(3, 1).Vitality, 0.2f), "dead tissue restore mismatch");
+
+    Require(mutations.RemoveTissue(3, 1), "official tissue removal failed");
+    Require(queries.GetState(3, 1).IsNeutral, "removed tissue did not become neutral");
+    Require(!mutations.RestoreTile(3, 1, 0.5f), "restore resurrected removed tissue");
+    Require(!mutations.AddMemory(3, 1, 0.5f), "memory recreated removed tissue");
+    Require(!mutations.RemoveTissue(3, 1), "second removal reported a mutation");
+    Require(field.Revision > initialRevision && field.HasUnsavedChanges, "official mutations did not mark the field dirty");
+
+    TissueCellState impossible = new(0f, 1f, 1f, 1f, 1f);
+    Require(impossible.IsNeutral, "presence-zero invariant retained biological values");
+    TissueCellState conductive = new(1f, 0.9f, 0.9f, 0f, 0.8f);
+    Require(Approximately(conductive.SignalCapacity, 0.72f), "signal capacity mismatch");
+    Require(Approximately(conductive.NativeConductivity, 0.072f), "native conductivity mismatch");
+    Require(Approximately(conductive.CorruptedConductivity, 0.648f), "corrupted conductivity mismatch");
+    Require(
+        Approximately(conductive.NativeConductivity + conductive.CorruptedConductivity, conductive.SignalCapacity),
+        "conductivity channels did not preserve signal capacity");
 }
 
 static void ValidateGeneratedQueries(WorldMap map, TissueGenerationResult generation, WorldSizePreset preset, int seed)

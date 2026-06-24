@@ -37,6 +37,7 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required PlayingSessionTissueSystem TissueSystem { get; init; }
         public required ITissueQueryService TissueQueries { get; init; }
+        public required ITissueMutationService TissueMutations { get; init; }
         public required TissueGenerationResult CosmicTissueGeneration { get; init; }
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
