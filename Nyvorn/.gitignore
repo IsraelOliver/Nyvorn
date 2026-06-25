@@ -8,6 +8,10 @@ obj/
 Content/bin/
 Content/obj/
 
+# Generated MonoGame content artifacts should stay out of source folders.
+Content/**/*.xnb
+Content/**/*.mgcontent
+
 # ==============================
 # Visual Studio
 # ==============================

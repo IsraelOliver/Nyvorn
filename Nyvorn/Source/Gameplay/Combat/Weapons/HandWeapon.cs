@@ -18,7 +18,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public override int HitDamage => 3;
         public override float HitKnockbackX => 90f;
         public override float HitKnockbackY => -35f;
-        public override float AttackDuration => 0.24f;
+        public override float BaseAttackDuration => 0.24f;
 
         public override bool IsActiveFrame(int frameIndex)
         {

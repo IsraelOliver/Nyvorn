@@ -5,16 +5,17 @@ using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Game.States;
 using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Items;
+using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.UI
 {
     public sealed class PlayerHubUI
     {
-        private const int WorkbenchWoodCost = 10;
-        private const int WoodPickaxeWoodCost = 10;
-        private const int StonePickaxeWoodCost = 7;
-        private const int StonePickaxeStoneCost = 4;
-        private const int WoodDoorWoodCost = 12;
+        private const int CraftPanelWidth = 252;
+        private const int RecipeStartYOffset = 48;
+        private const int RecipeHeight = 42;
+        private const int RecipeStep = 48;
+        private const int CraftPanelBottomPadding = 12;
 
         private readonly GraphicsDevice graphicsDevice;
         private readonly PlayingSession session;
@@ -92,27 +93,17 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private bool TryHandleRecipeClick(Point mousePosition, CraftTier craftTier)
         {
-            if (CanCraftWorkbench() && GetWorkbenchRecipeBounds().Contains(mousePosition))
+            List<RecipeDefinition> recipes = GetVisibleRecipes(craftTier);
+            for (int i = 0; i < recipes.Count; i++)
             {
-                CraftWorkbench();
-                return true;
-            }
+                if (!GetRecipeBounds(GetCraftPanelBounds(
+                        graphicsDevice.PresentationParameters.BackBufferWidth,
+                        graphicsDevice.PresentationParameters.BackBufferHeight), i).Contains(mousePosition))
+                {
+                    continue;
+                }
 
-            if (CanCraftWoodPickaxe() && GetWoodPickaxeRecipeBounds().Contains(mousePosition))
-            {
-                CraftWoodPickaxe();
-                return true;
-            }
-
-            if (CanCraftStonePickaxe(craftTier) && GetStonePickaxeRecipeBounds().Contains(mousePosition))
-            {
-                CraftStonePickaxe();
-                return true;
-            }
-
-            if (CanCraftWoodDoor(craftTier) && GetWoodDoorRecipeBounds().Contains(mousePosition))
-            {
-                CraftWoodDoor();
+                CraftRecipe(recipes[i], craftTier);
                 return true;
             }
 
@@ -168,41 +159,33 @@ namespace Nyvorn.Source.Gameplay.UI
             spriteBatch.Draw(pixel, new Rectangle(panel.X - 2, panel.Y - 2, panel.Width + 4, panel.Height + 4), Color.Black * 0.9f);
             spriteBatch.DrawString(session.HudRenderer.Font, "Crafting", new Vector2(panel.X + 12, panel.Y + 10), Color.White);
 
-            if (CanCraftWorkbench())
-                DrawRecipe(spriteBatch, GetWorkbenchRecipeBounds(), ItemId.Workbench, "Workbench", "10 Raw Wood");
-
-            if (CanCraftWoodPickaxe())
-                DrawRecipe(spriteBatch, GetWoodPickaxeRecipeBounds(), ItemId.WoodPickaxe, "Wood Pickaxe", "10 Raw Wood");
-
-            if (CanCraftStonePickaxe(craftTier))
-                DrawRecipe(spriteBatch, GetStonePickaxeRecipeBounds(), ItemId.StonePickaxe, "Stone Pickaxe", "7 Raw Wood + 4 Stone");
-
-            if (CanCraftWoodDoor(craftTier))
-                DrawRecipe(spriteBatch, GetWoodDoorRecipeBounds(), ItemId.WoodDoor, "Wood Door", "12 Raw Wood");
+            List<RecipeDefinition> recipes = GetVisibleRecipes(craftTier);
+            for (int i = 0; i < recipes.Count; i++)
+                DrawRecipe(spriteBatch, GetRecipeBounds(panel, i), recipes[i]);
         }
 
-        private void DrawRecipe(SpriteBatch spriteBatch, Rectangle bounds, ItemId itemId, string name, string cost)
+        private void DrawRecipe(SpriteBatch spriteBatch, Rectangle bounds, RecipeDefinition recipe)
         {
             MouseState mouse = Mouse.GetState();
             bool hovering = bounds.Contains(mouse.Position);
             spriteBatch.Draw(pixel, bounds, hovering ? new Color(82, 74, 50, 235) : new Color(48, 48, 48, 225));
             spriteBatch.Draw(pixel, new Rectangle(bounds.X + 2, bounds.Y + 2, 36, 36), new Color(22, 22, 22, 230));
 
-            if (session.TryGetItemTexture(itemId, out Texture2D texture) &&
-                ItemDefinitions.TryGet(itemId, out ItemDefinition definition))
+            if (session.TryGetItemTexture(recipe.ResultItemId, out Texture2D texture) &&
+                ItemDefinitions.TryGet(recipe.ResultItemId, out ItemDefinition definition))
             {
-                Rectangle iconRect = itemId switch
+                Rectangle iconRect = recipe.ResultItemId switch
                 {
                     ItemId.Workbench => new Rectangle(bounds.X + 8, bounds.Y + 12, 24, 16),
                     ItemId.WoodDoor => new Rectangle(bounds.X + 15, bounds.Y + 5, 10, 30),
                     _ => new Rectangle(bounds.X + 4, bounds.Y + 4, 32, 32)
                 };
-                spriteBatch.Draw(texture, iconRect, definition.SourceRectangle, Color.White);
+                spriteBatch.Draw(texture, ItemIconLayout.FitInside(definition, iconRect), definition.SourceRectangle, Color.White);
             }
 
             SpriteFont font = session.HudRenderer.Font;
-            spriteBatch.DrawString(font, name, new Vector2(bounds.X + 48, bounds.Y + 6), Color.White);
-            spriteBatch.DrawString(font, cost, new Vector2(bounds.X + 48, bounds.Y + 24), new Color(214, 196, 150));
+            spriteBatch.DrawString(font, recipe.DisplayName, new Vector2(bounds.X + 48, bounds.Y + 6), Color.White);
+            spriteBatch.DrawString(font, recipe.DisplayCost, new Vector2(bounds.X + 48, bounds.Y + 24), new Color(214, 196, 150));
         }
 
         private void DrawHeldItem(SpriteBatch spriteBatch, Point mousePosition)
@@ -211,83 +194,78 @@ namespace Nyvorn.Source.Gameplay.UI
                 return;
 
             Rectangle iconRect = new Rectangle(mousePosition.X - 16, mousePosition.Y - 16, 32, 32);
-            spriteBatch.Draw(itemTexture, iconRect, definition.SourceRectangle, Color.White);
+            spriteBatch.Draw(itemTexture, ItemIconLayout.FitInside(definition, iconRect), definition.SourceRectangle, Color.White);
         }
 
-        private bool CanCraftWorkbench()
+        private List<RecipeDefinition> GetVisibleRecipes(CraftTier craftTier)
         {
-            return session.CountItem(ItemId.RawWood) >= WorkbenchWoodCost;
-        }
-
-        private bool CanCraftWoodPickaxe()
-        {
-            return session.CountItem(ItemId.RawWood) >= WoodPickaxeWoodCost;
-        }
-
-        private bool CanCraftStonePickaxe(CraftTier craftTier)
-        {
-            return craftTier >= CraftTier.Workbench &&
-                   session.CountItem(ItemId.RawWood) >= StonePickaxeWoodCost &&
-                   session.CountItem(ItemId.StoneBlock) >= StonePickaxeStoneCost;
-        }
-
-        private bool CanCraftWoodDoor(CraftTier craftTier)
-        {
-            return craftTier >= CraftTier.Workbench &&
-                   session.CountItem(ItemId.RawWood) >= WoodDoorWoodCost;
-        }
-
-        private void CraftWorkbench()
-        {
-            if (!session.TryConsumeItem(ItemId.RawWood, WorkbenchWoodCost))
-                return;
-
-            if (!session.TryStoreItem(ItemId.Workbench, 1, preferInventory: true))
-                session.TryDropItem(ItemId.Workbench);
-        }
-
-        private void CraftWoodPickaxe()
-        {
-            if (!session.TryConsumeItem(ItemId.RawWood, WoodPickaxeWoodCost))
-                return;
-
-            if (!session.TryStoreItem(ItemId.WoodPickaxe, 1, preferInventory: true))
-                session.TryDropItem(ItemId.WoodPickaxe);
-        }
-
-        private void CraftStonePickaxe()
-        {
-            if (!session.TryConsumeItem(ItemId.RawWood, StonePickaxeWoodCost))
-                return;
-
-            if (!session.TryConsumeItem(ItemId.StoneBlock, StonePickaxeStoneCost))
+            List<RecipeDefinition> availableRecipes = RecipeRegistry.GetAvailable(craftTier);
+            List<RecipeDefinition> visibleRecipes = new();
+            for (int i = 0; i < availableRecipes.Count; i++)
             {
-                session.TryStoreItem(ItemId.RawWood, StonePickaxeWoodCost, preferInventory: true);
-                return;
+                RecipeDefinition recipe = availableRecipes[i];
+                if (CanCraftRecipe(recipe, craftTier))
+                    visibleRecipes.Add(recipe);
             }
 
-            if (!session.TryStoreItem(ItemId.StonePickaxe, 1, preferInventory: true))
-                session.TryDropItem(ItemId.StonePickaxe);
+            return visibleRecipes;
         }
 
-        private void CraftWoodDoor()
+        private bool CanCraftRecipe(RecipeDefinition recipe, CraftTier craftTier)
         {
-            if (!session.TryConsumeItem(ItemId.RawWood, WoodDoorWoodCost))
+            if (recipe.RequiredTier > craftTier)
+                return false;
+
+            for (int i = 0; i < recipe.Ingredients.Count; i++)
+            {
+                RecipeIngredient ingredient = recipe.Ingredients[i];
+                if (session.CountItem(ingredient.ItemId) < ingredient.Quantity)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private void CraftRecipe(RecipeDefinition recipe, CraftTier craftTier)
+        {
+            if (!CanCraftRecipe(recipe, craftTier))
                 return;
 
-            if (!session.TryStoreItem(ItemId.WoodDoor, 1, preferInventory: true))
-                session.TryDropItem(ItemId.WoodDoor);
+            List<RecipeIngredient> consumed = new();
+            for (int i = 0; i < recipe.Ingredients.Count; i++)
+            {
+                RecipeIngredient ingredient = recipe.Ingredients[i];
+                if (!session.TryConsumeItem(ingredient.ItemId, ingredient.Quantity))
+                {
+                    RollBackConsumedIngredients(consumed);
+                    return;
+                }
+
+                consumed.Add(ingredient);
+            }
+
+            if (!session.TryStoreItem(recipe.ResultItemId, recipe.ResultQuantity, preferInventory: true))
+                session.TryDropItem(recipe.ResultItemId);
+        }
+
+        private void RollBackConsumedIngredients(List<RecipeIngredient> consumed)
+        {
+            for (int i = 0; i < consumed.Count; i++)
+            {
+                RecipeIngredient ingredient = consumed[i];
+                session.TryStoreItem(ingredient.ItemId, ingredient.Quantity, preferInventory: true);
+            }
         }
 
         private Rectangle GetCraftPanelBounds(int screenWidth, int screenHeight)
         {
             Rectangle inventory = session.GetInventoryPanelBounds(screenWidth, screenHeight);
-            const int width = 252;
-            const int height = 246;
+            int recipeCount = RecipeRegistry.GetAll().Count;
+            int height = RecipeStartYOffset + (recipeCount * RecipeStep) - (RecipeStep - RecipeHeight) + CraftPanelBottomPadding;
             int x = inventory.Right + 12;
             int y = inventory.Y;
 
-            if (x + width > screenWidth - 12)
+            if (x + CraftPanelWidth > screenWidth - 12)
             {
                 x = inventory.X;
                 y = inventory.Bottom + 12;
@@ -296,39 +274,16 @@ namespace Nyvorn.Source.Gameplay.UI
             if (y + height > screenHeight - 12)
                 y = System.Math.Max(12, inventory.Y - height - 12);
 
-            return new Rectangle(x, y, width, height);
+            return new Rectangle(x, y, CraftPanelWidth, height);
         }
 
-        private Rectangle GetWorkbenchRecipeBounds()
+        private static Rectangle GetRecipeBounds(Rectangle panel, int recipeIndex)
         {
-            Rectangle panel = GetCraftPanelBounds(
-                graphicsDevice.PresentationParameters.BackBufferWidth,
-                graphicsDevice.PresentationParameters.BackBufferHeight);
-            return new Rectangle(panel.X + 12, panel.Y + 48, panel.Width - 24, 42);
-        }
-
-        private Rectangle GetWoodPickaxeRecipeBounds()
-        {
-            Rectangle panel = GetCraftPanelBounds(
-                graphicsDevice.PresentationParameters.BackBufferWidth,
-                graphicsDevice.PresentationParameters.BackBufferHeight);
-            return new Rectangle(panel.X + 12, panel.Y + 96, panel.Width - 24, 42);
-        }
-
-        private Rectangle GetStonePickaxeRecipeBounds()
-        {
-            Rectangle panel = GetCraftPanelBounds(
-                graphicsDevice.PresentationParameters.BackBufferWidth,
-                graphicsDevice.PresentationParameters.BackBufferHeight);
-            return new Rectangle(panel.X + 12, panel.Y + 144, panel.Width - 24, 42);
-        }
-
-        private Rectangle GetWoodDoorRecipeBounds()
-        {
-            Rectangle panel = GetCraftPanelBounds(
-                graphicsDevice.PresentationParameters.BackBufferWidth,
-                graphicsDevice.PresentationParameters.BackBufferHeight);
-            return new Rectangle(panel.X + 12, panel.Y + 192, panel.Width - 24, 42);
+            return new Rectangle(
+                panel.X + 12,
+                panel.Y + RecipeStartYOffset + (recipeIndex * RecipeStep),
+                panel.Width - 24,
+                RecipeHeight);
         }
 
         private void ReturnHeldItem()

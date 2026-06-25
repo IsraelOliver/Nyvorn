@@ -122,6 +122,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             spriteBatch.Draw(texture, drawPosition, source, Color.White, 0f, Vector2.Zero, 1f, flip, 0f);
         }
 
+        public void DrawLayer(SpriteBatch spriteBatch, Texture2D texture, AnimFrame layerFrame, AnimFrame movementFrame, Vector2 playerRootPosition, SpriteEffects flip, int frameWidth, int frameHeight)
+        {
+            Rectangle source = layerFrame.GetSourceRectangle(frameWidth, frameHeight);
+            Vector2 drawPosition = GetLayerDrawPosition(playerRootPosition, layerFrame, movementFrame);
+            drawPosition.Y -= frameHeight - PlayerAnimations.FrameH;
+            spriteBatch.Draw(texture, drawPosition, source, Color.White, 0f, Vector2.Zero, 1f, flip, 0f);
+        }
+
         public Vector2 GetHandWorld(Vector2 position, bool useWeaponWalkAnchor)
         {
             Vector2 root = GetDrawPosition(position);

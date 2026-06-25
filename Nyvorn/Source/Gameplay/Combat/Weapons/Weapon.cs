@@ -35,6 +35,8 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual Texture2D PlayerUpperBodyTexture => texture;
         public virtual bool DrawsPlayerUpperBodyOverlay => false;
         public virtual Texture2D PlayerUpperBodyOverlayTexture => null;
+        public int FrameWidth => frameW;
+        public int FrameHeight => frameH;
         public virtual float? WorldBreakRangeOverride => null;
         public virtual int PowerTier => 1;
         public virtual ToolType ToolType => ToolType.None;
@@ -43,7 +45,10 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual int HitDamage => 1;
         public virtual float HitKnockbackX => 80f;
         public virtual float HitKnockbackY => -35f;
-        public virtual float AttackDuration => 0.3f;
+        public virtual float BaseAttackDuration => 0.3f;
+        public virtual float UseSpeed => 1f;
+        public float AttackDuration => BaseAttackDuration / System.MathF.Max(0.05f, UseSpeed);
+        public float AttackAnimationSpeed => UseSpeed;
 
         public virtual void SetIdle() { }
         public virtual void SetWalk() { }
@@ -99,6 +104,11 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public virtual void Draw(SpriteBatch spriteBatch, Vector2 handWorld, Vector2 playerRootPosition, AnimFrame movementFrame, bool facingRight)
         {
             Draw(spriteBatch, handWorld, facingRight);
+        }
+
+        protected static Point CreatePivotFromBaseAnchor(int frameHeight, Point baseAnchor)
+        {
+            return new Point(baseAnchor.X, frameHeight - baseAnchor.Y);
         }
     }
 }

@@ -144,7 +144,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                         weaponUpperFrame,
                         playerAnimator.MovementFrame,
                         drawPos,
-                        playerAnimator.Effects);
+                        playerAnimator.Effects,
+                        combat.EquippedWeapon.FrameWidth,
+                        combat.EquippedWeapon.FrameHeight);
                 }
             }
             else
