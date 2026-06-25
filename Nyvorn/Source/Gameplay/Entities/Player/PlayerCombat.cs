@@ -110,7 +110,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 return;
 
             attackTimer -= dt;
-            attackAnimation.Update(dt);
+            attackAnimation.Update(dt * equippedWeapon.AttackAnimationSpeed);
 
             if (attackTimer > 0f)
                 return;

@@ -500,13 +500,46 @@ namespace Nyvorn.Source.Game.States
             Texture2D nullWeaponTexture = new Texture2D(graphicsDevice, 1, 1);
             nullWeaponTexture.SetData(new[] { Color.Transparent });
 
-            return new Dictionary<ItemId, Weapon>
+            Dictionary<ItemId, Weapon> weapons = new()
             {
-                [ItemId.None] = new HandWeapon(nullWeaponTexture),
-                [ItemId.WoodPickaxe] = new Pickaxe(itemTextures[ItemId.WoodPickaxe], playerPickaxeMovesetTexture, miningPower: 1, miningSpeed: 1.5f, powerTier: 1, hitDamage: 5),
-                [ItemId.StonePickaxe] = new Pickaxe(itemTextures[ItemId.StonePickaxe], playerPickaxeMovesetTexture, miningPower: 2, miningSpeed: 2.2f, powerTier: 2, hitDamage: 7),
-                [ItemId.IronPickaxe] = new Pickaxe(itemTextures[ItemId.IronPickaxe], playerPickaxeMovesetTexture, miningPower: 3, miningSpeed: 3.2f, powerTier: 3, hitDamage: 9)
+                [ItemId.None] = new HandWeapon(nullWeaponTexture)
             };
+
+            foreach (ItemDefinition definition in ItemDefinitions.GetAll())
+            {
+                if (definition.EquipmentKind == EquipmentKind.None)
+                    continue;
+
+                if (!itemTextures.TryGetValue(definition.Id, out Texture2D texture))
+                    throw new System.InvalidOperationException($"Missing texture for equipment item '{definition.Id}'.");
+
+                weapons[definition.Id] = definition.EquipmentKind switch
+                {
+                    EquipmentKind.Pickaxe => new Pickaxe(
+                        texture,
+                        playerPickaxeMovesetTexture,
+                        miningPower: definition.MiningPower.Value,
+                        miningSpeed: definition.MiningSpeed.Value,
+                        powerTier: definition.PowerTier.Value,
+                        hitDamage: definition.HitDamage.Value,
+                        hitKnockbackX: definition.HitKnockbackX.Value,
+                        hitKnockbackY: definition.HitKnockbackY.Value,
+                        useSpeed: definition.UseSpeed),
+
+                    EquipmentKind.Axe => new Axe(
+                        texture,
+                        playerPickaxeMovesetTexture,
+                        powerTier: definition.PowerTier.Value,
+                        hitDamage: definition.HitDamage.Value,
+                        hitKnockbackX: definition.HitKnockbackX.Value,
+                        hitKnockbackY: definition.HitKnockbackY.Value,
+                        useSpeed: definition.UseSpeed ?? 1f),
+
+                    _ => throw new System.InvalidOperationException($"Unsupported equipment kind '{definition.EquipmentKind}' for item '{definition.Id}'.")
+                };
+            }
+
+            return weapons;
         }
 
         private PlayingSession CreateSession(BuildContext build, PlanetWorldMetadata planetMetadata)

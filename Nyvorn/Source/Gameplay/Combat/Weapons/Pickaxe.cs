@@ -6,11 +6,16 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
 {
     public sealed class Pickaxe : Weapon
     {
+        private const float ReferenceMiningSpeed = 2.2f;
+
         private readonly Texture2D playerUpperBodyMoveset;
         private readonly int powerTier;
         private readonly int miningPower;
         private readonly float miningSpeed;
         private readonly int hitDamage;
+        private readonly float hitKnockbackX;
+        private readonly float hitKnockbackY;
+        private readonly float? useSpeed;
 
         public Pickaxe(
             Texture2D texture,
@@ -18,8 +23,11 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             int miningPower = 1,
             float miningSpeed = 1.5f,
             int powerTier = 1,
-            int hitDamage = 8)
-            : base(texture, frameW: 32, frameH: 32, pivot: new Point(9, 19))
+            int hitDamage = 8,
+            float hitKnockbackX = 190f,
+            float hitKnockbackY = -45f,
+            float? useSpeed = null)
+            : base(texture, frameW: 32, frameH: 32, pivot: CreatePivotFromBaseAnchor(32, new Point(9, 13)))
         {
             this.playerUpperBodyMoveset = playerUpperBodyMoveset ??
                 throw new System.ArgumentNullException(nameof(playerUpperBodyMoveset));
@@ -27,6 +35,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             this.miningPower = miningPower;
             this.miningSpeed = miningSpeed;
             this.hitDamage = hitDamage;
+            this.hitKnockbackX = hitKnockbackX;
+            this.hitKnockbackY = hitKnockbackY;
+            this.useSpeed = useSpeed;
             SetIdle();
         }
 
@@ -42,9 +53,9 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
         public override int MiningPower => miningPower;
         public override float MiningSpeed => miningSpeed;
         public override int HitDamage => hitDamage;
-        public override float HitKnockbackX => 190f;
-        public override float HitKnockbackY => -45f;
-        public override float AttackDuration => 0.3f;
+        public override float HitKnockbackX => hitKnockbackX;
+        public override float HitKnockbackY => hitKnockbackY;
+        public override float UseSpeed => useSpeed ?? (miningSpeed / ReferenceMiningSpeed);
 
         public override void SetIdle()
         {

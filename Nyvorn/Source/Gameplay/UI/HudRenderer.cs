@@ -153,7 +153,7 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private void DrawItemIcon(SpriteBatch spriteBatch, Texture2D itemTexture, ItemDefinition definition, Rectangle destination)
         {
-            spriteBatch.Draw(itemTexture, destination, definition.SourceRectangle, Color.White);
+            spriteBatch.Draw(itemTexture, ItemIconLayout.FitInside(definition, destination), definition.SourceRectangle, Color.White);
         }
 
         private void DrawStackCount(SpriteBatch spriteBatch, InventorySlot slot, Rectangle bounds, float insetX, float insetY)

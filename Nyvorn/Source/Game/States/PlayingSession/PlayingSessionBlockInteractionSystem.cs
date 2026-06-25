@@ -19,7 +19,7 @@ namespace Nyvorn.Source.Game.States
         private const int BlockPlaceDownRangeTiles = 3;
         private const float MinimumMiningDurationSeconds = 0.15f;
         private const float TreeChopDurationSeconds = 3f;
-        private const float PickaxeTreeChopStepSeconds = 0.3f;
+        private const float AxeTreeChopStepSeconds = 0.3f;
 
         private Point miningTile = new Point(int.MinValue, int.MinValue);
         private TileType miningTileType = TileType.Empty;
@@ -92,7 +92,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (IsPickaxeSelected(selectedSlot) && WorldMap.TryGetTreeAtTile(tile, out _))
+            if (IsAxeSelected(selectedSlot) && WorldMap.TryGetTreeAtTile(tile, out _))
             {
                 HoveredTileState = inBreakRange
                     ? WorldTilePreviewState.BreakValid
@@ -335,7 +335,7 @@ namespace Nyvorn.Source.Game.States
         private bool TryChopTree(Point tile, int selectedHotbarIndex)
         {
             InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (!IsPickaxeSelected(selectedSlot))
+            if (!IsAxeSelected(selectedSlot))
                 return false;
 
             if (!WorldMap.TryGetTreeAtTile(tile, out TreeInstance tree))
@@ -355,7 +355,7 @@ namespace Nyvorn.Source.Game.States
                 treeChopProgressSeconds = 0f;
             }
 
-            treeChopProgressSeconds += PickaxeTreeChopStepSeconds;
+            treeChopProgressSeconds += AxeTreeChopStepSeconds;
             lastTreeChopAttackSequence = Player.AttackSequence;
 
             if (treeChopProgressSeconds < TreeChopDurationSeconds)
@@ -396,6 +396,11 @@ namespace Nyvorn.Source.Game.States
             return itemId == ItemId.WoodPickaxe ||
                    itemId == ItemId.StonePickaxe ||
                    itemId == ItemId.IronPickaxe;
+        }
+
+        private static bool IsAxeSelected(InventorySlot slot)
+        {
+            return !slot.IsEmpty && slot.ItemId == ItemId.WoodAxe;
         }
 
         private float GetMiningDuration(TileMiningDefinition miningDefinition)

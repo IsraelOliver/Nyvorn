@@ -1,0 +1,58 @@
+[
+  {
+    "id": "workbench",
+    "result": "Workbench",
+    "resultQuantity": 1,
+    "requiredTier": "Basic",
+    "displayName": "Workbench",
+    "displayCost": "10 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 10 }
+    ]
+  },
+  {
+    "id": "wood_pickaxe",
+    "result": "WoodPickaxe",
+    "resultQuantity": 1,
+    "requiredTier": "Basic",
+    "displayName": "Wood Pickaxe",
+    "displayCost": "10 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 10 }
+    ]
+  },
+  {
+    "id": "wood_axe",
+    "result": "WoodAxe",
+    "resultQuantity": 1,
+    "requiredTier": "Basic",
+    "displayName": "Wood Axe",
+    "displayCost": "6 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 6 }
+    ]
+  },
+  {
+    "id": "stone_pickaxe",
+    "result": "StonePickaxe",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Stone Pickaxe",
+    "displayCost": "7 Raw Wood + 4 Stone",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 7 },
+      { "item": "StoneBlock", "quantity": 4 }
+    ]
+  },
+  {
+    "id": "wood_door",
+    "result": "WoodDoor",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Wood Door",
+    "displayCost": "12 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 12 }
+    ]
+  }
+]

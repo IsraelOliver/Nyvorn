@@ -1,161 +1,16 @@
 using Microsoft.Xna.Framework;
-using System.Globalization;
+using Nyvorn.Source.Data.Serialization;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text;
 
 namespace Nyvorn.Source.Gameplay.Items
 {
     public static class ItemDefinitions
     {
-        private static readonly Dictionary<ItemId, ItemDefinition> definitions = new()
-        {
-            {
-                ItemId.IronPickaxe,
-                new ItemDefinition
-                {
-                    Id = ItemId.IronPickaxe,
-                    Name = "Iron Pickaxe",
-                    TexturePath = "weapons/iron-pickaxe_sheet",
-                    Stackable = false,
-                    MaxStack = 1,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(32, 32),
-                    WorldPivot = new Point(9, 19),
-                    SpriteSheetCell = new Point(3, 2),
-                    WorldCollisionRect = new Rectangle(6, 18, 20, 8)
-                }
-            },
-            {
-                ItemId.WoodPickaxe,
-                new ItemDefinition
-                {
-                    Id = ItemId.WoodPickaxe,
-                    Name = "Wood Pickaxe",
-                    TexturePath = "weapons/wood-pickaxe_sheet",
-                    Stackable = false,
-                    MaxStack = 1,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(32, 32),
-                    WorldPivot = new Point(9, 19),
-                    SpriteSheetCell = new Point(3, 2),
-                    WorldCollisionRect = new Rectangle(6, 18, 20, 8)
-                }
-            },
-            {
-                ItemId.StonePickaxe,
-                new ItemDefinition
-                {
-                    Id = ItemId.StonePickaxe,
-                    Name = "Stone Pickaxe",
-                    TexturePath = "weapons/stone-pickaxe_sheet",
-                    Stackable = false,
-                    MaxStack = 1,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(32, 32),
-                    WorldPivot = new Point(9, 19),
-                    SpriteSheetCell = new Point(3, 2),
-                    WorldCollisionRect = new Rectangle(6, 18, 20, 8)
-                }
-            },
-            {
-                ItemId.DirtBlock,
-                new ItemDefinition
-                {
-                    Id = ItemId.DirtBlock,
-                    Name = "Dirt Block",
-                    TexturePath = "blocks/dirt_spritesheet",
-                    Stackable = true,
-                    MaxStack = 999,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(8, 8),
-                    WorldPivot = new Point(4, 8),
-                    SpriteSheetCell = new Point(0, 0),
-                    WorldCollisionRect = new Rectangle(0, 0, 8, 8)
-                }
-            },
-            {
-                ItemId.StoneBlock,
-                new ItemDefinition
-                {
-                    Id = ItemId.StoneBlock,
-                    Name = "Stone Block",
-                    TexturePath = "blocks/stone_spritesheet",
-                    Stackable = true,
-                    MaxStack = 999,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(8, 8),
-                    WorldPivot = new Point(4, 8),
-                    SpriteSheetCell = new Point(0, 0),
-                    WorldCollisionRect = new Rectangle(0, 0, 8, 8)
-                }
-            },
-            {
-                ItemId.SandBlock,
-                new ItemDefinition
-                {
-                    Id = ItemId.SandBlock,
-                    Name = "Sand Block",
-                    TexturePath = "blocks/sand_spritesheet",
-                    Stackable = true,
-                    MaxStack = 999,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(8, 8),
-                    WorldPivot = new Point(4, 8),
-                    SpriteSheetCell = new Point(0, 0),
-                    WorldCollisionRect = new Rectangle(0, 0, 8, 8)
-                }
-            },
-            {
-                ItemId.RawWood,
-                new ItemDefinition
-                {
-                    Id = ItemId.RawWood,
-                    Name = "Raw Wood",
-                    TexturePath = "blocks/raw_wood",
-                    Stackable = true,
-                    MaxStack = 999,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(16, 16),
-                    WorldPivot = new Point(8, 16),
-                    SpriteSheetCell = new Point(0, 0),
-                    WorldCollisionRect = new Rectangle(3, 10, 10, 6)
-                }
-            },
-            {
-                ItemId.Workbench,
-                new ItemDefinition
-                {
-                    Id = ItemId.Workbench,
-                    Name = "Workbench",
-                    TexturePath = "blocks/worktable-sheet",
-                    Stackable = true,
-                    MaxStack = 99,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(24, 16),
-                    WorldPivot = new Point(12, 16),
-                    SpriteSheetCell = new Point(0, 0),
-                    WorldCollisionRect = new Rectangle(2, 10, 20, 6)
-                }
-            },
-            {
-                ItemId.WoodDoor,
-                new ItemDefinition
-                {
-                    Id = ItemId.WoodDoor,
-                    Name = "Wood Door",
-                    TexturePath = "blocks/wood_door",
-                    Stackable = true,
-                    MaxStack = 99,
-                    GravityScale = 1.0f,
-                    WorldSize = new Point(8, 24),
-                    WorldPivot = new Point(4, 24),
-                    SpriteSheetCell = new Point(0, 0),
-                    WorldCollisionRect = new Rectangle(0, 16, 8, 8)
-                }
-            }
-        };
-
+        private static readonly Dictionary<ItemId, ItemDefinition> definitions = LoadDefinitions();
         private static readonly IReadOnlyCollection<ItemDefinition> allDefinitions =
             new ReadOnlyCollection<ItemDefinition>(new List<ItemDefinition>(definitions.Values));
         private static readonly Dictionary<string, ItemDefinition> commandDefinitions = BuildCommandDefinitions();
@@ -195,6 +50,101 @@ namespace Nyvorn.Source.Gameplay.Items
             return commandDefinitions.TryGetValue(NormalizeCommandId(value), out definition);
         }
 
+        private static Dictionary<ItemId, ItemDefinition> LoadDefinitions()
+        {
+            List<ItemDefinitionDto> items = JsonLoader.LoadContentData<List<ItemDefinitionDto>>("items.json");
+            if (items.Count == 0)
+                throw new InvalidOperationException("items.json must contain at least one item definition.");
+
+            Dictionary<ItemId, ItemDefinition> result = new();
+            for (int i = 0; i < items.Count; i++)
+            {
+                ItemDefinition definition = CreateDefinition(items[i], i);
+                if (result.ContainsKey(definition.Id))
+                    throw new InvalidOperationException($"items.json contains duplicate item id '{definition.Id}'.");
+
+                result[definition.Id] = definition;
+            }
+
+            return result;
+        }
+
+        private static ItemDefinition CreateDefinition(ItemDefinitionDto dto, int index)
+        {
+            string context = $"items.json[{index}]";
+            ItemId id = ParseEnum<ItemId>(dto.Id, $"{context}.id");
+            EquipmentKind equipmentKind = string.IsNullOrWhiteSpace(dto.EquipmentKind)
+                ? EquipmentKind.None
+                : ParseEnum<EquipmentKind>(dto.EquipmentKind, $"{context}.equipmentKind");
+
+            ItemDefinition definition = new()
+            {
+                Id = id,
+                Name = RequireText(dto.Name, $"{context}.name"),
+                TexturePath = RequireText(dto.TexturePath, $"{context}.texturePath"),
+                Stackable = dto.Stackable,
+                MaxStack = RequirePositive(dto.MaxStack, $"{context}.maxStack"),
+                GravityScale = RequirePositive(dto.GravityScale, $"{context}.gravityScale"),
+                WorldSize = ReadPoint(dto.WorldSize, $"{context}.worldSize"),
+                WorldPivot = ReadPoint(dto.WorldPivot, $"{context}.worldPivot"),
+                WorldBaseAnchor = ReadOptionalPoint(dto.WorldBaseAnchor, $"{context}.worldBaseAnchor"),
+                SpriteSheetCell = ReadPoint(dto.SpriteSheetCell, $"{context}.spriteSheetCell"),
+                FrameSize = ReadOptionalPoint(dto.FrameSize, $"{context}.frameSize"),
+                WorldCollisionRect = ReadRectangle(dto.WorldCollisionRect, $"{context}.worldCollisionRect"),
+                EquipmentKind = equipmentKind,
+                MiningPower = dto.MiningPower,
+                MiningSpeed = dto.MiningSpeed,
+                PowerTier = dto.PowerTier,
+                HitDamage = dto.HitDamage,
+                HitKnockbackX = dto.HitKnockbackX,
+                HitKnockbackY = dto.HitKnockbackY,
+                UseSpeed = dto.UseSpeed
+            };
+
+            ValidateDefinition(definition, context);
+            return definition;
+        }
+
+        private static void ValidateDefinition(ItemDefinition definition, string context)
+        {
+            if (!definition.Stackable && definition.MaxStack != 1)
+                throw new InvalidOperationException($"{context}.maxStack must be 1 for non-stackable items.");
+
+            if (definition.WorldCollisionRect.Width <= 0 || definition.WorldCollisionRect.Height <= 0)
+                throw new InvalidOperationException($"{context}.worldCollisionRect must have positive width and height.");
+
+            if (definition.FrameSize.HasValue &&
+                (definition.FrameSize.Value.X <= 0 || definition.FrameSize.Value.Y <= 0))
+            {
+                throw new InvalidOperationException($"{context}.frameSize must contain positive values.");
+            }
+
+            switch (definition.EquipmentKind)
+            {
+                case EquipmentKind.Pickaxe:
+                    RequireEquipmentValue(definition.MiningPower, $"{context}.miningPower");
+                    RequireEquipmentValue(definition.MiningSpeed, $"{context}.miningSpeed");
+                    RequireEquipmentValue(definition.PowerTier, $"{context}.powerTier");
+                    RequireEquipmentValue(definition.HitDamage, $"{context}.hitDamage");
+                    RequireEquipmentValue(definition.HitKnockbackX, $"{context}.hitKnockbackX");
+                    RequireEquipmentValue(definition.HitKnockbackY, $"{context}.hitKnockbackY");
+                    break;
+
+                case EquipmentKind.Axe:
+                    RequireEquipmentValue(definition.PowerTier, $"{context}.powerTier");
+                    RequireEquipmentValue(definition.HitDamage, $"{context}.hitDamage");
+                    RequireEquipmentValue(definition.HitKnockbackX, $"{context}.hitKnockbackX");
+                    RequireEquipmentValue(definition.HitKnockbackY, $"{context}.hitKnockbackY");
+                    break;
+            }
+        }
+
+        private static void RequireEquipmentValue<T>(T? value, string field) where T : struct
+        {
+            if (!value.HasValue)
+                throw new InvalidOperationException($"{field} is required for this equipment kind.");
+        }
+
         private static Dictionary<string, ItemDefinition> BuildCommandDefinitions()
         {
             Dictionary<string, ItemDefinition> result = new();
@@ -219,6 +169,89 @@ namespace Nyvorn.Source.Gameplay.Items
                     normalized.Append(char.ToLowerInvariant(character));
             }
             return normalized.ToString();
+        }
+
+        private static TEnum ParseEnum<TEnum>(string value, string field) where TEnum : struct
+        {
+            if (string.IsNullOrWhiteSpace(value) ||
+                !Enum.TryParse(value, ignoreCase: true, out TEnum parsed))
+            {
+                throw new InvalidOperationException($"{field} has invalid value '{value}'.");
+            }
+
+            return parsed;
+        }
+
+        private static string RequireText(string value, string field)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException($"{field} cannot be empty.");
+
+            return value;
+        }
+
+        private static int RequirePositive(int value, string field)
+        {
+            if (value <= 0)
+                throw new InvalidOperationException($"{field} must be positive.");
+
+            return value;
+        }
+
+        private static float RequirePositive(float value, string field)
+        {
+            if (value <= 0f)
+                throw new InvalidOperationException($"{field} must be positive.");
+
+            return value;
+        }
+
+        private static Point ReadPoint(int[] values, string field)
+        {
+            if (values == null || values.Length != 2)
+                throw new InvalidOperationException($"{field} must be [x, y].");
+
+            return new Point(values[0], values[1]);
+        }
+
+        private static Point? ReadOptionalPoint(int[] values, string field)
+        {
+            if (values == null)
+                return null;
+
+            return ReadPoint(values, field);
+        }
+
+        private static Rectangle ReadRectangle(int[] values, string field)
+        {
+            if (values == null || values.Length != 4)
+                throw new InvalidOperationException($"{field} must be [x, y, width, height].");
+
+            return new Rectangle(values[0], values[1], values[2], values[3]);
+        }
+
+        public sealed class ItemDefinitionDto
+        {
+            public string Id { get; init; }
+            public string Name { get; init; }
+            public string TexturePath { get; init; }
+            public bool Stackable { get; init; }
+            public int MaxStack { get; init; }
+            public float GravityScale { get; init; } = 1f;
+            public int[] WorldSize { get; init; }
+            public int[] WorldPivot { get; init; }
+            public int[] WorldBaseAnchor { get; init; }
+            public int[] SpriteSheetCell { get; init; }
+            public int[] FrameSize { get; init; }
+            public int[] WorldCollisionRect { get; init; }
+            public string EquipmentKind { get; init; }
+            public int? MiningPower { get; init; }
+            public float? MiningSpeed { get; init; }
+            public int? PowerTier { get; init; }
+            public int? HitDamage { get; init; }
+            public float? HitKnockbackX { get; init; }
+            public float? HitKnockbackY { get; init; }
+            public float? UseSpeed { get; init; }
         }
     }
 }

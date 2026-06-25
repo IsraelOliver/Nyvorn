@@ -4,6 +4,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
     {
         None = 0,
         Hand = 1,
-        Pickaxe = 2
+        Pickaxe = 2,
+        Axe = 3
     }
 }
