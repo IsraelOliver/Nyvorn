@@ -6,7 +6,8 @@ namespace Nyvorn.Source.World
         Dirt  = 1,
         Stone = 2,
         Sand  = 3,
-        Grass = 4
+        Grass = 4,
+        Wood = 5
     }
 
     public readonly struct TileMiningDefinition
@@ -33,6 +34,7 @@ namespace Nyvorn.Source.World
                 TileType.Grass => new TileMiningDefinition(isMineable: true, hardness: 1f, requiredMiningPower: 0),
                 TileType.Sand => new TileMiningDefinition(isMineable: true, hardness: 0.8f, requiredMiningPower: 0),
                 TileType.Stone => new TileMiningDefinition(isMineable: true, hardness: 3f, requiredMiningPower: 1),
+                TileType.Wood => new TileMiningDefinition(isMineable: true, hardness: 1.2f, requiredMiningPower: 0),
                 _ => new TileMiningDefinition(isMineable: false, hardness: 0f, requiredMiningPower: 0)
             };
         }

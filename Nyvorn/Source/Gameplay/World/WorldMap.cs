@@ -39,6 +39,7 @@ namespace Nyvorn.Source.World
         private Texture2D _grass;
         private Texture2D _sand;
         private Texture2D _stone;
+        private Texture2D _wood;
         private Texture2D _treeTexture;
         private TissueField _tissueField;
         private TissueAnalysisResult _tissueAnalysis;
@@ -487,7 +488,8 @@ namespace Nyvorn.Source.World
             return tileType == TileType.Dirt
                 || tileType == TileType.Grass
                 || tileType == TileType.Stone
-                || tileType == TileType.Sand;
+                || tileType == TileType.Sand
+                || tileType == TileType.Wood;
         }
 
         public bool IsSolidAt(int x, int y) => IsSolid(GetTile(x, y));
@@ -700,6 +702,7 @@ namespace Nyvorn.Source.World
                 TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background),
                 TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background),
                 TileType.Sand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
+                TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background),
                 _ => Rectangle.Empty
             };
 
@@ -756,15 +759,21 @@ namespace Nyvorn.Source.World
 
         public void SetTextures(Texture2D dirt, Texture2D sand, Texture2D stone)
         {
-            SetTextures(dirt, dirt, sand, stone);
+            SetTextures(dirt, dirt, sand, stone, null);
         }
 
         public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone)
+        {
+            SetTextures(dirt, grass, sand, stone, null);
+        }
+
+        public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone, Texture2D wood)
         {
             _dirt = dirt;
             _grass = grass;
             _sand = sand;
             _stone = stone;
+            _wood = wood;
             RebuildAutoTileVariants();
             MarkAllChunkCachesDirty();
         }
@@ -1101,6 +1110,7 @@ namespace Nyvorn.Source.World
                         TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
                         TileType.Stone => GetStoneAutoTileSourceRectangle(x, y),
                         TileType.Sand => GetAutoTileSourceRectangle(x, y),
+                        TileType.Wood => GetDirtAutoTileSourceRectangle(x, y),
                         _ => null
                     };
 
@@ -1134,6 +1144,7 @@ namespace Nyvorn.Source.World
                         TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Sand => GetBackgroundAutoTileSourceRectangle(x, y),
+                        TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         _ => null
                     };
 
@@ -1151,6 +1162,7 @@ namespace Nyvorn.Source.World
                 TileType.Grass => _grass,
                 TileType.Sand => _sand,
                 TileType.Stone => _stone,
+                TileType.Wood => _wood,
                 _ => null
             };
         }
