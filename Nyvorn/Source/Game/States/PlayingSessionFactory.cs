@@ -377,11 +377,12 @@ namespace Nyvorn.Source.Game.States
             build.GrassTexture = content.Load<Texture2D>("blocks/grass_spritesheet");
             build.SandTexture = content.Load<Texture2D>("blocks/sand_spritesheet");
             build.StoneTexture = content.Load<Texture2D>("blocks/stone_spritesheet");
+            build.WoodTexture = content.Load<Texture2D>("blocks/wood_spritesheet");
             build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
 
             build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.Seed);
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
-            build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture);
+            build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture, build.WoodTexture);
             build.WorldMap.SetTreeTexture(build.TreeTexture);
             build.WorldGenerator = new WorldGenerator();
             build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
@@ -972,6 +973,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D GrassTexture { get; set; }
             public Texture2D SandTexture { get; set; }
             public Texture2D StoneTexture { get; set; }
+            public Texture2D WoodTexture { get; set; }
             public Texture2D TreeTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
