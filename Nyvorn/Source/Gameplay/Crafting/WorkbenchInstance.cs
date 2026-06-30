@@ -1,10 +1,11 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Interaction;
+using Nyvorn.Source.Gameplay.World.Objects;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class WorkbenchInstance : IInteractable
+    public sealed class WorkbenchInstance : IInteractable, IBaseSupportedWorldObject
     {
         public WorkbenchInstance(Vector2 position)
         {

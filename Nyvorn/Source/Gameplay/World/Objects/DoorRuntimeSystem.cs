@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Gameplay.Entities.Player;
+using Nyvorn.Source.Gameplay.Interaction;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Persistence;
@@ -9,7 +10,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.World.Objects
 {
-    public sealed class DoorRuntimeSystem
+    public sealed class DoorRuntimeSystem : IWorldObjectOccupancyProvider, IWorldObjectMovementBlocker, IForegroundTileBreakListener
     {
         public const int ClosedWidth = 8;
         public const int OpenWidth = 16;
@@ -24,8 +25,7 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         private Rectangle previewBounds;
         private bool previewVisible;
         private bool previewValid;
-        private int revision;
-        private int persistedRevision;
+        private readonly RevisionTracker revisions = new();
 
         public required WorldMap WorldMap { get; init; }
         public required Player Player { get; init; }
@@ -33,8 +33,8 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         public required Texture2D Texture { get; init; }
 
         public IReadOnlyList<DoorInstance> Doors => doors;
-        public int Revision => revision;
-        public bool HasUnsavedChanges => revision != persistedRevision;
+        public int Revision => revisions.Revision;
+        public bool HasUnsavedChanges => revisions.HasUnsavedChanges;
 
         public void Restore(IEnumerable<DoorSaveData> savedDoors)
         {
@@ -54,23 +54,23 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                 }
             }
 
-            revision++;
+            revisions.MarkChanged();
             MarkPersisted();
         }
 
         public void MarkPersisted()
         {
-            persistedRevision = revision;
+            revisions.MarkPersisted();
         }
 
         public bool TryInteract(Player player)
         {
-            if (!TryGetNearestDoor(player, out DoorInstance door))
+            if (!InteractionFinder.TryGetNearest(doors, player, out DoorInstance door))
                 return false;
 
             bool toggled = door.TryToggle(player);
             if (toggled)
-                revision++;
+                revisions.MarkChanged();
 
             return true;
         }
@@ -86,16 +86,15 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.WoodDoor)
                 return false;
 
-            Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(tile.X, tile.Y))
+            Point baseTile = WorldMap.WorldToTile(mouseWorld);
+            if (!WorldMap.InBounds(baseTile.X, baseTile.Y))
                 return true;
 
             if (!previewValid)
                 return true;
 
-            Point wrappedTile = new Point(WorldMap.WrapTileX(tile.X), tile.Y);
-            doors.Add(new DoorInstance(wrappedTile, WorldMap.TileSize));
-            revision++;
+            doors.Add(new DoorInstance(GetPlacementTopTile(baseTile), WorldMap.TileSize));
+            revisions.MarkChanged();
             selectedSlot.RemoveOne();
             return true;
         }
@@ -169,7 +168,13 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             }
 
             if (removedAny)
-                revision++;
+                revisions.MarkChanged();
+        }
+
+        public void OnForegroundTileBroken(ForegroundTileBrokenContext context)
+        {
+            RemoveDoorsAffectedByBrokenTile(context.Tile, door =>
+                context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.WoodDoor, 1, door.InteractionPosition));
         }
 
         private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
@@ -181,84 +186,43 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.WoodDoor)
                 return;
 
-            Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(tile.X, tile.Y))
+            Point baseTile = WorldMap.WorldToTile(mouseWorld);
+            if (!WorldMap.InBounds(baseTile.X, baseTile.Y))
                 return;
 
-            previewBounds = GetSnappedPlacementBounds(tile);
+            previewBounds = GetSnappedPlacementBounds(baseTile);
             previewVisible = true;
             previewValid = IsValidPlacement(previewBounds);
         }
 
-        private Rectangle GetSnappedPlacementBounds(Point tile)
+        private Point GetPlacementTopTile(Point baseTile)
         {
-            int x = WorldMap.WrapTileX(tile.X) * WorldMap.TileSize;
-            int y = tile.Y * WorldMap.TileSize;
+            int doorTileHeight = DoorHeight / WorldMap.TileSize;
+            return new Point(
+                WorldMap.WrapTileX(baseTile.X),
+                baseTile.Y - doorTileHeight + 1);
+        }
+
+        private Rectangle GetSnappedPlacementBounds(Point baseTile)
+        {
+            Point topTile = GetPlacementTopTile(baseTile);
+            int x = topTile.X * WorldMap.TileSize;
+            int y = topTile.Y * WorldMap.TileSize;
             return new Rectangle(x, y, ClosedWidth, DoorHeight);
         }
 
         private bool IsValidPlacement(Rectangle bounds)
         {
-            if (bounds.Intersects(Player.Hurtbox))
-                return false;
-
-            if (Vector2.Distance(Player.Position, bounds.Center.ToVector2()) > Player.WorldInteractionRange)
-                return false;
-
-            return CanOccupyGridArea(bounds) && HasGroundSupport(bounds);
+            return WorldObjectPlacementValidator.CanPlaceObject(WorldMap, Player, bounds) &&
+                   HasDoorSupports(bounds);
         }
 
-        private bool CanOccupyGridArea(Rectangle bounds)
+        private bool HasDoorSupports(Rectangle bounds)
         {
-            int startTileX = bounds.Left / WorldMap.TileSize;
-            int endTileX = (bounds.Right - 1) / WorldMap.TileSize;
-            int startTileY = bounds.Top / WorldMap.TileSize;
-            int endTileY = (bounds.Bottom - 1) / WorldMap.TileSize;
-
-            for (int y = startTileY; y <= endTileY; y++)
-            {
-                if (!WorldMap.InBounds(startTileX, y))
-                    return false;
-
-                for (int x = startTileX; x <= endTileX; x++)
-                {
-                    if (WorldMap.IsSolidAt(x, y) || WorldMap.IsObjectOccupiedAt(x, y))
-                        return false;
-                }
-            }
-
-            return true;
-        }
-
-        private bool HasGroundSupport(Rectangle bounds)
-        {
-            int bottomTileY = bounds.Bottom / WorldMap.TileSize;
+            int topSupportTileY = (bounds.Top / WorldMap.TileSize) - 1;
             int tileX = bounds.Left / WorldMap.TileSize;
-            return WorldMap.IsSolidAt(tileX, bottomTileY);
-        }
-
-        private bool TryGetNearestDoor(Player player, out DoorInstance nearestDoor)
-        {
-            nearestDoor = null;
-            if (player == null)
-                return false;
-
-            float bestDistance = float.MaxValue;
-            for (int i = 0; i < doors.Count; i++)
-            {
-                DoorInstance door = doors[i];
-                if (!door.CanInteract(player))
-                    continue;
-
-                float distance = Vector2.Distance(player.Position, door.InteractionPosition);
-                if (distance >= bestDistance)
-                    continue;
-
-                bestDistance = distance;
-                nearestDoor = door;
-            }
-
-            return nearestDoor != null;
+            return WorldObjectSupport.HasFullBaseSupport(WorldMap, bounds) &&
+                   WorldMap.IsSolidAt(tileX, topSupportTileY);
         }
     }
 }

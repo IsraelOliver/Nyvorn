@@ -22,6 +22,7 @@ namespace Nyvorn.Source.Gameplay.World.Objects
 
         public Vector2 Position => new Vector2(Tile.X * tileSize, Tile.Y * tileSize);
         public Vector2 InteractionPosition => Bounds.Center.ToVector2();
+        public Point TopSupportTile => new Point(Tile.X, Tile.Y - 1);
         public Point SupportTile => new Point(Tile.X, Tile.Y + (DoorRuntimeSystem.DoorHeight / tileSize));
 
         public Rectangle Bounds => new Rectangle(
@@ -73,6 +74,9 @@ namespace Nyvorn.Source.Gameplay.World.Objects
 
         public bool IsAffectedByBrokenForegroundTile(Point tile)
         {
+            if (tile == TopSupportTile)
+                return true;
+
             if (tile == SupportTile)
                 return true;
 

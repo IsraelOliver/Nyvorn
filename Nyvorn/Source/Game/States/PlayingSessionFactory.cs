@@ -663,10 +663,13 @@ namespace Nyvorn.Source.Game.States
                 Texture = build.DoorTexture
             };
             doorRuntimeSystem.Restore(build.SavedDoors);
-            blockInteractionSystem.DoorRuntimeSystem = doorRuntimeSystem;
+            WorldObjectRegistry worldObjectRegistry = new();
+            worldObjectRegistry.Register(workbenchRuntimeSystem);
+            worldObjectRegistry.Register(doorRuntimeSystem);
+            blockInteractionSystem.WorldObjectRegistry = worldObjectRegistry;
             build.WorldMap.SetObjectCollisionQueries(
-                (tileX, tileY) => workbenchRuntimeSystem.IsObjectOccupyingTile(tileX, tileY) || doorRuntimeSystem.IsObjectOccupyingTile(tileX, tileY),
-                doorRuntimeSystem.IsMovementBlockingTile);
+                worldObjectRegistry.IsObjectOccupyingTile,
+                worldObjectRegistry.IsMovementBlockingTile);
             InteriorFocusSystem interiorFocusSystem = new InteriorFocusSystem
             {
                 WorldMap = build.WorldMap,

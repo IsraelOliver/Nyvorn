@@ -41,7 +41,7 @@ namespace Nyvorn.Source.Game.States
         public required Player Player { get; init; }
         public required Hotbar Hotbar { get; init; }
         public required WorldItemRuntimeSystem WorldItemRuntimeSystem { get; init; }
-        public DoorRuntimeSystem DoorRuntimeSystem { get; set; }
+        public WorldObjectRegistry WorldObjectRegistry { get; set; }
         public BlockParticleSystem BlockParticleSystem { get; set; }
 
         public Rectangle HoveredTileBounds { get; private set; }
@@ -327,8 +327,11 @@ namespace Nyvorn.Source.Game.States
             SandSystem?.WakeAreaAboveTile(tile.X, tile.Y);
             BlockParticleSystem?.SpawnFromTile(targetTile, tile, background: false);
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);
-            DoorRuntimeSystem?.RemoveDoorsAffectedByBrokenTile(tile, door =>
-                WorldItemRuntimeSystem.SpawnItemDrops(ItemId.WoodDoor, 1, door.InteractionPosition));
+            WorldObjectRegistry?.NotifyForegroundTileBroken(new ForegroundTileBrokenContext(
+                tile,
+                removedTile,
+                tileCenter,
+                WorldItemRuntimeSystem));
             ResetMiningProgress();
         }
 
