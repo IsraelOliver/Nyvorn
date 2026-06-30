@@ -4,13 +4,14 @@ using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Interaction;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.World.Objects;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Persistence;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class WorkbenchRuntimeSystem
+    public sealed class WorkbenchRuntimeSystem : IWorldObjectOccupancyProvider, IForegroundTileBreakListener
     {
         public const int WorkbenchWidth = 24;
         public const int WorkbenchHeight = 16;
@@ -26,8 +27,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
         private Rectangle previewBounds;
         private bool previewVisible;
         private bool previewValid;
-        private int revision;
-        private int persistedRevision;
+        private readonly RevisionTracker revisions = new();
 
         public required WorldMap WorldMap { get; init; }
         public required Player Player { get; init; }
@@ -35,7 +35,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
         public required Texture2D Texture { get; init; }
 
         public IReadOnlyList<WorkbenchInstance> Workbenches => workbenches;
-        public bool HasUnsavedChanges => revision != persistedRevision;
+        public bool HasUnsavedChanges => revisions.HasUnsavedChanges;
 
         public void Restore(IEnumerable<WorkbenchSaveData> savedWorkbenches)
         {
@@ -49,13 +49,13 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 }
             }
 
-            revision++;
+            revisions.MarkChanged();
             MarkPersisted();
         }
 
         public void MarkPersisted()
         {
-            persistedRevision = revision;
+            revisions.MarkPersisted();
         }
 
         public void UpdateHover(Vector2 mouseWorld)
@@ -80,16 +80,16 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         public CraftTier GetNearbyCraftTier()
         {
-            return TryGetNearestInteractable(Player, out _)
+            return InteractionFinder.TryGetNearest(workbenches, Player, out _)
                 ? CraftTier.Workbench
                 : CraftTier.Basic;
         }
 
         public bool TryInteract(Player player, out InteractionResult result)
         {
-            if (TryGetNearestInteractable(player, out IInteractable interactable))
+            if (InteractionFinder.TryGetNearest(workbenches, player, out WorkbenchInstance workbench))
             {
-                result = interactable.Interact(player);
+                result = workbench.Interact(player);
                 return result != InteractionResult.None;
             }
 
@@ -117,7 +117,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 return true;
 
             workbenches.Add(new WorkbenchInstance(new Vector2(bounds.X, bounds.Y)));
-            revision++;
+            revisions.MarkChanged();
             selectedSlot.RemoveOne();
             return true;
         }
@@ -150,6 +150,18 @@ namespace Nyvorn.Source.Gameplay.Crafting
             return false;
         }
 
+        public void RemoveWorkbenchesAffectedByBrokenTile(Point tile, System.Action<WorkbenchInstance> onWorkbenchRemoved)
+        {
+            if (WorldObjectSupport.RemoveObjectsWithBrokenBaseSupport(workbenches, tile, WorldMap, onWorkbenchRemoved))
+                revisions.MarkChanged();
+        }
+
+        public void OnForegroundTileBroken(ForegroundTileBrokenContext context)
+        {
+            RemoveWorkbenchesAffectedByBrokenTile(context.Tile, workbench =>
+                context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.Workbench, 1, workbench.InteractionPosition));
+        }
+
         private Rectangle GetSnappedPlacementBounds(Point tile)
         {
             int x = WorldMap.WrapTileX(tile.X) * WorldMap.TileSize;
@@ -177,52 +189,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         private bool IsValidPlacement(Rectangle bounds)
         {
-            if (bounds.Intersects(Player.Hurtbox))
-                return false;
-
-            if (Vector2.Distance(Player.Position, bounds.Center.ToVector2()) > Player.WorldInteractionRange)
-                return false;
-
-            return CanOccupyGridArea(bounds) &&
-                   HasExactGroundSupport(bounds) &&
+            return WorldObjectPlacementValidator.CanPlaceObject(WorldMap, Player, bounds) &&
+                   WorldObjectSupport.HasFullBaseSupport(WorldMap, bounds) &&
                    !IntersectsExistingWorkbench(bounds);
-        }
-
-        private bool CanOccupyGridArea(Rectangle bounds)
-        {
-            int startTileX = bounds.Left / WorldMap.TileSize;
-            int endTileX = (bounds.Right - 1) / WorldMap.TileSize;
-            int startTileY = bounds.Top / WorldMap.TileSize;
-            int endTileY = (bounds.Bottom - 1) / WorldMap.TileSize;
-
-            for (int y = startTileY; y <= endTileY; y++)
-            {
-                if (!WorldMap.InBounds(startTileX, y))
-                    return false;
-
-                for (int x = startTileX; x <= endTileX; x++)
-                {
-                    if (WorldMap.IsSolidAt(x, y) || WorldMap.IsObjectOccupiedAt(x, y))
-                        return false;
-                }
-            }
-
-            return true;
-        }
-
-        private bool HasExactGroundSupport(Rectangle bounds)
-        {
-            int bottomTileY = bounds.Bottom / WorldMap.TileSize;
-            int startTileX = bounds.Left / WorldMap.TileSize;
-            int endTileX = (bounds.Right - 1) / WorldMap.TileSize;
-
-            for (int x = startTileX; x <= endTileX; x++)
-            {
-                if (!WorldMap.IsSolidAt(x, bottomTileY))
-                    return false;
-            }
-
-            return true;
         }
 
         private bool IntersectsExistingWorkbench(Rectangle bounds)
@@ -234,30 +203,6 @@ namespace Nyvorn.Source.Gameplay.Crafting
             }
 
             return false;
-        }
-
-        private bool TryGetNearestInteractable(Player player, out IInteractable interactable)
-        {
-            interactable = null;
-            if (player == null)
-                return false;
-
-            float bestDistance = float.MaxValue;
-            for (int i = 0; i < workbenches.Count; i++)
-            {
-                WorkbenchInstance workbench = workbenches[i];
-                if (!workbench.CanInteract(player))
-                    continue;
-
-                float distance = Vector2.Distance(player.Position, workbench.InteractionPosition);
-                if (distance >= bestDistance)
-                    continue;
-
-                bestDistance = distance;
-                interactable = workbench;
-            }
-
-            return interactable != null;
         }
     }
 }
