@@ -23,6 +23,8 @@ namespace Nyvorn.Source.Game.States
 
         private Point miningTile = new Point(int.MinValue, int.MinValue);
         private TileType miningTileType = TileType.Empty;
+        private bool miningWorldObject;
+        private WorldObjectMiningDefinition miningWorldObjectDefinition;
         private ItemId miningToolItemId = ItemId.None;
         private float miningProgressSeconds;
         private Point backgroundMiningTile = new Point(int.MinValue, int.MinValue);
@@ -95,6 +97,17 @@ namespace Nyvorn.Source.Game.States
             if (IsAxeSelected(selectedSlot) && WorldMap.TryGetTreeAtTile(tile, out _))
             {
                 HoveredTileState = inBreakRange
+                    ? WorldTilePreviewState.BreakValid
+                    : WorldTilePreviewState.BreakInvalid;
+                return;
+            }
+
+            if (CanUseSelectedSlotForMining(selectedSlot) &&
+                WorldObjectRegistry != null &&
+                WorldObjectRegistry.TryGetMiningTargetAtTile(tile, out WorldObjectMiningTarget objectMiningTarget))
+            {
+                bool inObjectBreakRange = Vector2.Distance(Player.Position, objectMiningTarget.Center) <= Player.WorldBreakRange;
+                HoveredTileState = inObjectBreakRange && WorldObjectMining.CanMine(Player, objectMiningTarget.MiningDefinition)
                     ? WorldTilePreviewState.BreakValid
                     : WorldTilePreviewState.BreakInvalid;
                 return;
@@ -290,6 +303,9 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryMineTargetWorldObject(dt, toolItemId, tile))
+                return;
+
             TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
             TileMiningDefinition miningDefinition = TileMiningDefinitions.Get(targetTile);
             if (!miningDefinition.IsMineable || !Player.CanBreakTile(targetTile))
@@ -305,8 +321,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (miningTile != tile || miningTileType != targetTile || miningToolItemId != toolItemId)
+            if (miningWorldObject ||
+                miningTile != tile ||
+                miningTileType != targetTile ||
+                miningToolItemId != toolItemId)
             {
+                miningWorldObject = false;
                 miningTile = tile;
                 miningTileType = targetTile;
                 miningToolItemId = toolItemId;
@@ -333,6 +353,49 @@ namespace Nyvorn.Source.Game.States
                 tileCenter,
                 WorldItemRuntimeSystem));
             ResetMiningProgress();
+        }
+
+        private bool TryMineTargetWorldObject(float dt, ItemId toolItemId, Point tile)
+        {
+            if (WorldObjectRegistry == null ||
+                !WorldObjectRegistry.TryGetMiningTargetAtTile(tile, out WorldObjectMiningTarget target))
+            {
+                return false;
+            }
+
+            if (!WorldObjectMining.CanMine(Player, target.MiningDefinition))
+            {
+                ResetMiningProgress();
+                return true;
+            }
+
+            if (Vector2.Distance(Player.Position, target.Center) > Player.WorldBreakRange)
+            {
+                ResetMiningProgress();
+                return true;
+            }
+
+            if (!miningWorldObject ||
+                miningTile != tile ||
+                miningWorldObjectDefinition != target.MiningDefinition ||
+                miningToolItemId != toolItemId)
+            {
+                miningWorldObject = true;
+                miningTile = tile;
+                miningTileType = TileType.Empty;
+                miningWorldObjectDefinition = target.MiningDefinition;
+                miningToolItemId = toolItemId;
+                miningProgressSeconds = 0f;
+            }
+
+            MiningDurationSeconds = GetMiningDuration(target.MiningDefinition);
+            miningProgressSeconds += dt;
+            if (miningProgressSeconds < MiningDurationSeconds)
+                return true;
+
+            WorldObjectRegistry.TryMineObjectAtTile(tile, WorldItemRuntimeSystem);
+            ResetMiningProgress();
+            return true;
         }
 
         private bool TryChopTree(Point tile, int selectedHotbarIndex)
@@ -408,14 +471,26 @@ namespace Nyvorn.Source.Game.States
 
         private float GetMiningDuration(TileMiningDefinition miningDefinition)
         {
-            float miningSpeed = System.MathF.Max(0.001f, Player.MiningSpeed);
-            return System.MathF.Max(MinimumMiningDurationSeconds, miningDefinition.Hardness / miningSpeed);
+            return WorldObjectMining.GetMiningDuration(
+                miningDefinition.Hardness,
+                Player.MiningSpeed,
+                MinimumMiningDurationSeconds);
+        }
+
+        private float GetMiningDuration(WorldObjectMiningDefinition miningDefinition)
+        {
+            return WorldObjectMining.GetMiningDuration(
+                miningDefinition.Hardness,
+                Player.MiningSpeed,
+                MinimumMiningDurationSeconds);
         }
 
         private void ResetMiningProgress()
         {
             miningTile = new Point(int.MinValue, int.MinValue);
             miningTileType = TileType.Empty;
+            miningWorldObject = false;
+            miningWorldObjectDefinition = default;
             miningToolItemId = ItemId.None;
             miningProgressSeconds = 0f;
             MiningDurationSeconds = 0f;

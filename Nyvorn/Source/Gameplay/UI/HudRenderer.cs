@@ -36,10 +36,11 @@ namespace Nyvorn.Source.Gameplay.UI
 
         public SpriteFont Font => font;
 
-        public void Draw(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int currentHealth, int maxHealth, int screenWidth, int screenHeight)
+        public void Draw(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int currentHealth, int maxHealth, int screenWidth, int screenHeight, string clockText)
         {
             DrawHotbar(spriteBatch, hotbar, selectedHotbarIndex, screenWidth, screenHeight);
             DrawPlayerHealth(spriteBatch, currentHealth, maxHealth, screenWidth);
+            DrawWorldClock(spriteBatch, clockText, screenWidth);
         }
 
         public Rectangle GetInventoryPanelBounds(int screenWidth, int screenHeight)
@@ -256,6 +257,31 @@ namespace Nyvorn.Source.Gameplay.UI
             Vector2 textPos = new Vector2(x + (width - size.X) * 0.5f, y - size.Y - 2f);
             spriteBatch.DrawString(font, label, textPos + new Vector2(1f, 1f), Color.Black);
             spriteBatch.DrawString(font, label, textPos, Color.White);
+        }
+
+        private void DrawWorldClock(SpriteBatch spriteBatch, string clockText, int screenWidth)
+        {
+            if (string.IsNullOrWhiteSpace(clockText))
+                return;
+
+            const int padding = 14;
+            const int healthHeight = 14;
+            const int clockPaddingX = 7;
+            const int clockPaddingY = 3;
+
+            Vector2 textSize = font.MeasureString(clockText);
+            int width = (int)MathF.Ceiling(textSize.X) + (clockPaddingX * 2);
+            int height = (int)MathF.Ceiling(textSize.Y) + (clockPaddingY * 2);
+            int x = screenWidth - width - padding;
+            int y = padding + healthHeight + 8;
+            Rectangle bounds = new Rectangle(x, y, width, height);
+
+            spriteBatch.Draw(pixel, new Rectangle(bounds.X - 1, bounds.Y - 1, bounds.Width + 2, bounds.Height + 2), Color.Black * 0.82f);
+            spriteBatch.Draw(pixel, bounds, new Color(13, 24, 34, 220));
+
+            Vector2 textPos = new Vector2(bounds.X + clockPaddingX, bounds.Y + clockPaddingY);
+            spriteBatch.DrawString(font, clockText, textPos + new Vector2(1f, 1f), Color.Black * 0.85f);
+            spriteBatch.DrawString(font, clockText, textPos, new Color(220, 240, 255));
         }
     }
 }

@@ -11,12 +11,13 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class WorkbenchRuntimeSystem : IWorldObjectOccupancyProvider, IForegroundTileBreakListener
+    public sealed class WorkbenchRuntimeSystem : IWorldObjectOccupancyProvider, IForegroundTileBreakListener, IWorldObjectMiningProvider
     {
         public const int WorkbenchWidth = 24;
         public const int WorkbenchHeight = 16;
         private const int HoverPadding = 8;
 
+        private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1.5f, 1);
         private static readonly Rectangle NormalSource = new Rectangle(0, 0, WorkbenchWidth, WorkbenchHeight);
         private static readonly Rectangle SelectedSource = new Rectangle(WorkbenchWidth, 0, WorkbenchWidth, WorkbenchHeight);
         private static readonly Color ValidPreviewTint = new Color(92, 255, 128, 140);
@@ -137,17 +138,31 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         public bool IsObjectOccupyingTile(int tileX, int tileY)
         {
-            if (!WorldMap.InBounds(tileX, tileY))
-                return false;
+            return TryGetWorkbenchIndexAtTile(new Point(tileX, tileY), out _);
+        }
 
-            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tileX), tileY);
-            for (int i = 0; i < workbenches.Count; i++)
+        public bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
+        {
+            if (TryGetWorkbenchIndexAtTile(tile, out int index))
             {
-                if (workbenches[i].Bounds.Intersects(tileBounds))
-                    return true;
+                target = new WorldObjectMiningTarget(MiningDefinition, workbenches[index].Bounds);
+                return true;
             }
 
+            target = default;
             return false;
+        }
+
+        public bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
+        {
+            if (worldItemRuntimeSystem == null || !TryGetWorkbenchIndexAtTile(tile, out int index))
+                return false;
+
+            WorkbenchInstance workbench = workbenches[index];
+            worldItemRuntimeSystem.SpawnItemDrops(ItemId.Workbench, 1, workbench.InteractionPosition);
+            workbenches.RemoveAt(index);
+            revisions.MarkChanged();
+            return true;
         }
 
         public void RemoveWorkbenchesAffectedByBrokenTile(Point tile, System.Action<WorkbenchInstance> onWorkbenchRemoved)
@@ -200,6 +215,25 @@ namespace Nyvorn.Source.Gameplay.Crafting
             {
                 if (workbenches[i].Bounds.Intersects(bounds))
                     return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetWorkbenchIndexAtTile(Point tile, out int index)
+        {
+            index = -1;
+            if (!WorldMap.InBounds(tile.X, tile.Y))
+                return false;
+
+            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tile.X), tile.Y);
+            for (int i = 0; i < workbenches.Count; i++)
+            {
+                if (!workbenches[i].Bounds.Intersects(tileBounds))
+                    continue;
+
+                index = i;
+                return true;
             }
 
             return false;

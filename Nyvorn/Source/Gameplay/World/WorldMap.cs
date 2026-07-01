@@ -833,13 +833,6 @@ namespace Nyvorn.Source.World
             if (!TryGetTreePartAtTile(tile, out TreeInstance tree, out TreePartPlacement cutPart))
                 return false;
 
-            if (!tree.HasCanopy)
-            {
-                _trees.Remove(tree);
-                TileRevision++;
-                return true;
-            }
-
             if (cutPart.PartType == TreePartType.RootLeft || cutPart.PartType == TreePartType.RootRight)
             {
                 ChopTreeRoot(tree, cutPart.PartType);
@@ -972,8 +965,15 @@ namespace Nyvorn.Source.World
 
         private static int CountChoppedWood(TreeInstance tree, int cutOffsetY)
         {
-            int removedHeight = tree.Height + cutOffsetY;
-            return System.Math.Max(1, removedHeight);
+            int woodQuantity = 0;
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                TreePartPlacement placement = tree.Parts[i];
+                if (placement.OffsetTiles.X == 0 && placement.OffsetTiles.Y <= cutOffsetY)
+                    woodQuantity++;
+            }
+
+            return System.Math.Max(1, woodQuantity);
         }
 
         private static int CompareTreePartPlacementForRendering(TreePartPlacement left, TreePartPlacement right)

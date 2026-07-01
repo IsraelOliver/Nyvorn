@@ -1,3 +1,5 @@
+using Microsoft.Xna.Framework;
+using Nyvorn.Source.Gameplay.Items;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.World.Objects
@@ -7,6 +9,7 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         private readonly List<IWorldObjectOccupancyProvider> occupancyProviders = new();
         private readonly List<IWorldObjectMovementBlocker> movementBlockers = new();
         private readonly List<IForegroundTileBreakListener> foregroundTileBreakListeners = new();
+        private readonly List<IWorldObjectMiningProvider> miningProviders = new();
 
         public void Register(object worldObjectSystem)
         {
@@ -29,6 +32,12 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                 !foregroundTileBreakListeners.Contains(foregroundTileBreakListener))
             {
                 foregroundTileBreakListeners.Add(foregroundTileBreakListener);
+            }
+
+            if (worldObjectSystem is IWorldObjectMiningProvider miningProvider &&
+                !miningProviders.Contains(miningProvider))
+            {
+                miningProviders.Add(miningProvider);
             }
         }
 
@@ -58,6 +67,29 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         {
             for (int i = 0; i < foregroundTileBreakListeners.Count; i++)
                 foregroundTileBreakListeners[i].OnForegroundTileBroken(context);
+        }
+
+        public bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
+        {
+            for (int i = 0; i < miningProviders.Count; i++)
+            {
+                if (miningProviders[i].TryGetMiningTargetAtTile(tile, out target))
+                    return true;
+            }
+
+            target = default;
+            return false;
+        }
+
+        public bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
+        {
+            for (int i = 0; i < miningProviders.Count; i++)
+            {
+                if (miningProviders[i].TryMineObjectAtTile(tile, worldItemRuntimeSystem))
+                    return true;
+            }
+
+            return false;
         }
     }
 }
