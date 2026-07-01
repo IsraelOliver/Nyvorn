@@ -277,14 +277,22 @@ namespace Nyvorn.Source.Game.States
             DoorRuntimeSystem?.Draw(spriteBatch);
         }
 
-        public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color skyColor)
         {
-            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight);
+            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyColor);
         }
 
-        public void DrawHud(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int screenWidth, int screenHeight)
+        public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color tint)
         {
-            HudRenderer.Draw(spriteBatch, hotbar, selectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight);
+            if (screenWidth <= 0 || screenHeight <= 0 || tint.A == 0)
+                return;
+
+            spriteBatch.Draw(DebugPixel, new Rectangle(0, 0, screenWidth, screenHeight), tint);
+        }
+
+        public void DrawHud(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int screenWidth, int screenHeight, string clockText)
+        {
+            HudRenderer.Draw(spriteBatch, hotbar, selectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight, clockText);
         }
 
         public void DrawPowerHud(SpriteBatch spriteBatch, PlayerPowerSystem powerSystem, int screenWidth, int screenHeight, bool constructionMode)

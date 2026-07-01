@@ -10,12 +10,13 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.World.Objects
 {
-    public sealed class DoorRuntimeSystem : IWorldObjectOccupancyProvider, IWorldObjectMovementBlocker, IForegroundTileBreakListener
+    public sealed class DoorRuntimeSystem : IWorldObjectOccupancyProvider, IWorldObjectMovementBlocker, IForegroundTileBreakListener, IWorldObjectMiningProvider
     {
         public const int ClosedWidth = 8;
         public const int OpenWidth = 16;
         public const int DoorHeight = 24;
 
+        private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1f, 1);
         private static readonly Rectangle ClosedSource = new Rectangle(0, 0, ClosedWidth, DoorHeight);
         private static readonly Rectangle OpenSource = new Rectangle(ClosedWidth, 0, OpenWidth, DoorHeight);
         private static readonly Color ValidPreviewTint = new Color(92, 255, 128, 140);
@@ -119,17 +120,31 @@ namespace Nyvorn.Source.Gameplay.World.Objects
 
         public bool IsObjectOccupyingTile(int tileX, int tileY)
         {
-            if (!WorldMap.InBounds(tileX, tileY))
-                return false;
+            return TryGetDoorIndexAtTile(new Point(tileX, tileY), out _);
+        }
 
-            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tileX), tileY);
-            for (int i = 0; i < doors.Count; i++)
+        public bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
+        {
+            if (TryGetDoorIndexAtTile(tile, out int index))
             {
-                if (doors[i].Bounds.Intersects(tileBounds))
-                    return true;
+                target = new WorldObjectMiningTarget(MiningDefinition, doors[index].Bounds);
+                return true;
             }
 
+            target = default;
             return false;
+        }
+
+        public bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
+        {
+            if (worldItemRuntimeSystem == null || !TryGetDoorIndexAtTile(tile, out int index))
+                return false;
+
+            DoorInstance door = doors[index];
+            worldItemRuntimeSystem.SpawnItemDrops(ItemId.WoodDoor, 1, door.InteractionPosition);
+            doors.RemoveAt(index);
+            revisions.MarkChanged();
+            return true;
         }
 
         public bool IsMovementBlockingTile(int tileX, int tileY)
@@ -223,6 +238,25 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             int tileX = bounds.Left / WorldMap.TileSize;
             return WorldObjectSupport.HasFullBaseSupport(WorldMap, bounds) &&
                    WorldMap.IsSolidAt(tileX, topSupportTileY);
+        }
+
+        private bool TryGetDoorIndexAtTile(Point tile, out int index)
+        {
+            index = -1;
+            if (!WorldMap.InBounds(tile.X, tile.Y))
+                return false;
+
+            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tile.X), tile.Y);
+            for (int i = 0; i < doors.Count; i++)
+            {
+                if (!doors[i].Bounds.Intersects(tileBounds))
+                    continue;
+
+                index = i;
+                return true;
+            }
+
+            return false;
         }
     }
 }

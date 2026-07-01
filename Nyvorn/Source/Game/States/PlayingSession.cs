@@ -43,6 +43,7 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
+        public required WorldDayNightCycle DayNightCycle { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
         public required WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
@@ -61,6 +62,7 @@ namespace Nyvorn.Source.Game.States
         public long SlowTickCount => WorldTickCoordinator.SlowTickCount;
         public WorldMap WorldMap => RuntimeContext.WorldMap;
         public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges ||
+                                              DayNightCycle.HasUnsavedChanges ||
                                               WorkbenchRuntimeSystem.HasUnsavedChanges ||
                                               DoorRuntimeSystem.HasUnsavedChanges ||
                                               consoleCommandHistoryRevision != persistedConsoleCommandHistoryRevision;
@@ -82,6 +84,10 @@ namespace Nyvorn.Source.Game.States
         public bool TissueVisualEnabled { get; private set; }
         public bool TissueFieldVisualEnabled { get; private set; }
         public bool DebugFlyEnabled => Player.DebugFlyEnabled;
+        public float TimeOfDay01 => DayNightCycle.TimeOfDay01;
+        public float WorldTimeCyclePercent => DayNightCycle.CyclePercent;
+        public float WorldNightStrength => DayNightCycle.NightStrength;
+        public string WorldClockText24h => DayNightCycle.ClockText24h;
 
         public void InitializeRuntimeState()
         {
@@ -109,6 +115,16 @@ namespace Nyvorn.Source.Game.States
         public void MarkConsoleCommandHistoryPersisted()
         {
             persistedConsoleCommandHistoryRevision = consoleCommandHistoryRevision;
+        }
+
+        public void MarkDayNightCyclePersisted()
+        {
+            DayNightCycle.MarkPersisted();
+        }
+
+        public void SetWorldTimeOfDay(float timeOfDay01)
+        {
+            DayNightCycle.SetTimeOfDay01(timeOfDay01);
         }
 
         public void SetWorldTickTimeScale(float timeScale)
@@ -172,6 +188,7 @@ namespace Nyvorn.Source.Game.States
         {
             UpdateFrame(dt, input, mouseWorld);
             AdvanceWorldTicks(dt);
+            AdvanceDayNightCycle(dt);
         }
 
         public void UpdateSimulationViewport(int screenWidth, int screenHeight)
@@ -228,6 +245,11 @@ namespace Nyvorn.Source.Game.States
         private void AdvanceWorldTicks(float dt)
         {
             WorldTickCoordinator.Advance(dt);
+        }
+
+        private void AdvanceDayNightCycle(float dt)
+        {
+            DayNightCycle.Advance(dt, WorldTickTimeScale, WorldTicksPaused);
         }
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -300,7 +322,12 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            ViewCoordinator.DrawSky(spriteBatch, screenWidth, screenHeight);
+            ViewCoordinator.DrawSky(spriteBatch, screenWidth, screenHeight, DayNightCycle.SkyColor);
+        }
+
+        public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.DrawNightOverlay(spriteBatch, screenWidth, screenHeight, DayNightCycle.NightOverlayTint);
         }
 
 
@@ -311,7 +338,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawHud(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            ViewCoordinator.DrawHud(spriteBatch, Hotbar, SelectedHotbarIndex, screenWidth, screenHeight);
+            ViewCoordinator.DrawHud(spriteBatch, Hotbar, SelectedHotbarIndex, screenWidth, screenHeight, WorldClockText24h);
             ViewCoordinator.DrawPowerHud(spriteBatch, PowerSystem, screenWidth, screenHeight, IsConstructionMode);
         }
 

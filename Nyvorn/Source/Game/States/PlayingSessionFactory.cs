@@ -276,6 +276,9 @@ namespace Nyvorn.Source.Game.States
                     .TakeLast(100)
                     .ToList()
                 : new List<string>();
+            build.SavedTimeOfDay01 = saveData != null && saveData.Version >= 13
+                ? saveData.TimeOfDay01
+                : WorldDayNightCycle.DefaultStartTimeOfDay01;
             build.SavedBackgroundTileSnapshot = saveData != null && saveData.Version >= 10
                 ? saveData.BackgroundTileSnapshot
                 : null;
@@ -718,6 +721,7 @@ namespace Nyvorn.Source.Game.States
                 ViewCoordinator = viewCoordinator,
                 WorldTickSystem = new WorldTickSystem()
             };
+            WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01);
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
                 RuntimeContext = runtimeContext,
@@ -741,6 +745,7 @@ namespace Nyvorn.Source.Game.States
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
+                DayNightCycle = dayNightCycle,
                 CombatCoordinator = combatCoordinator,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem,
@@ -1000,6 +1005,7 @@ namespace Nyvorn.Source.Game.States
             public byte[] SavedSandSnapshot { get; set; }
             public byte[] SavedTissueFieldDeltaSnapshot { get; set; }
             public List<string> SavedConsoleCommandHistory { get; set; }
+            public float SavedTimeOfDay01 { get; set; } = WorldDayNightCycle.DefaultStartTimeOfDay01;
             public byte[] SavedBackgroundTileSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public List<WorkbenchSaveData> SavedWorkbenches { get; set; }

@@ -8,6 +8,7 @@ using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Interaction;
 using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
@@ -320,6 +321,10 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
             }
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            session.DrawNightOverlay(spriteBatch, screenW, screenH);
+            spriteBatch.End();
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW, screenH);
@@ -725,6 +730,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryExecuteTimeCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
             if (TryExecuteTissuePulseCommand(commandBody))
             {
                 consoleInput = string.Empty;
@@ -807,6 +818,10 @@ namespace Nyvorn.Source.Game.States
                 "/tick resume",
                 "/tick reset",
                 "/tick step [1..600]",
+                "/time",
+                "/time status",
+                "/time day",
+                "/time night",
                 "/grass grow [1..10000]",
                 "/debug ticks",
                 "/world save"
@@ -879,6 +894,44 @@ namespace Nyvorn.Source.Game.States
 
             SetConsoleMessage("Uso: /tick speed 1..16, /tick step [n], /tick pause, /tick resume, /tick reset, /tick status");
             return true;
+        }
+
+        private bool TryExecuteTimeCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("time", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1 || parts[1].Equals("status", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ShowTimeStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("day", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.DayCommandTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("night", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.NightCommandTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            SetConsoleMessage("Uso: /time, /time status, /time day ou /time night");
+            return true;
+        }
+
+        private void ShowTimeStatus()
+        {
+            string paused = session.WorldTicksPaused ? " paused" : string.Empty;
+            SetConsoleMessage(
+                $"Horario: {session.WorldClockText24h} ciclo:{session.WorldTimeCyclePercent:0.0}% " +
+                $"noite:{session.WorldNightStrength:0.00} speed:{session.WorldTickTimeScale:0.##}x{paused}");
         }
 
         private bool TryExecuteGrassCommand(string command)

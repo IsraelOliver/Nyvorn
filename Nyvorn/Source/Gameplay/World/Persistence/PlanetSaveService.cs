@@ -98,6 +98,7 @@ namespace Nyvorn.Source.World.Persistence
             {
                 Metadata = session.PlanetMetadata,
                 SavedAtUtc = DateTime.UtcNow,
+                TimeOfDay01 = session.TimeOfDay01,
                 TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
                 Trees = session.WorldMap.Trees
                     .Select(TreeSaveData.FromTree)
@@ -143,6 +144,7 @@ namespace Nyvorn.Source.World.Persistence
             playerSaveService.Save(session);
             session.WorldMap.MarkPersisted();
             session.MarkConsoleCommandHistoryPersisted();
+            session.MarkDayNightCyclePersisted();
             session.WorkbenchRuntimeSystem.MarkPersisted();
             session.DoorRuntimeSystem.MarkPersisted();
         }
@@ -196,6 +198,7 @@ namespace Nyvorn.Source.World.Persistence
                 Version = saveData.Version,
                 Metadata = saveData.Metadata,
                 SavedAtUtc = saveData.SavedAtUtc,
+                TimeOfDay01 = saveData.TimeOfDay01,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
@@ -218,6 +221,7 @@ namespace Nyvorn.Source.World.Persistence
                 Version = saveData.Version,
                 Metadata = saveData.Metadata,
                 SavedAtUtc = saveData.SavedAtUtc,
+                TimeOfDay01 = saveData.TimeOfDay01,
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
