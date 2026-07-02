@@ -494,9 +494,6 @@ namespace Nyvorn.Source.Game.States
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
             build.SunTexture = content.Load<Texture2D>("background/Sun");
             build.WaterEffect = content.Load<Effect>("effects/water");
-            build.WaterCausticTexture = content.Load<Texture2D>("effects/water_caustic");
-            build.WaterCausticHighlightTexture = content.Load<Texture2D>("effects/water_caustic_highlights");
-            build.WaterCausticThickTexture = content.Load<Texture2D>("effects/water_caustic_thick");
 
             build.ItemTextures = LoadItemTextures();
             build.Weapons = CreateWeapons(build.ItemTextures, build.PlayerPickaxeMovesetTexture);
@@ -719,9 +716,6 @@ namespace Nyvorn.Source.Game.States
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice, build.SunTexture),
                 WaterEffect = build.WaterEffect,
-                WaterCausticTexture = build.WaterCausticTexture,
-                WaterCausticHighlightTexture = build.WaterCausticHighlightTexture,
-                WaterCausticThickTexture = build.WaterCausticThickTexture,
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
@@ -1019,9 +1013,6 @@ namespace Nyvorn.Source.Game.States
             public Texture2D EnemyTexture { get; set; }
             public Texture2D SunTexture { get; set; }
             public Effect WaterEffect { get; set; }
-            public Texture2D WaterCausticTexture { get; set; }
-            public Texture2D WaterCausticHighlightTexture { get; set; }
-            public Texture2D WaterCausticThickTexture { get; set; }
             public SpriteFont UiFont { get; set; }
             public WorldGenConfig WorldGenConfig { get; set; }
             public WorldMap WorldMap { get; set; }

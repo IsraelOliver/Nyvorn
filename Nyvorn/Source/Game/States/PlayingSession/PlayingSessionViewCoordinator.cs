@@ -35,12 +35,11 @@ namespace Nyvorn.Source.Game.States
         private const float CameraReturnSnapDistance = 1.25f;
         private static readonly Color SandPixelColor = new Color(214, 196, 150);
         private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
-        private static readonly Color WaterPixelColor = new Color(48, 139, 207) * 0.72f;
-        private static readonly Color WaterSurfaceColor = new Color(232, 250, 255) * 0.64f;
-        private static readonly Vector4 WaterDeepShaderColor = new Color(28, 96, 158).ToVector4();
-        private static readonly Vector4 WaterLightShaderColor = new Color(92, 174, 214).ToVector4();
-        private static readonly Vector4 WaterFoamShaderColor = new Color(229, 249, 255).ToVector4();
-        private static readonly Vector4 WaterCausticShaderColor = new Color(198, 244, 255).ToVector4();
+        private static readonly Color WaterPixelColor = new Color(38, 126, 202) * 0.76f;
+        private static readonly Color WaterSurfaceColor = new Color(150, 211, 238) * 0.62f;
+        private static readonly Vector4 WaterShallowShaderColor = new Color(52, 150, 214).ToVector4();
+        private static readonly Vector4 WaterDeepShaderColor = new Color(22, 86, 156).ToVector4();
+        private static readonly Vector4 WaterSurfaceShaderColor = new Color(132, 204, 232).ToVector4();
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -57,9 +56,6 @@ namespace Nyvorn.Source.Game.States
         public required Texture2D DebugPixel { get; init; }
         public LiquidSystem LiquidSystem { get; set; }
         public Effect WaterEffect { get; init; }
-        public Texture2D WaterCausticTexture { get; init; }
-        public Texture2D WaterCausticHighlightTexture { get; init; }
-        public Texture2D WaterCausticThickTexture { get; init; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
         public required HudRenderer HudRenderer { get; init; }
         public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
@@ -192,16 +188,10 @@ namespace Nyvorn.Source.Game.States
                 return null;
 
             SetEffectValue("MatrixTransform", CreateSpriteBatchMatrixTransform(graphicsDevice, transformMatrix));
-            SetEffectValue("Time", timeSeconds);
+            SetEffectValue("WaterShallowColor", WaterShallowShaderColor);
             SetEffectValue("WaterDeepColor", WaterDeepShaderColor);
-            SetEffectValue("WaterLightColor", WaterLightShaderColor);
-            SetEffectValue("WaterFoamColor", WaterFoamShaderColor);
-            SetEffectValue("WaterCausticColor", WaterCausticShaderColor);
-            SetEffectValue("CausticTexture", WaterCausticTexture);
-            SetEffectValue("CausticHighlightTexture", WaterCausticHighlightTexture);
-            SetEffectValue("CausticThickTexture", WaterCausticThickTexture);
-            SetEffectValue("CausticIntensity", 0.32f);
-            SetEffectValue("SurfaceFoamIntensity", 0.56f);
+            SetEffectValue("WaterSurfaceColor", WaterSurfaceShaderColor);
+            SetEffectValue("WaterDepthStrength", 0.58f);
             return WaterEffect;
         }
 
@@ -501,12 +491,6 @@ namespace Nyvorn.Source.Game.States
         private void SetEffectValue(string parameterName, Matrix value)
         {
             WaterEffect.Parameters[parameterName]?.SetValue(value);
-        }
-
-        private void SetEffectValue(string parameterName, Texture2D value)
-        {
-            if (value != null)
-                WaterEffect.Parameters[parameterName]?.SetValue(value);
         }
 
         private static Matrix CreateSpriteBatchMatrixTransform(GraphicsDevice graphicsDevice, Matrix transformMatrix)
