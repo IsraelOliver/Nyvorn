@@ -276,7 +276,20 @@ namespace Nyvorn.Source.Game.States
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawTerrain(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                Effect waterEffect = session.PrepareWaterEffect((float)gameTime.TotalGameTime.TotalSeconds, graphicsDevice, transform);
+                spriteBatch.Begin(
+                    samplerState: SamplerState.PointClamp,
+                    blendState: BlendState.AlphaBlend,
+                    effect: waterEffect,
+                    transformMatrix: transform);
+                session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainOverlay(spriteBatch);
                 spriteBatch.End();
             }
 

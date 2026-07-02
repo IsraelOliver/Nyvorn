@@ -35,8 +35,12 @@ namespace Nyvorn.Source.Game.States
         private const float CameraReturnSnapDistance = 1.25f;
         private static readonly Color SandPixelColor = new Color(214, 196, 150);
         private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
-        private static readonly Color WaterPixelColor = new Color(38, 126, 216) * 0.68f;
-        private static readonly Color WaterSurfaceColor = new Color(132, 205, 255) * 0.52f;
+        private static readonly Color WaterPixelColor = new Color(48, 139, 207) * 0.72f;
+        private static readonly Color WaterSurfaceColor = new Color(232, 250, 255) * 0.64f;
+        private static readonly Vector4 WaterDeepShaderColor = new Color(28, 96, 158).ToVector4();
+        private static readonly Vector4 WaterLightShaderColor = new Color(92, 174, 214).ToVector4();
+        private static readonly Vector4 WaterFoamShaderColor = new Color(229, 249, 255).ToVector4();
+        private static readonly Vector4 WaterCausticShaderColor = new Color(198, 244, 255).ToVector4();
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -52,6 +56,10 @@ namespace Nyvorn.Source.Game.States
         public required Camera2D Camera { get; init; }
         public required Texture2D DebugPixel { get; init; }
         public LiquidSystem LiquidSystem { get; set; }
+        public Effect WaterEffect { get; init; }
+        public Texture2D WaterCausticTexture { get; init; }
+        public Texture2D WaterCausticHighlightTexture { get; init; }
+        public Texture2D WaterCausticThickTexture { get; init; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
         public required HudRenderer HudRenderer { get; init; }
         public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
@@ -166,11 +174,44 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Rectangle hoveredTileBounds, WorldTilePreviewState hoveredTileState)
         {
-            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+            DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            DrawWater(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            DrawTerrainOverlay(spriteBatch, hoveredTileBounds, hoveredTileState);
+        }
 
+        public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
+        public Effect PrepareWaterEffect(float timeSeconds, GraphicsDevice graphicsDevice, Matrix transformMatrix)
+        {
+            if (WaterEffect == null || graphicsDevice == null)
+                return null;
+
+            SetEffectValue("MatrixTransform", CreateSpriteBatchMatrixTransform(graphicsDevice, transformMatrix));
+            SetEffectValue("Time", timeSeconds);
+            SetEffectValue("WaterDeepColor", WaterDeepShaderColor);
+            SetEffectValue("WaterLightColor", WaterLightShaderColor);
+            SetEffectValue("WaterFoamColor", WaterFoamShaderColor);
+            SetEffectValue("WaterCausticColor", WaterCausticShaderColor);
+            SetEffectValue("CausticTexture", WaterCausticTexture);
+            SetEffectValue("CausticHighlightTexture", WaterCausticHighlightTexture);
+            SetEffectValue("CausticThickTexture", WaterCausticThickTexture);
+            SetEffectValue("CausticIntensity", 0.32f);
+            SetEffectValue("SurfaceFoamIntensity", 0.56f);
+            return WaterEffect;
+        }
+
+        public void DrawWater(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
             DrawLiquidPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
+        public void DrawTerrainOverlay(SpriteBatch spriteBatch, Rectangle hoveredTileBounds, WorldTilePreviewState hoveredTileState)
+        {
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
         }
 
@@ -445,6 +486,48 @@ namespace Nyvorn.Source.Game.States
 
                 currentRawStartX = currentRawEndX + 1;
             }
+        }
+
+        private void SetEffectValue(string parameterName, float value)
+        {
+            WaterEffect.Parameters[parameterName]?.SetValue(value);
+        }
+
+        private void SetEffectValue(string parameterName, Vector4 value)
+        {
+            WaterEffect.Parameters[parameterName]?.SetValue(value);
+        }
+
+        private void SetEffectValue(string parameterName, Matrix value)
+        {
+            WaterEffect.Parameters[parameterName]?.SetValue(value);
+        }
+
+        private void SetEffectValue(string parameterName, Texture2D value)
+        {
+            if (value != null)
+                WaterEffect.Parameters[parameterName]?.SetValue(value);
+        }
+
+        private static Matrix CreateSpriteBatchMatrixTransform(GraphicsDevice graphicsDevice, Matrix transformMatrix)
+        {
+            Viewport viewport = graphicsDevice.Viewport;
+            Matrix.CreateOrthographicOffCenter(
+                0,
+                viewport.Width,
+                viewport.Height,
+                0,
+                0,
+                -1,
+                out Matrix projection);
+
+            if (graphicsDevice.UseHalfPixelOffset)
+            {
+                projection.M41 += -0.5f * projection.M11;
+                projection.M42 += -0.5f * projection.M22;
+            }
+
+            return transformMatrix * projection;
         }
 
         private int WrapPixelX(int pixelX)

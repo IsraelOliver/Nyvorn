@@ -329,7 +329,7 @@ namespace Nyvorn.Source.Game.States
             if (animateConstructionPickaxe && !worldInput.AttackPressed)
                 Player.TryStartToolUseAnimation(mouseWorld);
 
-            Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
+            Player.Update(dt, WorldMap, SandSystem, LiquidSystem, worldInput, mouseWorld);
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             InteriorFocusSystem.Update(dt, IsConstructionMode);
             TissueSystem.SetCorrectionPulseBoost(EnvironmentSystem.TissueCycleState.PulseBoost);
@@ -364,6 +364,29 @@ namespace Nyvorn.Source.Game.States
                 screenWidth,
                 screenHeight,
                 worldOffsetX,
+                BlockInteractionSystem.HoveredTileBounds,
+                BlockInteractionSystem.HoveredTileState);
+        }
+
+        public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
+        public Effect PrepareWaterEffect(float timeSeconds, GraphicsDevice graphicsDevice, Matrix transformMatrix)
+        {
+            return ViewCoordinator.PrepareWaterEffect(timeSeconds, graphicsDevice, transformMatrix);
+        }
+
+        public void DrawWater(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawWater(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
+        public void DrawTerrainOverlay(SpriteBatch spriteBatch)
+        {
+            ViewCoordinator.DrawTerrainOverlay(
+                spriteBatch,
                 BlockInteractionSystem.HoveredTileBounds,
                 BlockInteractionSystem.HoveredTileState);
         }

@@ -11,6 +11,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float MoveSpeed { get; init; } = 90f;
         public float JumpSpeed { get; init; } = 280f;
         public float GravityScale { get; init; } = 1f;
+        public float WaterHorizontalSpeed { get; init; } = 55f;
+        public float WaterVerticalSpeed { get; init; } = 72f;
+        public float WaterSwimAcceleration { get; init; } = 300f;
+        public float WaterIdleBrake { get; init; } = 900f;
+        public float WaterMaxBodyAboveSurfaceRatio { get; init; } = 0.20f;
         public float KnockbackRecovery { get; init; } = 12f;
         public float DodgeSpeed { get; init; } = 230f;
         public int DodgeFrames { get; init; } = 7;

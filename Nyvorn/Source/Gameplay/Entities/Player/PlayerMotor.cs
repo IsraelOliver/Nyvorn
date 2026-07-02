@@ -55,7 +55,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float HitBottomValue => HitBottom;
         public float HitTopValue => HitTop;
 
-        public void Update(float dt, WorldMap worldMap, SandSystem sandSystem, float desiredVelocityX, bool useDodgeHurtbox)
+        public void Update(
+            float dt,
+            WorldMap worldMap,
+            SandSystem sandSystem,
+            float desiredVelocityX,
+            bool useDodgeHurtbox,
+            bool isInWater = false,
+            Vector2 waterMoveInput = default,
+            bool hasWaterSurfaceLimit = false,
+            float waterSurfaceY = 0f)
         {
             LastLandingImpactVelocity = 0f;
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
@@ -63,14 +72,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             bool wasGrounded = IsGrounded;
 
-            velocity.X = desiredVelocityX;
+            if (isInWater)
+                ApplyWaterHorizontalMovement(dt, waterMoveInput.X);
+            else
+                velocity.X = desiredVelocityX;
+
             float totalVelocityX = velocity.X + knockbackVelocityX;
             float yBeforeHorizontalResolution = position.Y;
             MoveHorizontally(collision, totalVelocityX * dt);
             if (position.Y != yBeforeHorizontalResolution)
                 velocity.Y = 0f;
 
-            if (wasGrounded && TrySnapToSandSurface(collision, sandSystem, totalVelocityX))
+            if (!isInWater && wasGrounded && TrySnapToSandSurface(collision, sandSystem, totalVelocityX))
             {
                 velocity.Y = 0f;
                 IsGrounded = true;
@@ -82,8 +95,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * config.KnockbackRecovery, 0f, 1f));
             stepVisualOffsetY = MathHelper.Lerp(stepVisualOffsetY, 0f, MathHelper.Clamp(dt * 20f, 0f, 1f));
 
-            ApplyGravity(dt);
+            if (isInWater)
+                ApplyWaterVerticalMovement(dt, waterMoveInput.Y);
+            else
+                ApplyGravity(dt);
+
             MoveVertically(collision, sandSystem, velocity.Y * dt);
+
+            if (isInWater && hasWaterSurfaceLimit && velocity.Y >= 0f)
+                ClampToWaterSurfaceLimit(collision, waterSurfaceY);
         }
 
         public void UpdateDebugFly(float dt, WorldMap worldMap, Vector2 direction, float speed)
@@ -134,6 +154,54 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private void ApplyGravity(float dt)
         {
             velocity.Y += PhysicsSettings.WorldGravity * config.GravityScale * dt;
+        }
+
+        private void ApplyWaterHorizontalMovement(float dt, float inputX)
+        {
+            float targetVelocityX = MathHelper.Clamp(inputX, -1f, 1f) * config.WaterHorizontalSpeed;
+            float acceleration = inputX == 0f ? config.WaterIdleBrake : config.WaterSwimAcceleration;
+            velocity.X = MoveTowards(velocity.X, targetVelocityX, acceleration * dt);
+        }
+
+        private void ApplyWaterVerticalMovement(float dt, float inputY)
+        {
+            float targetVelocityY = 0f;
+            float acceleration = inputY == 0f ? config.WaterIdleBrake : config.WaterSwimAcceleration;
+
+            if (inputY < 0f)
+                targetVelocityY = -config.WaterVerticalSpeed;
+            else if (inputY > 0f)
+                targetVelocityY = config.WaterVerticalSpeed;
+
+            velocity.Y = MoveTowards(velocity.Y, targetVelocityY, acceleration * dt);
+        }
+
+        private void ClampToWaterSurfaceLimit(WorldCollisionQuery collision, float waterSurfaceY)
+        {
+            float maxBodyAboveSurface = currentHurtboxSize.Y * MathHelper.Clamp(config.WaterMaxBodyAboveSurfaceRatio, 0f, 1f);
+            float minimumTopY = waterSurfaceY - maxBodyAboveSurface;
+            if (HitTop >= minimumTopY)
+                return;
+
+            float targetBottomY = minimumTopY + currentHurtboxSize.Y - 1f;
+            if (targetBottomY <= position.Y || !CanOccupyBottomAt(collision, targetBottomY))
+                return;
+
+            position.Y = targetBottomY;
+            kinematicMotor.Reset(position);
+            if (velocity.Y < 0f)
+                velocity.Y = 0f;
+        }
+
+        private static float MoveTowards(float current, float target, float maxDelta)
+        {
+            if (current < target)
+                return System.MathF.Min(current + maxDelta, target);
+
+            if (current > target)
+                return System.MathF.Max(current - maxDelta, target);
+
+            return target;
         }
 
         private void MoveHorizontally(WorldCollisionQuery collision, float amount)
