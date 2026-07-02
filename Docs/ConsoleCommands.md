@@ -132,6 +132,21 @@ Itens nunca usam `/spawn`. Para adicionar itens ao jogador, use `/get`.
 | `/tick resume` | Retoma os world ticks na velocidade atual. |
 | `/tick reset` | Restaura velocidade `1x` e retoma os ticks. |
 | `/tick step [ciclos]` | Executa manualmente de `1` a `600` ciclos; o default é `1`. |
+| `/time` | Mostra horario, fase, ciclo, noite e estado ambiental. |
+| `/time status` | Mesmo comportamento de `/time`. |
+| `/time day` | Ajusta o horario para 06:00. |
+| `/time night` | Ajusta o horario para 19:30. |
+| `/time dawn` | Ajusta o horario para 04:00. |
+| `/time sunrise` | Ajusta o horario para 05:00. |
+| `/time noon` | Ajusta o horario para 12:00. |
+| `/time sunset` | Ajusta o horario para 17:30. |
+| `/time midnight` | Ajusta o horario para 00:00. |
+| `/event status` | Mostra chuva, eclipse, cooldowns, clima e pulso corretivo do Tissue. |
+| `/event rain start` | Forca o pressagio de chuva procedural. |
+| `/event rain stop` | Dissipa a chuva ativa. |
+| `/event eclipse start` | Forca a transicao de eclipse solar. |
+| `/event eclipse stop` | Dissipa o eclipse ativo. |
+| `/event clear` | Limpa eventos ambientais e cooldowns debug. |
 | `/grass grow [amostras]` | Força de `1` a `10000` amostras de crescimento; o default é `256`. |
 | `/debug ticks` | Mostra contadores fast/medium/slow, amostras, grama, chunks e velocidade. |
 

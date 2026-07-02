@@ -7,7 +7,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
     {
         private const float RandomUpdateChance = 0.28f;
 
-        public static bool TryRandomUpdate(WorldMap worldMap, int x, int y, Random random)
+        public static bool TryRandomUpdate(WorldMap worldMap, int x, int y, Random random, float chanceMultiplier = 1f)
         {
             if (worldMap == null)
                 throw new ArgumentNullException(nameof(worldMap));
@@ -17,7 +17,8 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             if (!CanDirtBecomeGrass(worldMap, x, y))
                 return false;
 
-            if (random.NextSingle() > RandomUpdateChance)
+            float chance = Math.Clamp(RandomUpdateChance * Math.Max(0f, chanceMultiplier), 0f, 1f);
+            if (random.NextSingle() > chance)
                 return false;
 
             worldMap.SetTile(x, y, TileType.Grass);

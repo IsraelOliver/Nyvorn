@@ -17,6 +17,7 @@ namespace Nyvorn.Source.Game.States
 
         private float ambientTissuePresenceTimer;
         private float ambientTissuePresenceCache;
+        private float correctionPulseBoost;
 
         public required WorldMap WorldMap { get; init; }
         public required Player Player { get; init; }
@@ -54,6 +55,11 @@ namespace Nyvorn.Source.Game.States
         public void SetPropagationViewport(float viewWidth, float viewHeight)
         {
             ResonanceController.SetViewport(viewWidth, viewHeight);
+        }
+
+        public void SetCorrectionPulseBoost(float value)
+        {
+            correctionPulseBoost = MathHelper.Clamp(value, 0f, 1f);
         }
 
         public void TriggerReveal()
@@ -106,7 +112,7 @@ namespace Nyvorn.Source.Game.States
         private float GetAmbientTissuePresence()
         {
             if (ambientTissuePresenceTimer > 0f)
-                return ambientTissuePresenceCache;
+                return ApplyCorrectionPulseBoost(ambientTissuePresenceCache);
 
             Point centerTile = WorldMap.WorldToTile(Player.Position);
             int radiusTiles = System.Math.Max(2, (int)System.MathF.Round(AmbientTissueRadiusInTiles));
@@ -133,7 +139,12 @@ namespace Nyvorn.Source.Game.States
 
             ambientTissuePresenceCache = bestSignal * AmbientTissuePresence;
             ambientTissuePresenceTimer = AmbientTissueSampleInterval;
-            return ambientTissuePresenceCache;
+            return ApplyCorrectionPulseBoost(ambientTissuePresenceCache);
+        }
+
+        private float ApplyCorrectionPulseBoost(float ambientPresence)
+        {
+            return MathHelper.Clamp(ambientPresence + (correctionPulseBoost * 0.065f), 0f, 0.18f);
         }
 
         private float GetLoopAwareDistance(Vector2 a, Vector2 b)

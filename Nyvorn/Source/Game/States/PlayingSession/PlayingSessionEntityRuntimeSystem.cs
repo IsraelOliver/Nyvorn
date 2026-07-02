@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using System;
 
 namespace Nyvorn.Source.Game.States
@@ -12,6 +13,7 @@ namespace Nyvorn.Source.Game.States
         public required SessionRuntimeContext RuntimeContext { get; init; }
         public required WorldItemRuntimeSystem WorldItemRuntimeSystem { get; init; }
         public required EnemyRespawnController EnemyRespawnController { get; init; }
+        public WorldEnvironmentSystem EnvironmentSystem { get; set; }
 
         public void Update(float dt)
         {
@@ -22,7 +24,8 @@ namespace Nyvorn.Source.Game.States
             }
 
             WorldItemRuntimeSystem.Update(dt, IsWithinSimulationRange);
-            EnemyRespawnController.Update(dt, RuntimeContext.Enemies);
+            float respawnDelayMultiplier = EnvironmentSystem?.EnemyRespawnDelayMultiplier ?? 1f;
+            EnemyRespawnController.Update(dt, RuntimeContext.Enemies, respawnDelayMultiplier);
         }
 
         private bool IsWithinSimulationRange(Vector2 worldPosition)

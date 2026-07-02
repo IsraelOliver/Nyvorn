@@ -736,6 +736,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryExecuteEventCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
             if (TryExecuteTissuePulseCommand(commandBody))
             {
                 consoleInput = string.Empty;
@@ -822,6 +828,15 @@ namespace Nyvorn.Source.Game.States
                 "/time status",
                 "/time day",
                 "/time night",
+                "/time dawn",
+                "/time sunrise",
+                "/time noon",
+                "/time sunset",
+                "/time midnight",
+                "/event status",
+                "/event rain start|stop",
+                "/event eclipse start|stop",
+                "/event clear",
                 "/grass grow [1..10000]",
                 "/debug ticks",
                 "/world save"
@@ -922,7 +937,42 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: /time, /time status, /time day ou /time night");
+            if (parts[1].Equals("dawn", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.PreDawnStartTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("sunrise", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.SunriseStartTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("noon", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.NoonStartTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("sunset", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.SunsetStartTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("midnight", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.SetWorldTimeOfDay(WorldDayNightCycle.DeepNightStartTimeOfDay01);
+                ShowTimeStatus();
+                return true;
+            }
+
+            SetConsoleMessage("Uso: /time status|day|night|dawn|sunrise|noon|sunset|midnight");
             return true;
         }
 
@@ -930,8 +980,95 @@ namespace Nyvorn.Source.Game.States
         {
             string paused = session.WorldTicksPaused ? " paused" : string.Empty;
             SetConsoleMessage(
-                $"Horario: {session.WorldClockText24h} ciclo:{session.WorldTimeCyclePercent:0.0}% " +
+                $"Horario:{session.WorldClockText24h} fase:{session.WorldTimePhase} ciclo:{session.WorldCycleIndex} " +
                 $"noite:{session.WorldNightStrength:0.00} speed:{session.WorldTickTimeScale:0.##}x{paused}");
+            AddConsoleHistory(session.WorldEnvironmentStatusText);
+        }
+
+        private bool TryExecuteEventCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("event", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1 || parts[1].Equals("status", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ShowEventStatus();
+                return true;
+            }
+
+            if (parts[1].Equals("clear", System.StringComparison.OrdinalIgnoreCase))
+            {
+                session.EnvironmentSystem.ClearEvents();
+                SetConsoleMessage("Eventos ambientais limpos");
+                ShowEventStatus();
+                return true;
+            }
+
+            if (parts.Length < 3)
+            {
+                ShowEventUsage();
+                return true;
+            }
+
+            string target = parts[1].ToLowerInvariant();
+            string action = parts[2].ToLowerInvariant();
+            if (target == "rain")
+            {
+                if (action == "start")
+                {
+                    session.EnvironmentSystem.ForceRain();
+                    SetConsoleMessage("Chuva forcada: pressagio iniciado");
+                    ShowEventStatus();
+                    return true;
+                }
+
+                if (action == "stop")
+                {
+                    session.EnvironmentSystem.StopRain();
+                    SetConsoleMessage("Chuva dissipando");
+                    ShowEventStatus();
+                    return true;
+                }
+            }
+
+            if (target == "eclipse")
+            {
+                if (action == "start")
+                {
+                    session.EnvironmentSystem.ForceEclipse();
+                    SetConsoleMessage("Eclipse forcado: transicao iniciada");
+                    ShowEventStatus();
+                    return true;
+                }
+
+                if (action == "stop")
+                {
+                    session.EnvironmentSystem.StopEclipse();
+                    SetConsoleMessage("Eclipse dissipando");
+                    ShowEventStatus();
+                    return true;
+                }
+            }
+
+            ShowEventUsage();
+            return true;
+        }
+
+        private void ShowEventStatus()
+        {
+            AddConsoleHistory("Eventos: " + session.WorldEnvironmentStatusText);
+            AddConsoleHistory(
+                $"Weather rain:{session.WeatherState.RainIntensity:0.00} cloud:{session.WeatherState.CloudCover:0.00} " +
+                $"wind:{session.WeatherState.Wind:0.00} wet:{session.WeatherState.Wetness:0.00}");
+            AddConsoleHistory(
+                $"Tissue correction:{session.TissueCycleState.CorrectionStrength:0.00} " +
+                $"stage:{session.TissueCycleState.Stage}");
+        }
+
+        private void ShowEventUsage()
+        {
+            SetConsoleMessage("Uso: /event status, /event rain start|stop, /event eclipse start|stop, /event clear");
         }
 
         private bool TryExecuteGrassCommand(string command)

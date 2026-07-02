@@ -1,5 +1,6 @@
 using Nyvorn.Source.Game.States;
 using Nyvorn.Source.Gameplay.Items;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World.Tissue;
 using System;
 using System.Collections.Generic;
@@ -99,6 +100,8 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = session.PlanetMetadata,
                 SavedAtUtc = DateTime.UtcNow,
                 TimeOfDay01 = session.TimeOfDay01,
+                CycleIndex = session.WorldCycleIndex,
+                Environment = session.CreateWorldEnvironmentSaveData(),
                 TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
                 Trees = session.WorldMap.Trees
                     .Select(TreeSaveData.FromTree)
@@ -145,6 +148,7 @@ namespace Nyvorn.Source.World.Persistence
             session.WorldMap.MarkPersisted();
             session.MarkConsoleCommandHistoryPersisted();
             session.MarkDayNightCyclePersisted();
+            session.MarkWorldEnvironmentPersisted();
             session.WorkbenchRuntimeSystem.MarkPersisted();
             session.DoorRuntimeSystem.MarkPersisted();
         }
@@ -199,6 +203,8 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = saveData.Metadata,
                 SavedAtUtc = saveData.SavedAtUtc,
                 TimeOfDay01 = saveData.TimeOfDay01,
+                CycleIndex = saveData.CycleIndex,
+                Environment = saveData.Environment ?? new WorldEnvironmentSaveData(),
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
@@ -222,6 +228,8 @@ namespace Nyvorn.Source.World.Persistence
                 Metadata = saveData.Metadata,
                 SavedAtUtc = saveData.SavedAtUtc,
                 TimeOfDay01 = saveData.TimeOfDay01,
+                CycleIndex = saveData.CycleIndex,
+                Environment = saveData.Environment ?? new WorldEnvironmentSaveData(),
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),

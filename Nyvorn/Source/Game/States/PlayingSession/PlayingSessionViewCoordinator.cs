@@ -282,6 +282,11 @@ namespace Nyvorn.Source.Game.States
             ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyColor);
         }
 
+        public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        {
+            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyState);
+        }
+
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color tint)
         {
             if (screenWidth <= 0 || screenHeight <= 0 || tint.A == 0)

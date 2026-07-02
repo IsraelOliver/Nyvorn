@@ -44,6 +44,7 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
         public required WorldDayNightCycle DayNightCycle { get; init; }
+        public required WorldEnvironmentSystem EnvironmentSystem { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
         public required WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
@@ -63,6 +64,7 @@ namespace Nyvorn.Source.Game.States
         public WorldMap WorldMap => RuntimeContext.WorldMap;
         public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges ||
                                               DayNightCycle.HasUnsavedChanges ||
+                                              EnvironmentSystem.HasUnsavedChanges ||
                                               WorkbenchRuntimeSystem.HasUnsavedChanges ||
                                               DoorRuntimeSystem.HasUnsavedChanges ||
                                               consoleCommandHistoryRevision != persistedConsoleCommandHistoryRevision;
@@ -88,6 +90,11 @@ namespace Nyvorn.Source.Game.States
         public float WorldTimeCyclePercent => DayNightCycle.CyclePercent;
         public float WorldNightStrength => DayNightCycle.NightStrength;
         public string WorldClockText24h => DayNightCycle.ClockText24h;
+        public int WorldCycleIndex => DayNightCycle.CycleIndex;
+        public WorldTimePhase WorldTimePhase => DayNightCycle.CurrentPhase;
+        public WeatherState WeatherState => EnvironmentSystem.WeatherState;
+        public TissueCycleState TissueCycleState => EnvironmentSystem.TissueCycleState;
+        public string WorldEnvironmentStatusText => EnvironmentSystem.GetStatusText();
 
         public void InitializeRuntimeState()
         {
@@ -122,9 +129,20 @@ namespace Nyvorn.Source.Game.States
             DayNightCycle.MarkPersisted();
         }
 
+        public void MarkWorldEnvironmentPersisted()
+        {
+            EnvironmentSystem.MarkPersisted();
+        }
+
+        public WorldEnvironmentSaveData CreateWorldEnvironmentSaveData()
+        {
+            return EnvironmentSystem.CreateSaveData(DayNightCycle.CycleIndex);
+        }
+
         public void SetWorldTimeOfDay(float timeOfDay01)
         {
             DayNightCycle.SetTimeOfDay01(timeOfDay01);
+            RefreshWorldEnvironment();
         }
 
         public void SetWorldTickTimeScale(float timeScale)
@@ -186,9 +204,10 @@ namespace Nyvorn.Source.Game.States
 
         public void Update(float dt, InputState input, Vector2 mouseWorld)
         {
+            AdvanceDayNightCycle(dt);
+            RefreshWorldEnvironment(dt);
             UpdateFrame(dt, input, mouseWorld);
             AdvanceWorldTicks(dt);
-            AdvanceDayNightCycle(dt);
         }
 
         public void UpdateSimulationViewport(int screenWidth, int screenHeight)
@@ -233,6 +252,7 @@ namespace Nyvorn.Source.Game.States
             Player.Update(dt, WorldMap, SandSystem, worldInput, mouseWorld);
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             InteriorFocusSystem.Update(dt, IsConstructionMode);
+            TissueSystem.SetCorrectionPulseBoost(EnvironmentSystem.TissueCycleState.PulseBoost);
             TissueSystem.Update(dt, input);
             PowerSystem.Update(dt);
             BlockInteractionSystem.TryBreakTargetBlock(dt, worldInput, mouseWorld, SelectedHotbarIndex);
@@ -250,6 +270,11 @@ namespace Nyvorn.Source.Game.States
         private void AdvanceDayNightCycle(float dt)
         {
             DayNightCycle.Advance(dt, WorldTickTimeScale, WorldTicksPaused);
+        }
+
+        private void RefreshWorldEnvironment(float dt = 0f)
+        {
+            EnvironmentSystem.Update(dt, WorldTickTimeScale, WorldTicksPaused, DayNightCycle.CreateSnapshot());
         }
 
         public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -322,12 +347,12 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            ViewCoordinator.DrawSky(spriteBatch, screenWidth, screenHeight, DayNightCycle.SkyColor);
+            ViewCoordinator.DrawSky(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
         }
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            ViewCoordinator.DrawNightOverlay(spriteBatch, screenWidth, screenHeight, DayNightCycle.NightOverlayTint);
+            ViewCoordinator.DrawNightOverlay(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState.NightOverlayTint);
         }
 
 

@@ -181,6 +181,18 @@
 /processorParam:TextureFormat=Color
 /build:ui/background_menu.png
 
+#begin background/Sun.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:background/Sun.png
+
 #begin ui/toolbar.png
 /importer:TextureImporter
 /processor:TextureProcessor
