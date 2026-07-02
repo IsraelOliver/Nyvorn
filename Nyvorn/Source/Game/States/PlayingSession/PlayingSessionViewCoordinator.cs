@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Input;
+using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
@@ -34,6 +35,8 @@ namespace Nyvorn.Source.Game.States
         private const float CameraReturnSnapDistance = 1.25f;
         private static readonly Color SandPixelColor = new Color(214, 196, 150);
         private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
+        private static readonly Color WaterPixelColor = new Color(38, 126, 216) * 0.68f;
+        private static readonly Color WaterSurfaceColor = new Color(132, 205, 255) * 0.52f;
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -48,6 +51,7 @@ namespace Nyvorn.Source.Game.States
         public required List<WorldItem> WorldItems { get; init; }
         public required Camera2D Camera { get; init; }
         public required Texture2D DebugPixel { get; init; }
+        public LiquidSystem LiquidSystem { get; set; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
         public required HudRenderer HudRenderer { get; init; }
         public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
@@ -166,6 +170,7 @@ namespace Nyvorn.Source.Game.States
 
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
             DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            DrawLiquidPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
         }
 
@@ -368,6 +373,22 @@ namespace Nyvorn.Source.Game.States
             DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, topEdgesOnly: true);
         }
 
+        private void DrawLiquidPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            if (LiquidSystem == null)
+                return;
+
+            float viewWidth = screenWidth / Camera.Zoom;
+            float viewHeight = screenHeight / Camera.Zoom;
+            int startPixelX = (int)System.MathF.Floor(Camera.Position.X - worldOffsetX);
+            int endPixelX = (int)System.MathF.Ceiling(Camera.Position.X - worldOffsetX + viewWidth);
+            int startPixelY = System.Math.Max(0, (int)System.MathF.Floor(Camera.Position.Y));
+            int endPixelY = System.Math.Min(LiquidSystem.Height - 1, (int)System.MathF.Ceiling(Camera.Position.Y + viewHeight));
+
+            DrawWrappedLiquidRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, WaterPixelColor, surfaceOnly: false);
+            DrawWrappedLiquidRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, WaterSurfaceColor, surfaceOnly: true);
+        }
+
         private void DrawWrappedSandRange(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY, Color tint, bool topEdgesOnly)
         {
             int worldWidth = SandSystem.Width;
@@ -386,6 +407,35 @@ namespace Nyvorn.Source.Game.States
                 IEnumerable<Rectangle> segments = topEdgesOnly
                     ? SandSystem.GetVisibleTopEdgeSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY)
                     : SandSystem.GetVisibleSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY);
+
+                foreach (Rectangle segment in segments)
+                {
+                    Rectangle drawBounds = new Rectangle(segment.X + drawOffsetX, segment.Y, segment.Width, segment.Height);
+                    spriteBatch.Draw(DebugPixel, drawBounds, tint);
+                }
+
+                currentRawStartX = currentRawEndX + 1;
+            }
+        }
+
+        private void DrawWrappedLiquidRange(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY, Color tint, bool surfaceOnly)
+        {
+            int worldWidth = LiquidSystem.Width;
+            if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
+                return;
+
+            int currentRawStartX = rawStartX;
+            while (currentRawStartX <= rawEndX)
+            {
+                int wrappedStartX = WrapPixelX(currentRawStartX);
+                int segmentMaxLength = worldWidth - wrappedStartX;
+                int currentRawEndX = System.Math.Min(rawEndX, currentRawStartX + segmentMaxLength - 1);
+                int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
+                int drawOffsetX = currentRawStartX - wrappedStartX;
+
+                IEnumerable<Rectangle> segments = surfaceOnly
+                    ? LiquidSystem.GetVisibleSurfaceSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY)
+                    : LiquidSystem.GetVisibleSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY);
 
                 foreach (Rectangle segment in segments)
                 {

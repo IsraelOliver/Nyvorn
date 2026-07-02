@@ -137,6 +137,7 @@ namespace Nyvorn.Source.World.Persistence
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 BackgroundTileSnapshot = session.WorldMap.ExportBackgroundTileSnapshot(),
                 SandSnapshot = session.SandSystem?.ExportSnapshot(),
+                LiquidSnapshot = session.LiquidSystem?.ExportSnapshot(),
                 TissueFieldDeltaSnapshot = TissueFieldDeltaCodec.Export(
                     session.TissueField,
                     session.TissueNetwork.Seed,
@@ -149,6 +150,7 @@ namespace Nyvorn.Source.World.Persistence
             session.MarkConsoleCommandHistoryPersisted();
             session.MarkDayNightCyclePersisted();
             session.MarkWorldEnvironmentPersisted();
+            session.MarkLiquidSystemPersisted();
             session.WorkbenchRuntimeSystem.MarkPersisted();
             session.DoorRuntimeSystem.MarkPersisted();
         }
@@ -214,6 +216,7 @@ namespace Nyvorn.Source.World.Persistence
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 BackgroundTileSnapshot = CompressBytes(saveData.BackgroundTileSnapshot),
                 SandSnapshot = CompressBytes(saveData.SandSnapshot),
+                LiquidSnapshot = CompressBytes(saveData.LiquidSnapshot),
                 TissueFieldDeltaSnapshot = CompressBytes(saveData.TissueFieldDeltaSnapshot),
                 TissueFieldSnapshot = CompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = CompressBytes(saveData.TissueAnalysisSnapshot)
@@ -239,6 +242,7 @@ namespace Nyvorn.Source.World.Persistence
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 BackgroundTileSnapshot = DecompressBytes(saveData.BackgroundTileSnapshot),
                 SandSnapshot = DecompressBytes(saveData.SandSnapshot),
+                LiquidSnapshot = DecompressBytes(saveData.LiquidSnapshot),
                 TissueFieldDeltaSnapshot = DecompressBytes(saveData.TissueFieldDeltaSnapshot),
                 TissueFieldSnapshot = DecompressBytes(saveData.TissueFieldSnapshot),
                 TissueAnalysisSnapshot = DecompressBytes(saveData.TissueAnalysisSnapshot)

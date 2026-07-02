@@ -147,6 +147,10 @@ Itens nunca usam `/spawn`. Para adicionar itens ao jogador, use `/get`.
 | `/event eclipse start` | Forca a transicao de eclipse solar. |
 | `/event eclipse stop` | Dissipa o eclipse ativo. |
 | `/event clear` | Limpa eventos ambientais e cooldowns debug. |
+| `/water status` | Mostra tiles com agua, tiles ativos e volume equivalente. |
+| `/water place [raio]` | Cria agua ao redor do mouse. O raio default e `1` tile. |
+| `/water drain [raio]` | Remove agua ao redor do mouse. O raio default e `2` tiles. |
+| `/water clear` | Remove toda a agua do mundo. |
 | `/grass grow [amostras]` | Força de `1` a `10000` amostras de crescimento; o default é `256`. |
 | `/debug ticks` | Mostra contadores fast/medium/slow, amostras, grama, chunks e velocidade. |
 

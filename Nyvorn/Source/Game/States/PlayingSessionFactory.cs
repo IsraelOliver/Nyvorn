@@ -263,6 +263,9 @@ namespace Nyvorn.Source.Game.States
             BuildContext build = new();
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
+            build.SavedLiquidSnapshot = saveData != null && saveData.Version >= 15
+                ? saveData.LiquidSnapshot
+                : null;
             build.SavedTissueFieldDeltaSnapshot = saveData != null && saveData.Version >= 11
                 ? saveData.TissueFieldDeltaSnapshot
                 : null;
@@ -772,6 +775,8 @@ namespace Nyvorn.Source.Game.States
             session.InitializeSandSystem();
             if (build.SavedSandSnapshot != null && build.SavedSandSnapshot.Length > 0)
                 session.SandSystem.ImportSnapshot(build.SavedSandSnapshot);
+            if (build.SavedLiquidSnapshot != null && build.SavedLiquidSnapshot.Length > 0)
+                session.LiquidSystem.ImportSnapshot(build.SavedLiquidSnapshot);
 
             session.SetSelectedHotbarIndex(selectedHotbarIndex);
             session.InitializeRuntimeState();
@@ -1018,6 +1023,7 @@ namespace Nyvorn.Source.Game.States
             public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
+            public byte[] SavedLiquidSnapshot { get; set; }
             public byte[] SavedTissueFieldDeltaSnapshot { get; set; }
             public List<string> SavedConsoleCommandHistory { get; set; }
             public float SavedTimeOfDay01 { get; set; } = WorldDayNightCycle.DefaultStartTimeOfDay01;

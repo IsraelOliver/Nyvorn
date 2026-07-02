@@ -1,4 +1,5 @@
 using System;
+using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.World;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
@@ -19,6 +20,7 @@ namespace Nyvorn.Source.Engine.Physics.Sand
         public int Width { get; }
         public int Height { get; }
         public int TileSize { get; }
+        public LiquidSystem LiquidSystem { get; set; }
 
         private readonly Random random = new();
 
@@ -55,12 +57,14 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                     RemoveOccupiedPixel(pixelX, pixelY);
                 activeSandKeys.Remove(key);
                 WakeNeighbors(pixelX, pixelY);
+                LiquidSystem?.WakeAreaAroundPixel(pixelX, pixelY);
             }
 
             if (value && !oldValue)
             {
                 AddActiveSand(pixelX, pixelY);
                 WakeNeighbors(pixelX, pixelY);
+                LiquidSystem?.WakeAreaAroundPixel(pixelX, pixelY);
             }
         }
 
@@ -70,6 +74,9 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                 return false;
 
             if (occupiedSand.Contains(CreatePixelKey(x, y)))
+                return false;
+
+            if (LiquidSystem?.HasLiquidAt(x, y) == true)
                 return false;
 
             int tileX = x / TileSize;
@@ -89,6 +96,8 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             activeSandKeys.Remove(fromKey);
             WakeNeighbors(fromX, fromY);
             WakeNeighbors(toX, toY);
+            LiquidSystem?.WakeAreaAroundPixel(fromX, fromY);
+            LiquidSystem?.WakeAreaAroundPixel(toX, toY);
 
             return new Point(toX, toY);
         }

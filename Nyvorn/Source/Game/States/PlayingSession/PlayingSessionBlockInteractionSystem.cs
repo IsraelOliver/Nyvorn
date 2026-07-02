@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.Engine.Input;
+using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Items;
@@ -40,6 +41,7 @@ namespace Nyvorn.Source.Game.States
 
         public required WorldMap WorldMap { get; init; }
         public SandSystem SandSystem { get; set; }
+        public LiquidSystem LiquidSystem { get; set; }
         public required Player Player { get; init; }
         public required Hotbar Hotbar { get; init; }
         public required WorldItemRuntimeSystem WorldItemRuntimeSystem { get; init; }
@@ -88,6 +90,7 @@ namespace Nyvorn.Source.Game.States
                                 (constructionMode
                                     ? WorldMap.CanPlaceBackgroundTile(tile.X, tile.Y, placeTileType)
                                     : WorldMap.CanPlaceTile(tile.X, tile.Y, placeTileType)) &&
+                                (constructionMode || !HasForegroundDynamicMatter(HoveredTileBounds)) &&
                                 (constructionMode || !HoveredTileBounds.Intersects(Player.Hurtbox));
 
                 HoveredTileState = canPlace ? WorldTilePreviewState.PlaceValid : WorldTilePreviewState.PlaceInvalid;
@@ -151,7 +154,7 @@ namespace Nyvorn.Source.Game.States
             if (tileBounds.Intersects(Player.Hurtbox))
                 return;
 
-            if (SandSystem != null && SandSystem.HasSandInRectangle(tileBounds.X, tileBounds.Y, tileBounds.Width, tileBounds.Height))
+            if (HasForegroundDynamicMatter(tileBounds))
                 return;
 
             if (!IsWithinBlockPlacementRange(tile))
@@ -345,6 +348,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             SandSystem?.WakeAreaAboveTile(tile.X, tile.Y);
+            LiquidSystem?.WakeAreaAroundTile(tile.X, tile.Y);
             BlockParticleSystem?.SpawnFromTile(targetTile, tile, background: false);
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);
             WorldObjectRegistry?.NotifyForegroundTileBroken(new ForegroundTileBrokenContext(
@@ -518,8 +522,12 @@ namespace Nyvorn.Source.Game.States
             if (!WorldMap.InBounds(tile.X, tile.Y))
                 return;
 
-            if (WorldMap.IsSolidAt(tile.X, tile.Y) || SandSystem.HasSandAt(pixelX, pixelY))
+            if (WorldMap.IsSolidAt(tile.X, tile.Y) ||
+                SandSystem.HasSandAt(pixelX, pixelY) ||
+                LiquidSystem?.HasLiquidAt(pixelX, pixelY) == true)
+            {
                 return;
+            }
 
             if (!IsWithinBlockPlacementRange(tile))
                 return;
@@ -527,6 +535,12 @@ namespace Nyvorn.Source.Game.States
             SandSystem.SetSandAt(pixelX, pixelY, true);
             selectedSlot.RemoveOne();
             blockPlaceCooldownTimer = BlockPlaceInterval;
+        }
+
+        private bool HasForegroundDynamicMatter(Rectangle bounds)
+        {
+            return (SandSystem != null && SandSystem.HasSandInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)) ||
+                   (LiquidSystem != null && LiquidSystem.HasLiquidInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height));
         }
 
         private int WrapPixelX(int pixelX)

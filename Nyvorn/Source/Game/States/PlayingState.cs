@@ -742,6 +742,12 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryExecuteWaterCommand(commandBody))
+            {
+                consoleInput = string.Empty;
+                return;
+            }
+
             if (TryExecuteTissuePulseCommand(commandBody))
             {
                 consoleInput = string.Empty;
@@ -837,6 +843,10 @@ namespace Nyvorn.Source.Game.States
                 "/event rain start|stop",
                 "/event eclipse start|stop",
                 "/event clear",
+                "/water status",
+                "/water place [raio]",
+                "/water drain [raio]",
+                "/water clear",
                 "/grass grow [1..10000]",
                 "/debug ticks",
                 "/world save"
@@ -1069,6 +1079,71 @@ namespace Nyvorn.Source.Game.States
         private void ShowEventUsage()
         {
             SetConsoleMessage("Uso: /event status, /event rain start|stop, /event eclipse start|stop, /event clear");
+        }
+
+        private bool TryExecuteWaterCommand(string command)
+        {
+            string[] parts = command.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !parts[0].Equals("water", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (parts.Length == 1 || parts[1].Equals("status", System.StringComparison.OrdinalIgnoreCase))
+            {
+                SetConsoleMessage(session.GetWaterStatusText());
+                return true;
+            }
+
+            if (parts[1].Equals("clear", System.StringComparison.OrdinalIgnoreCase))
+            {
+                int removed = session.ClearWater();
+                SetConsoleMessage($"Water clear: {removed} tiles removidos");
+                return true;
+            }
+
+            if (parts[1].Equals("place", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryParseWaterRadius(parts, defaultRadius: 1, out int radiusTiles))
+                {
+                    SetConsoleMessage("Uso: /water place [raio 0..16]");
+                    return true;
+                }
+
+                int placed = session.PlaceWaterAtMouse(consoleTargetWorld, radiusTiles);
+                SetConsoleMessage($"Water place: {placed} tiles");
+                return true;
+            }
+
+            if (parts[1].Equals("drain", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryParseWaterRadius(parts, defaultRadius: 2, out int radiusTiles))
+                {
+                    SetConsoleMessage("Uso: /water drain [raio 0..16]");
+                    return true;
+                }
+
+                int removed = session.DrainWaterAtMouse(consoleTargetWorld, radiusTiles);
+                SetConsoleMessage($"Water drain: {removed} tiles");
+                return true;
+            }
+
+            SetConsoleMessage("Uso: /water status, /water place [raio], /water drain [raio], /water clear");
+            return true;
+        }
+
+        private static bool TryParseWaterRadius(string[] parts, int defaultRadius, out int radiusTiles)
+        {
+            radiusTiles = defaultRadius;
+            if (parts.Length <= 2)
+                return true;
+
+            if (parts.Length > 3 ||
+                !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out radiusTiles))
+            {
+                return false;
+            }
+
+            radiusTiles = System.Math.Clamp(radiusTiles, 0, 16);
+            return true;
         }
 
         private bool TryExecuteGrassCommand(string command)

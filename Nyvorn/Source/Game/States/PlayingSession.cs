@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
@@ -31,6 +32,7 @@ namespace Nyvorn.Source.Game.States
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required SessionRuntimeContext RuntimeContext { get; init; }
         public SandSystem SandSystem { get; private set; }
+        public LiquidSystem LiquidSystem { get; private set; }
         public required WorldItemRuntimeSystem WorldItemRuntimeSystem { get; init; }
         public required PlayingSessionEntityRuntimeSystem EntityRuntimeSystem { get; init; }
         public required PlayingSessionBlockInteractionSystem BlockInteractionSystem { get; init; }
@@ -65,6 +67,7 @@ namespace Nyvorn.Source.Game.States
         public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges ||
                                               DayNightCycle.HasUnsavedChanges ||
                                               EnvironmentSystem.HasUnsavedChanges ||
+                                              LiquidSystem?.HasUnsavedChanges == true ||
                                               WorkbenchRuntimeSystem.HasUnsavedChanges ||
                                               DoorRuntimeSystem.HasUnsavedChanges ||
                                               consoleCommandHistoryRevision != persistedConsoleCommandHistoryRevision;
@@ -134,6 +137,11 @@ namespace Nyvorn.Source.Game.States
             EnvironmentSystem.MarkPersisted();
         }
 
+        public void MarkLiquidSystemPersisted()
+        {
+            LiquidSystem?.MarkPersisted();
+        }
+
         public WorldEnvironmentSaveData CreateWorldEnvironmentSaveData()
         {
             return EnvironmentSystem.CreateSaveData(DayNightCycle.CycleIndex);
@@ -158,6 +166,78 @@ namespace Nyvorn.Source.Game.States
         public int ForceGrassGrowthSamples(int sampleCount)
         {
             return WorldTickCoordinator.ForceGrassGrowthSamples(sampleCount);
+        }
+
+        public int PlaceWaterAtMouse(Vector2 worldPosition, int radiusTiles)
+        {
+            if (LiquidSystem == null)
+                return 0;
+
+            int radiusPixels = ResolveWaterRadiusPixels(radiusTiles);
+            int centerPixelX = WrapPixelX((int)System.MathF.Floor(worldPosition.X));
+            int centerPixelY = (int)System.MathF.Floor(worldPosition.Y);
+            int placed = 0;
+
+            for (int y = centerPixelY - radiusPixels; y <= centerPixelY + radiusPixels; y += LiquidSystem.CellSize)
+            {
+                if (y < 0 || y >= LiquidSystem.Height)
+                    continue;
+
+                for (int rawX = centerPixelX - radiusPixels; rawX <= centerPixelX + radiusPixels; rawX += LiquidSystem.CellSize)
+                {
+                    int dx = rawX - centerPixelX;
+                    int dy = y - centerPixelY;
+                    if ((dx * dx) + (dy * dy) > radiusPixels * radiusPixels)
+                        continue;
+
+                    if (LiquidSystem.SetLiquidAt(WrapPixelX(rawX), y, LiquidType.Water, true))
+                        placed++;
+                }
+            }
+
+            return placed;
+        }
+
+        public int DrainWaterAtMouse(Vector2 worldPosition, int radiusTiles)
+        {
+            if (LiquidSystem == null)
+                return 0;
+
+            int radiusPixels = ResolveWaterRadiusPixels(radiusTiles);
+            int centerPixelX = WrapPixelX((int)System.MathF.Floor(worldPosition.X));
+            int centerPixelY = (int)System.MathF.Floor(worldPosition.Y);
+            int removed = 0;
+
+            for (int y = centerPixelY - radiusPixels; y <= centerPixelY + radiusPixels; y += LiquidSystem.CellSize)
+            {
+                if (y < 0 || y >= LiquidSystem.Height)
+                    continue;
+
+                for (int rawX = centerPixelX - radiusPixels; rawX <= centerPixelX + radiusPixels; rawX += LiquidSystem.CellSize)
+                {
+                    int dx = rawX - centerPixelX;
+                    int dy = y - centerPixelY;
+                    if ((dx * dx) + (dy * dy) > radiusPixels * radiusPixels)
+                        continue;
+
+                    if (LiquidSystem.SetLiquidAt(WrapPixelX(rawX), y, LiquidType.Water, false))
+                        removed++;
+                }
+            }
+
+            return removed;
+        }
+
+        public int ClearWater()
+        {
+            return LiquidSystem?.Clear() ?? 0;
+        }
+
+        public string GetWaterStatusText()
+        {
+            return LiquidSystem == null
+                ? "Water: unavailable"
+                : $"Water tiles:{LiquidSystem.CellCount} active:{LiquidSystem.ActiveCellCount} volume:{LiquidSystem.TotalTileVolume:0.##}";
         }
 
         public void StepWorldTicks(int cycles)
@@ -468,9 +548,33 @@ namespace Nyvorn.Source.Game.States
         public void InitializeSandSystem()
         {
             SandSystem = new SandSystem(WorldMap);
+            LiquidSystem = new LiquidSystem(WorldMap)
+            {
+                SandSystem = SandSystem
+            };
+            SandSystem.LiquidSystem = LiquidSystem;
             BlockInteractionSystem.SandSystem = SandSystem;
+            BlockInteractionSystem.LiquidSystem = LiquidSystem;
             ViewCoordinator.SandSystem = SandSystem;
+            ViewCoordinator.LiquidSystem = LiquidSystem;
             WorldTickCoordinator.SandSystem = SandSystem;
+            WorldTickCoordinator.LiquidSystem = LiquidSystem;
+        }
+
+        private int ResolveWaterRadiusPixels(int radiusTiles)
+        {
+            int safeRadiusTiles = System.Math.Clamp(radiusTiles, 0, 16);
+            return System.Math.Max(LiquidSystem.CellSize, safeRadiusTiles * WorldMap.TileSize);
+        }
+
+        private int WrapPixelX(int pixelX)
+        {
+            int worldWidth = WorldMap.PixelWidth;
+            if (worldWidth <= 0)
+                return 0;
+
+            int wrapped = pixelX % worldWidth;
+            return wrapped < 0 ? wrapped + worldWidth : wrapped;
         }
     }
 }

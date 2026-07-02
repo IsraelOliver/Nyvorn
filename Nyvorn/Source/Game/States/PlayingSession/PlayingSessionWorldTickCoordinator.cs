@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
@@ -17,6 +18,7 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required WorldTickSystem WorldTickSystem { get; init; }
         public WorldEnvironmentSystem EnvironmentSystem { get; set; }
+        public LiquidSystem LiquidSystem { get; set; }
         public SandSystem SandSystem { get; set; }
 
         public int LastRandomTileSampleCount { get; private set; }
@@ -78,6 +80,7 @@ namespace Nyvorn.Source.Game.States
         private void OnFastTick()
         {
             SandSystem?.TickFast();
+            LiquidSystem?.TickFast();
         }
 
         private void OnMediumTick()
