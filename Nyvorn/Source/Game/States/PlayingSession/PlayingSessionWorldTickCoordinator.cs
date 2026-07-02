@@ -16,6 +16,7 @@ namespace Nyvorn.Source.Game.States
         public required WorldMap WorldMap { get; init; }
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
         public required WorldTickSystem WorldTickSystem { get; init; }
+        public WorldEnvironmentSystem EnvironmentSystem { get; set; }
         public SandSystem SandSystem { get; set; }
 
         public int LastRandomTileSampleCount { get; private set; }
@@ -99,7 +100,8 @@ namespace Nyvorn.Source.Game.States
                 randomTileUpdateRandom,
                 tile =>
                 {
-                    if (GrassSimulation.TryRandomUpdate(WorldMap, tile.X, tile.Y, randomTileUpdateRandom))
+                    float multiplier = EnvironmentSystem?.GrassGrowthChanceMultiplier ?? 1f;
+                    if (GrassSimulation.TryRandomUpdate(WorldMap, tile.X, tile.Y, randomTileUpdateRandom, multiplier))
                         grassGrowthCount++;
                 });
 

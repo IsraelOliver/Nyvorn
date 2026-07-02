@@ -35,13 +35,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             enemies.Add(CreateEnemy());
         }
 
-        public void Update(float dt, ICollection<Enemy> enemies)
+        public void Update(float dt, ICollection<Enemy> enemies, float delayMultiplier = 1f)
         {
             if (enemies.Count == 0)
             {
                 if (respawnTimer < 0f)
                 {
-                    respawnTimer = respawnDelay;
+                    respawnTimer = respawnDelay * Math.Clamp(delayMultiplier, 0.25f, 2f);
                     return;
                 }
 

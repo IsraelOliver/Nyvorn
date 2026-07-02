@@ -279,6 +279,12 @@ namespace Nyvorn.Source.Game.States
             build.SavedTimeOfDay01 = saveData != null && saveData.Version >= 13
                 ? saveData.TimeOfDay01
                 : WorldDayNightCycle.DefaultStartTimeOfDay01;
+            build.SavedCycleIndex = saveData != null && saveData.Version >= 14
+                ? saveData.CycleIndex
+                : 0;
+            build.SavedWorldEnvironment = saveData != null && saveData.Version >= 14
+                ? saveData.Environment
+                : null;
             build.SavedBackgroundTileSnapshot = saveData != null && saveData.Version >= 10
                 ? saveData.BackgroundTileSnapshot
                 : null;
@@ -483,6 +489,7 @@ namespace Nyvorn.Source.Game.States
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
+            build.SunTexture = content.Load<Texture2D>("background/Sun");
 
             build.ItemTextures = LoadItemTextures();
             build.Weapons = CreateWeapons(build.ItemTextures, build.PlayerPickaxeMovesetTexture);
@@ -703,7 +710,7 @@ namespace Nyvorn.Source.Game.States
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
                 HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
-                ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice),
+                ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice, build.SunTexture),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
@@ -715,13 +722,19 @@ namespace Nyvorn.Source.Game.States
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem
             };
+            WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
+            WorldEnvironmentSystem environmentSystem = new(
+                planetMetadata.Seed,
+                build.SavedWorldEnvironment,
+                dayNightCycle.CreateSnapshot());
+            entityRuntimeSystem.EnvironmentSystem = environmentSystem;
             PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
             {
                 WorldMap = build.WorldMap,
                 ViewCoordinator = viewCoordinator,
-                WorldTickSystem = new WorldTickSystem()
+                WorldTickSystem = new WorldTickSystem(),
+                EnvironmentSystem = environmentSystem
             };
-            WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01);
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
                 RuntimeContext = runtimeContext,
@@ -746,6 +759,7 @@ namespace Nyvorn.Source.Game.States
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
                 DayNightCycle = dayNightCycle,
+                EnvironmentSystem = environmentSystem,
                 CombatCoordinator = combatCoordinator,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem,
@@ -990,6 +1004,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
+            public Texture2D SunTexture { get; set; }
             public SpriteFont UiFont { get; set; }
             public WorldGenConfig WorldGenConfig { get; set; }
             public WorldMap WorldMap { get; set; }
@@ -1006,6 +1021,8 @@ namespace Nyvorn.Source.Game.States
             public byte[] SavedTissueFieldDeltaSnapshot { get; set; }
             public List<string> SavedConsoleCommandHistory { get; set; }
             public float SavedTimeOfDay01 { get; set; } = WorldDayNightCycle.DefaultStartTimeOfDay01;
+            public int SavedCycleIndex { get; set; }
+            public WorldEnvironmentSaveData SavedWorldEnvironment { get; set; }
             public byte[] SavedBackgroundTileSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public List<WorkbenchSaveData> SavedWorkbenches { get; set; }
