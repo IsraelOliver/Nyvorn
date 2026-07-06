@@ -13,6 +13,7 @@ namespace Nyvorn.Source.Game.States
         private const int MaxRandomTileSamplesPerTick = 128;
 
         private readonly Random randomTileUpdateRandom = new();
+        private float liquidTickAccumulator;
 
         public required WorldMap WorldMap { get; init; }
         public required PlayingSessionViewCoordinator ViewCoordinator { get; init; }
@@ -79,8 +80,33 @@ namespace Nyvorn.Source.Game.States
 
         private void OnFastTick()
         {
+            LiquidSystem?.SetActiveSimulationChunks(ViewCoordinator.ActiveSimulationChunks);
             SandSystem?.TickFast();
-            LiquidSystem?.TickFast();
+            TickLiquidSystem();
+        }
+
+        private void TickLiquidSystem()
+        {
+            if (LiquidSystem == null)
+            {
+                liquidTickAccumulator = 0f;
+                return;
+            }
+
+            float fastTickRate = Math.Max(1f, WorldTickSystem.Config.FastTickRate);
+            float liquidTicksPerFastTick = Math.Clamp(LiquidSystem.Rules.LiquidTicksPerSecond, 1, 240) / fastTickRate;
+            liquidTickAccumulator += liquidTicksPerFastTick;
+
+            int ticks = 0;
+            while (liquidTickAccumulator >= 1f && ticks < 4)
+            {
+                LiquidSystem.TickFast();
+                liquidTickAccumulator -= 1f;
+                ticks++;
+            }
+
+            if (liquidTickAccumulator >= 1f)
+                liquidTickAccumulator %= 1f;
         }
 
         private void OnMediumTick()

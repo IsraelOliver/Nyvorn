@@ -39,7 +39,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float MiningSpeed => combat.MiningSpeed;
         public bool DebugFlyEnabled { get; private set; }
         public bool IsInWater { get; private set; }
-        public bool IsAtWaterSurface { get; private set; }
+        public float WaterSubmergedRatio { get; private set; }
+        public PlayerWaterState WaterState { get; private set; } = PlayerWaterState.Dry;
 
         public const int SpriteW = 32;
         public const int SpriteH = 32;
@@ -80,25 +81,38 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             if (DebugFlyEnabled)
             {
-                IsInWater = false;
-                IsAtWaterSurface = false;
+                SetWaterContact(0f);
                 motor.UpdateDebugFly(dt, worldMap, new Vector2(input.MoveDir, input.VerticalMoveDir), DebugFlySpeed);
             }
             else
             {
-                IsInWater = IsTouchingWater(liquidSystem);
-                float waterSurfaceY = 0f;
-                bool hasWaterSurface = IsInWater && TryGetWaterSurfaceY(liquidSystem, out waterSurfaceY);
-                IsAtWaterSurface = IsInWater && IsTouchingWaterSurface(liquidSystem);
+                UpdateWaterContact(liquidSystem);
                 Vector2 waterMoveInput = IsInWater ? GetWaterMoveInput(input) : Vector2.Zero;
+                bool waterSurfaceJumpRequested = ShouldRequestWaterSurfaceJump();
                 float horizontalVelocity = combat.IsDodging ? combat.DodgeDirection * config.DodgeSpeed : moveDir * config.MoveSpeed;
-                motor.Update(dt, worldMap, sandSystem, horizontalVelocity, combat.IsDodging, IsInWater, waterMoveInput, hasWaterSurface, waterSurfaceY);
+                motor.Update(
+                    dt,
+                    worldMap,
+                    sandSystem,
+                    horizontalVelocity,
+                    combat.IsDodging,
+                    WaterState,
+                    WaterSubmergedRatio,
+                    waterMoveInput,
+                    waterSurfaceJumpRequested);
 
                 if (!IsInWater)
                     ApplyFallDamage(motor.LastLandingImpactVelocity);
 
-                if (!IsInWater && motor.IsGrounded && jumpPressed)
-                    motor.TryJump();
+                if ((WaterState == PlayerWaterState.Dry || WaterState == PlayerWaterState.ShallowWater) &&
+                    motor.IsGrounded &&
+                    jumpPressed)
+                {
+                    float jumpMultiplier = WaterState == PlayerWaterState.ShallowWater
+                        ? config.ShallowJumpMultiplier
+                        : 1f;
+                    motor.TryJump(jumpMultiplier);
+                }
             }
 
             bool useUpperAttackPose = combat.IsAttacking && combat.UsesPlayerAttackUpperPose;
@@ -240,8 +254,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             motor.TeleportTo(targetPosition);
             moveDir = 0;
             jumpPressed = false;
-            IsInWater = false;
-            IsAtWaterSurface = false;
+            SetWaterContact(0f);
         }
 
         void IHitSource.OnHitConnected()
@@ -271,45 +284,43 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return new Vector2(moveDir, verticalDir);
         }
 
-        private bool IsTouchingWater(LiquidSystem liquidSystem)
+        private void UpdateWaterContact(LiquidSystem liquidSystem)
         {
             if (liquidSystem == null)
-                return false;
-
-            Rectangle hurtbox = motor.Hurtbox;
-            int probeHeight = System.Math.Max(4, (int)System.MathF.Ceiling(hurtbox.Height * 0.65f));
-            int probeY = hurtbox.Bottom - probeHeight;
-
-            return liquidSystem.HasLiquidInRectangle(hurtbox.X, probeY, hurtbox.Width, probeHeight);
-        }
-
-        private bool IsTouchingWaterSurface(LiquidSystem liquidSystem)
-        {
-            if (liquidSystem == null)
-                return false;
-
-            Rectangle hurtbox = motor.Hurtbox;
-            int headProbeHeight = System.Math.Max(4, (int)System.MathF.Ceiling(hurtbox.Height * 0.35f));
-            return !liquidSystem.HasLiquidInRectangle(hurtbox.X, hurtbox.Y, hurtbox.Width, headProbeHeight);
-        }
-
-        private bool TryGetWaterSurfaceY(LiquidSystem liquidSystem, out float surfaceY)
-        {
-            surfaceY = 0f;
-            if (liquidSystem == null)
-                return false;
-
-            Rectangle hurtbox = motor.Hurtbox;
-            for (int y = hurtbox.Y; y < hurtbox.Bottom; y++)
             {
-                if (liquidSystem.HasLiquidInRectangle(hurtbox.X, y, hurtbox.Width, 1))
-                {
-                    surfaceY = y;
-                    return true;
-                }
+                SetWaterContact(0f);
+                return;
             }
 
-            return false;
+            SetWaterContact(liquidSystem.GetSubmergedRatio(motor.Hurtbox));
+        }
+
+        private void SetWaterContact(float submergedRatio)
+        {
+            WaterSubmergedRatio = MathHelper.Clamp(submergedRatio, 0f, 1f);
+            WaterState = ResolveWaterState(WaterSubmergedRatio);
+            IsInWater = WaterState != PlayerWaterState.Dry;
+        }
+
+        private PlayerWaterState ResolveWaterState(float submergedRatio)
+        {
+            if (submergedRatio < config.WaterShallowThreshold)
+                return PlayerWaterState.Dry;
+
+            if (submergedRatio < config.WaterPartialThreshold)
+                return PlayerWaterState.ShallowWater;
+
+            if (submergedRatio < config.WaterDeepThreshold)
+                return PlayerWaterState.PartialWater;
+
+            return PlayerWaterState.DeepWater;
+        }
+
+        private bool ShouldRequestWaterSurfaceJump()
+        {
+            return jumpPressed &&
+                   WaterState == PlayerWaterState.PartialWater &&
+                   WaterSubmergedRatio < config.WaterDeepThreshold;
         }
 
         private void DrawDodge(SpriteBatch spriteBatch)

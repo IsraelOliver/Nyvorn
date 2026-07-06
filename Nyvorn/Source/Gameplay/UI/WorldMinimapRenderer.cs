@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Generation;
@@ -36,6 +37,8 @@ namespace Nyvorn.Source.Gameplay.UI
         private const float MinZoom = 1f;
         private const float MaxZoom = 18f;
         private const float ZoomStep = 1.2f;
+        private static readonly Color WaterMinimapColor = new Color(34, 128, 205) * 0.78f;
+
         public WorldMinimapRenderer(GraphicsDevice graphicsDevice)
         {
             this.graphicsDevice = graphicsDevice;
@@ -92,7 +95,7 @@ namespace Nyvorn.Source.Gameplay.UI
             return new WorldMinimapInteractionResult(consumedMouse || isDragging, false, -1);
         }
 
-        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
+        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, LiquidSystem liquidSystem, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
         {
             EnsureMinimapTexture(worldMap);
 
@@ -109,6 +112,7 @@ namespace Nyvorn.Source.Gameplay.UI
             if (tissueMode)
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
+                DrawLiquidOverlay(spriteBatch, worldMap, liquidSystem, panel, sourceRect);
                 DrawRect(spriteBatch, panel, new Color(5, 8, 10, 120));
                 if (tissueNetwork != null && (tissueNetwork.Nodes.Count > 0 || tissueNetwork.Branches.Count > 0))
                 {
@@ -125,6 +129,7 @@ namespace Nyvorn.Source.Gameplay.UI
             else
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
+                DrawLiquidOverlay(spriteBatch, worldMap, liquidSystem, panel, sourceRect);
             }
 
             Rectangle cameraRect = GetCameraRect(worldMap, camera, panel, sourceRect);
@@ -136,6 +141,52 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawRect(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), new Color(8, 18, 24, 235));
             DrawRectOutline(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), 1, new Color(133, 179, 191));
             DrawModeButtons(spriteBatch, panel, tissueMode);
+        }
+
+        private void DrawLiquidOverlay(SpriteBatch spriteBatch, WorldMap worldMap, LiquidSystem liquidSystem, Rectangle panel, Rectangle sourceRect)
+        {
+            if (liquidSystem == null || sourceRect.Width <= 0 || sourceRect.Height <= 0)
+                return;
+
+            int minPixelX = sourceRect.Left * worldMap.TileSize;
+            int maxPixelX = (sourceRect.Right * worldMap.TileSize) - 1;
+            int minPixelY = sourceRect.Top * worldMap.TileSize;
+            int maxPixelY = (sourceRect.Bottom * worldMap.TileSize) - 1;
+
+            foreach (Rectangle liquidSegment in liquidSystem.GetVisibleSegments(minPixelX, maxPixelX, minPixelY, maxPixelY))
+            {
+                Rectangle drawBounds = MapWorldPixelRectToMinimap(worldMap, liquidSegment, panel, sourceRect);
+                if (drawBounds.Width <= 0 || drawBounds.Height <= 0)
+                    continue;
+
+                DrawRect(spriteBatch, drawBounds, WaterMinimapColor);
+            }
+        }
+
+        private static Rectangle MapWorldPixelRectToMinimap(WorldMap worldMap, Rectangle worldRect, Rectangle panel, Rectangle sourceRect)
+        {
+            float tileSize = worldMap.TileSize;
+            float leftTile = worldRect.Left / tileSize;
+            float topTile = worldRect.Top / tileSize;
+            float rightTile = worldRect.Right / tileSize;
+            float bottomTile = worldRect.Bottom / tileSize;
+
+            int x = panel.X + (int)System.MathF.Floor(((leftTile - sourceRect.X) / sourceRect.Width) * panel.Width);
+            int y = panel.Y + (int)System.MathF.Floor(((topTile - sourceRect.Y) / sourceRect.Height) * panel.Height);
+            int right = panel.X + (int)System.MathF.Ceiling(((rightTile - sourceRect.X) / sourceRect.Width) * panel.Width);
+            int bottom = panel.Y + (int)System.MathF.Ceiling(((bottomTile - sourceRect.Y) / sourceRect.Height) * panel.Height);
+
+            x = System.Math.Clamp(x, panel.Left, panel.Right);
+            y = System.Math.Clamp(y, panel.Top, panel.Bottom);
+            right = System.Math.Clamp(right, panel.Left, panel.Right);
+            bottom = System.Math.Clamp(bottom, panel.Top, panel.Bottom);
+
+            if (right <= x && x < panel.Right)
+                right = x + 1;
+            if (bottom <= y && y < panel.Bottom)
+                bottom = y + 1;
+
+            return new Rectangle(x, y, right - x, bottom - y);
         }
 
         private void EnsureTissueOverlayTexture(WorldMap worldMap, TissueNetwork tissueNetwork)

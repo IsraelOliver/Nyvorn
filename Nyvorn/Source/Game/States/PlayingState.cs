@@ -857,6 +857,9 @@ namespace Nyvorn.Source.Game.States
                 "/event eclipse start|stop",
                 "/event clear",
                 "/water status",
+                "/water tune",
+                "/water tune slow|balanced|fast",
+                "/water tune <tps|fall|side|search|cells> <valor>",
                 "/water place [raio]",
                 "/water drain [raio]",
                 "/water clear",
@@ -1106,6 +1109,12 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
+            if (parts[1].Equals("tune", System.StringComparison.OrdinalIgnoreCase))
+            {
+                ExecuteWaterTuneCommand(parts);
+                return true;
+            }
+
             if (parts[1].Equals("clear", System.StringComparison.OrdinalIgnoreCase))
             {
                 int removed = session.ClearWater();
@@ -1139,8 +1148,35 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: /water status, /water place [raio], /water drain [raio], /water clear");
+            SetConsoleMessage("Uso: /water status, /water tune, /water place [raio], /water drain [raio], /water clear");
             return true;
+        }
+
+        private void ExecuteWaterTuneCommand(string[] parts)
+        {
+            if (parts.Length == 2 ||
+                (parts.Length == 3 && parts[2].Equals("status", System.StringComparison.OrdinalIgnoreCase)))
+            {
+                SetConsoleMessage(session.GetWaterTuningText());
+                return;
+            }
+
+            if (parts.Length == 3)
+            {
+                session.TryApplyWaterTuningPreset(parts[2], out string presetMessage);
+                SetConsoleMessage(presetMessage);
+                return;
+            }
+
+            if (parts.Length == 4 &&
+                int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+            {
+                session.TrySetWaterTuningValue(parts[2], value, out string tuneMessage);
+                SetConsoleMessage(tuneMessage);
+                return;
+            }
+
+            SetConsoleMessage("Uso: /water tune, /water tune slow|balanced|fast, /water tune <tps|fall|side|search|cells> <valor>");
         }
 
         private static bool TryParseWaterRadius(string[] parts, int defaultRadius, out int radiusTiles)

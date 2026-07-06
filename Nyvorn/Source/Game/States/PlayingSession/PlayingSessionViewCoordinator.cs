@@ -35,11 +35,8 @@ namespace Nyvorn.Source.Game.States
         private const float CameraReturnSnapDistance = 1.25f;
         private static readonly Color SandPixelColor = new Color(214, 196, 150);
         private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
-        private static readonly Color WaterPixelColor = new Color(38, 126, 202) * 0.76f;
-        private static readonly Color WaterSurfaceColor = new Color(150, 211, 238) * 0.62f;
-        private static readonly Vector4 WaterShallowShaderColor = new Color(52, 150, 214).ToVector4();
-        private static readonly Vector4 WaterDeepShaderColor = new Color(22, 86, 156).ToVector4();
-        private static readonly Vector4 WaterSurfaceShaderColor = new Color(132, 204, 232).ToVector4();
+        private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
+        private static readonly Vector4 WaterShaderColor = new Color(34, 128, 205, 199).ToVector4();
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -188,10 +185,7 @@ namespace Nyvorn.Source.Game.States
                 return null;
 
             SetEffectValue("MatrixTransform", CreateSpriteBatchMatrixTransform(graphicsDevice, transformMatrix));
-            SetEffectValue("WaterShallowColor", WaterShallowShaderColor);
-            SetEffectValue("WaterDeepColor", WaterDeepShaderColor);
-            SetEffectValue("WaterSurfaceColor", WaterSurfaceShaderColor);
-            SetEffectValue("WaterDepthStrength", 0.58f);
+            SetEffectValue("WaterColor", WaterShaderColor);
             return WaterEffect;
         }
 
@@ -348,7 +342,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
         {
-            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
+            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, LiquidSystem, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
         }
 
         public void DrawInventory(SpriteBatch spriteBatch, Hotbar hotbar, Inventory inventory, int selectedHotbarIndex, int screenWidth, int screenHeight)
@@ -417,7 +411,6 @@ namespace Nyvorn.Source.Game.States
             int endPixelY = System.Math.Min(LiquidSystem.Height - 1, (int)System.MathF.Ceiling(Camera.Position.Y + viewHeight));
 
             DrawWrappedLiquidRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, WaterPixelColor, surfaceOnly: false);
-            DrawWrappedLiquidRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, WaterSurfaceColor, surfaceOnly: true);
         }
 
         private void DrawWrappedSandRange(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY, Color tint, bool topEdgesOnly)

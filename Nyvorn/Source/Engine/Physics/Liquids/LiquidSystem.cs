@@ -3,136 +3,401 @@ using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.World;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 
 namespace Nyvorn.Source.Engine.Physics.Liquids
 {
     public sealed class LiquidSystem
     {
-        public const int CellSize = 8;
-
-        private const byte SnapshotVersion = 2;
+        private const byte SnapshotVersion = 3;
+        private const byte LegacyTileAmountSnapshotVersion = 2;
         private const byte LegacyCellSnapshotVersion = 1;
-        private const int MaxAmount = 255;
-        private const int DownFlowPerTick = 64;
-        private const int SideFlowPerTick = 64;
-        private const int MinSideFlowDifference = 1;
-        private const int SurfaceLineHeight = 2;
-        private const int MaxPoolSettleCells = 4096;
-        private const int PoolSettleAmountPerTick = 64;
-        private const int MinVisibleAmount = MaxAmount / 8;
+        private const int LegacyMaxAmount = 255;
 
         private readonly WorldMap worldMap;
-        private readonly Dictionary<long, int> waterAmounts = new();
-        private readonly Dictionary<int, SortedSet<int>> waterRows = new();
-        private readonly HashSet<long> activeWaterKeys = new();
-        private readonly List<Point> activeWater = new();
-        private readonly HashSet<long> settledPoolKeysThisTick = new();
+        private readonly LiquidRules rules;
+        private readonly Dictionary<long, LiquidCell> cells = new();
+        private readonly Dictionary<int, SortedSet<int>> occupiedRows = new();
+        private readonly HashSet<long> activeCellKeys = new();
+        private readonly List<long> activeCells = new();
+        private readonly HashSet<WorldChunkCoord> activeSimulationChunks = new();
+        private readonly HashSet<WorldChunkCoord> nextActiveSimulationChunks = new();
+        private readonly Dictionary<WorldChunkCoord, int> wokenChunkTicks = new();
+        private readonly List<WorldChunkCoord> expiredWokenChunks = new();
 
-        private int totalWaterAmount;
+        private long totalLiquidAmount;
         private int revision;
         private int persistedRevision;
+        private long simulationTick;
+        private int transfersThisTick;
 
-        public LiquidSystem(WorldMap worldMap)
+        public LiquidSystem(WorldMap worldMap, LiquidRules rules = null)
         {
-            this.worldMap = worldMap;
+            this.worldMap = worldMap ?? throw new ArgumentNullException(nameof(worldMap));
+            this.rules = rules ?? LiquidRules.CreateDefault();
 
             TileSize = worldMap.TileSize;
             Width = worldMap.Width * TileSize;
             Height = worldMap.Height * TileSize;
             CellWidth = worldMap.Width;
             CellHeight = worldMap.Height;
+            LastStats = new LiquidSimulationStats(0, 0, 0, 0, 0, 0, 0, TimeSpan.Zero);
         }
 
         public SandSystem SandSystem { get; set; }
+        public LiquidRules Rules => rules;
         public int Width { get; }
         public int Height { get; }
         public int CellWidth { get; }
         public int CellHeight { get; }
         public int TileSize { get; }
-        public int CellCount => waterAmounts.Count;
-        public int ActiveCellCount => activeWater.Count;
-        public int TotalWaterAmount => totalWaterAmount;
-        public float TotalTileVolume => totalWaterAmount / (float)MaxAmount;
+        public int CellSize => TileSize;
+        public int CellCount => cells.Count;
+        public int ActiveCellCount => activeCells.Count;
+        public long TotalWaterAmount => totalLiquidAmount;
+        public float TotalTileVolume => totalLiquidAmount / (float)rules.MaxLiquidAmount;
         public bool HasUnsavedChanges => revision != persistedRevision;
+        public LiquidSimulationStats LastStats { get; private set; }
+
+        public void SetActiveSimulationChunks(IReadOnlyList<WorldChunkCoord> chunks)
+        {
+            nextActiveSimulationChunks.Clear();
+
+            if (chunks != null)
+            {
+                for (int i = 0; i < chunks.Count; i++)
+                {
+                    WorldChunkCoord normalized = NormalizeChunk(chunks[i]);
+                    if (!nextActiveSimulationChunks.Add(normalized))
+                        continue;
+
+                    if (!activeSimulationChunks.Contains(normalized))
+                        WakeChunkCells(normalized);
+                }
+            }
+
+            activeSimulationChunks.Clear();
+            foreach (WorldChunkCoord chunk in nextActiveSimulationChunks)
+                activeSimulationChunks.Add(chunk);
+        }
 
         public bool HasLiquidAt(int pixelX, int pixelY)
         {
             if (!TryPixelToCell(pixelX, pixelY, out int cellX, out int cellY))
                 return false;
 
-            int amount = GetAmount(cellX, cellY);
+            int amount = GetLiquidAmountAtTile(cellX, cellY);
             if (amount <= 0)
                 return false;
 
-            int waterHeight = AmountToPixelHeight(amount);
-            int waterTop = ((cellY + 1) * TileSize) - waterHeight;
-            return pixelY >= waterTop;
+            int liquidHeight = AmountToPixelHeight(amount);
+            if (liquidHeight <= 0)
+                return false;
+
+            int liquidTop = ((cellY + 1) * TileSize) - liquidHeight;
+            return pixelY >= liquidTop;
+        }
+
+        public bool HasLiquidInRectangle(int pixelX, int pixelY, int width, int height)
+            => GetLiquidCoverage(new Rectangle(pixelX, pixelY, width, height)) > 0f;
+
+        public bool IsLiquidAt(Rectangle bounds)
+            => GetLiquidCoverage(bounds) > 0f;
+
+        public float GetSubmergedRatio(Rectangle bounds)
+            => GetLiquidCoverage(bounds);
+
+        public float GetLiquidCoverage(Rectangle bounds)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0 || Width <= 0 || Height <= 0)
+                return 0f;
+
+            int minCellY = Math.Max(0, PixelToCellY(bounds.Y));
+            int maxCellY = Math.Min(CellHeight - 1, PixelToCellY(bounds.Bottom - 1));
+            if (minCellY > maxCellY)
+                return 0f;
+
+            int rawMinCellX = PixelToRawCellX(bounds.X);
+            int rawMaxCellX = PixelToRawCellX(bounds.Right - 1);
+            long queryArea = (long)bounds.Width * bounds.Height;
+            long coveredArea = 0;
+
+            for (int cellY = minCellY; cellY <= maxCellY; cellY++)
+            {
+                if (!occupiedRows.TryGetValue(cellY, out SortedSet<int> row) || row.Count == 0)
+                    continue;
+
+                int currentRawStartX = rawMinCellX;
+                while (currentRawStartX <= rawMaxCellX)
+                {
+                    int wrappedStartX = WrapCellX(currentRawStartX);
+                    int segmentMaxLength = CellWidth - wrappedStartX;
+                    int currentRawEndX = Math.Min(rawMaxCellX, currentRawStartX + segmentMaxLength - 1);
+                    int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
+                    int drawOffsetX = currentRawStartX - wrappedStartX;
+
+                    foreach (int cellX in row.GetViewBetween(wrappedStartX, wrappedEndX))
+                    {
+                        Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY);
+                        if (liquidBounds.Height <= 0)
+                            continue;
+
+                        liquidBounds.X += drawOffsetX * TileSize;
+                        Rectangle intersection = Rectangle.Intersect(liquidBounds, bounds);
+                        if (intersection.IsEmpty)
+                            continue;
+
+                        coveredArea += (long)intersection.Width * intersection.Height;
+                        if (coveredArea >= queryArea)
+                            return 1f;
+                    }
+
+                    currentRawStartX = currentRawEndX + 1;
+                }
+            }
+
+            return MathHelper.Clamp(coveredArea / (float)queryArea, 0f, 1f);
+        }
+
+        public int GetLiquidAmountAtTile(int x, int y)
+        {
+            x = WrapCellX(x);
+            return IsCellInBounds(x, y) &&
+                   cells.TryGetValue(CreateCellKey(x, y), out LiquidCell cell)
+                ? cell.Amount
+                : 0;
+        }
+
+        public LiquidType GetLiquidTypeAtTile(int x, int y)
+        {
+            x = WrapCellX(x);
+            return IsCellInBounds(x, y) &&
+                   cells.TryGetValue(CreateCellKey(x, y), out LiquidCell cell) &&
+                   cell.Amount > 0
+                ? cell.Type
+                : LiquidType.None;
+        }
+
+        public float GetLiquidFillPercentAtWorldPosition(Vector2 worldPosition)
+        {
+            Point tile = worldMap.WorldToTile(worldPosition);
+            return MathHelper.Clamp(
+                GetLiquidAmountAtTile(tile.X, tile.Y) / (float)rules.MaxLiquidAmount,
+                0f,
+                1f);
+        }
+
+        public bool TryGetLiquidCell(int x, int y, out LiquidCell cell)
+        {
+            x = WrapCellX(x);
+            if (!IsCellInBounds(x, y))
+            {
+                cell = default;
+                return false;
+            }
+
+            return cells.TryGetValue(CreateCellKey(x, y), out cell) && !cell.IsEmpty;
         }
 
         public bool SetLiquidAt(int pixelX, int pixelY, LiquidType liquidType, bool value)
         {
-            if (liquidType != LiquidType.Water ||
-                !TryPixelToCell(pixelX, pixelY, out int cellX, out int cellY))
-            {
+            if (!TryPixelToCell(pixelX, pixelY, out int cellX, out int cellY))
                 return false;
-            }
 
-            bool changed;
-            if (value)
-            {
-                if (!CanOccupyCell(cellX, cellY))
-                    return false;
+            return SetLiquid(cellX, cellY, liquidType, value ? rules.MaxLiquidAmount : 0);
+        }
 
-                changed = SetAmount(cellX, cellY, MaxAmount);
-            }
-            else
-            {
-                changed = SetAmount(cellX, cellY, 0);
-            }
+        public bool SetLiquid(int x, int y, LiquidType liquidType, int amount)
+            => SetLiquidCore(x, y, liquidType, amount, wakeSimulation: true, settleImmediately: false);
 
+        public bool SetSettledLiquid(int x, int y, LiquidType liquidType, int amount)
+            => SetLiquidCore(x, y, liquidType, amount, wakeSimulation: false, settleImmediately: true);
+
+        private bool SetLiquidCore(int x, int y, LiquidType liquidType, int amount, bool wakeSimulation, bool settleImmediately)
+        {
+            if (amount > 0 && liquidType == LiquidType.None)
+                return false;
+
+            x = WrapCellX(x);
+            int clampedAmount = Math.Clamp(amount, 0, rules.MaxCompressedAmount);
+            if (clampedAmount > 0 && !CanContainLiquid(x, y))
+                return false;
+
+            bool changed = SetCellAmount(x, y, liquidType, clampedAmount);
             if (!changed)
                 return false;
 
             revision++;
-            WakeNeighbors(cellX, cellY);
-            WakeSandAboveCell(cellX, cellY);
+            if (settleImmediately)
+                MarkCellSettled(x, y);
+
+            if (!wakeSimulation)
+                return true;
+
+            WakeNeighbors(x, y);
+            WakeSandAboveCell(x, y);
+            WakeChunkForCell(x, y);
             return true;
+        }
+
+        public bool AddLiquid(int x, int y, LiquidType liquidType, int amount)
+        {
+            if (amount <= 0 || liquidType == LiquidType.None)
+                return false;
+
+            x = WrapCellX(x);
+            if (!CanContainLiquid(x, y))
+                return false;
+
+            LiquidType existingType = GetLiquidTypeAtTile(x, y);
+            if (existingType != LiquidType.None && existingType != liquidType)
+                return false;
+
+            int currentAmount = GetLiquidAmountAtTile(x, y);
+            int nextAmount = Math.Clamp(currentAmount + amount, 0, rules.MaxCompressedAmount);
+            return SetLiquid(x, y, liquidType, nextAmount);
+        }
+
+        public bool RemoveLiquid(int x, int y, int amount)
+        {
+            if (amount <= 0)
+                return false;
+
+            x = WrapCellX(x);
+            int currentAmount = GetLiquidAmountAtTile(x, y);
+            if (currentAmount <= 0)
+                return false;
+
+            LiquidType type = GetLiquidTypeAtTile(x, y);
+            int nextAmount = Math.Max(0, currentAmount - amount);
+            return SetLiquid(x, y, type, nextAmount);
+        }
+
+        public int DebugSpawnWaterRectangle(int x, int y, int width, int height)
+        {
+            if (width <= 0 || height <= 0)
+                return 0;
+
+            int placed = 0;
+            for (int cellY = y; cellY < y + height; cellY++)
+            {
+                if (cellY < 0 || cellY >= CellHeight)
+                    continue;
+
+                for (int cellX = x; cellX < x + width; cellX++)
+                {
+                    if (SetLiquid(cellX, cellY, LiquidType.Water, rules.MaxLiquidAmount))
+                        placed++;
+                }
+            }
+
+            return placed;
+        }
+
+        public bool DisplaceLiquidForPlacedTile(int tileX, int tileY)
+        {
+            tileX = WrapCellX(tileX);
+            if (!TryGetLiquidCell(tileX, tileY, out LiquidCell blockedCell))
+                return false;
+
+            int remaining = blockedCell.Amount;
+            LiquidType type = blockedCell.Type;
+            SetCellAmount(tileX, tileY, LiquidType.None, 0);
+
+            TryPush(tileX, tileY + 1, rules.MaxCompressedAmount);
+
+            int firstDx = ((tileX + tileY + simulationTick) & 1) == 0 ? -1 : 1;
+            TryPush(tileX + firstDx, tileY, rules.MaxLiquidAmount);
+            TryPush(tileX - firstDx, tileY, rules.MaxLiquidAmount);
+            TryPush(tileX, tileY - 1, rules.MaxLiquidAmount);
+
+            // MVP placement rule: any volume that cannot be safely moved is discarded.
+            revision++;
+            WakeAreaAroundTile(tileX, tileY);
+            WakeSandAboveCell(tileX, tileY);
+            return true;
+
+            void TryPush(int targetX, int targetY, int targetMaxAmount)
+            {
+                if (remaining <= 0)
+                    return;
+
+                targetX = WrapCellX(targetX);
+                if (!CanAcceptLiquid(targetX, targetY, type, targetMaxAmount))
+                    return;
+
+                int targetAmount = GetLiquidAmountAtTile(targetX, targetY);
+                int flow = Math.Min(remaining, targetMaxAmount - targetAmount);
+                if (flow <= 0)
+                    return;
+
+                if (!SetCellAmount(targetX, targetY, type, targetAmount + flow))
+                    return;
+
+                remaining -= flow;
+                WakeNeighbors(targetX, targetY);
+                WakeSandAboveCell(targetX, targetY);
+                WakeChunkForCell(targetX, targetY);
+            }
         }
 
         public void TickFast()
         {
-            if (activeWater.Count != activeWaterKeys.Count)
-                CompactActiveWaterList();
+            long startTimestamp = Stopwatch.GetTimestamp();
+            simulationTick++;
+            transfersThisTick = 0;
 
-            settledPoolKeysThisTick.Clear();
-            int initialCount = activeWater.Count;
-            for (int i = initialCount - 1; i >= 0; i--)
+            if (activeCells.Count != activeCellKeys.Count)
+                CompactActiveCellList();
+
+            int processedCells = 0;
+            int cellIndex = activeCells.Count - 1;
+            while (cellIndex >= 0 && processedCells < rules.MaxLiquidCellsPerTick)
             {
-                if (i >= activeWater.Count)
-                    continue;
+                long key = activeCells[cellIndex];
+                activeCells.RemoveAt(cellIndex);
+                activeCellKeys.Remove(key);
 
-                Point current = activeWater[i];
-                long currentKey = CreateCellKey(current.X, current.Y);
-                if (!waterAmounts.ContainsKey(currentKey))
+                DecodeCellKey(key, out int cellX, out int cellY);
+                if (!cells.ContainsKey(key))
                 {
-                    activeWaterKeys.Remove(currentKey);
-                    activeWater.RemoveAt(i);
+                    cellIndex--;
                     continue;
                 }
 
-                TickWaterCell(current.X, current.Y);
-                if (!ShouldStayActive(current.X, current.Y))
+                if (!IsChunkSimulatable(cellX, cellY))
                 {
-                    activeWaterKeys.Remove(currentKey);
-                    activeWater.RemoveAt(i);
+                    cellIndex--;
+                    continue;
                 }
+
+                processedCells++;
+                bool changed = ProcessCell(cellX, cellY);
+                if (!changed)
+                    IncrementSettledTicks(cellX, cellY);
+
+                if (ShouldStayActive(cellX, cellY))
+                    AddActiveCell(cellX, cellY);
+
+                cellIndex--;
             }
+
+            AgeWokenChunks();
+            LastStats = new LiquidSimulationStats(
+                simulationTick,
+                processedCells,
+                transfersThisTick,
+                activeCells.Count,
+                cells.Count,
+                totalLiquidAmount,
+                wokenChunkTicks.Count,
+                Stopwatch.GetElapsedTime(startTimestamp));
         }
 
         public byte[] ExportSnapshot()
         {
-            if (waterAmounts.Count == 0)
+            if (cells.Count == 0)
                 return Array.Empty<byte>();
 
             using MemoryStream stream = new();
@@ -140,14 +405,17 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
             writer.Write(SnapshotVersion);
             writer.Write(TileSize);
-            writer.Write(waterAmounts.Count);
-            foreach (KeyValuePair<long, int> entry in waterAmounts)
+            writer.Write(cells.Count);
+            foreach (KeyValuePair<long, LiquidCell> entry in cells)
             {
+                if (entry.Value.IsEmpty)
+                    continue;
+
                 DecodeCellKey(entry.Key, out int cellX, out int cellY);
                 writer.Write(cellX);
                 writer.Write(cellY);
-                writer.Write((byte)LiquidType.Water);
-                writer.Write((byte)Math.Clamp(entry.Value, 0, MaxAmount));
+                writer.Write((byte)entry.Value.Type);
+                writer.Write(entry.Value.Amount);
             }
 
             writer.Flush();
@@ -172,16 +440,51 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
                 int savedCellSize = reader.ReadInt32();
                 if (version == LegacyCellSnapshotVersion)
                     ImportLegacyCellSnapshot(reader, savedCellSize);
-                else if (version == SnapshotVersion && savedCellSize == TileSize)
-                    ImportTileAmountSnapshot(reader);
+                else if (version == LegacyTileAmountSnapshotVersion)
+                    ImportLegacyTileAmountSnapshot(reader, savedCellSize);
+                else if (version == SnapshotVersion)
+                    ImportCurrentSnapshot(reader, savedCellSize);
             }
             catch
             {
                 ClearInternal(markDirty: false);
             }
 
-            WakeAllUnsettledWater();
+            SettleAllLiquids();
             MarkPersisted();
+        }
+
+        public void SettleAllLiquids()
+        {
+            if (cells.Count == 0)
+            {
+                activeCells.Clear();
+                activeCellKeys.Clear();
+                wokenChunkTicks.Clear();
+                LastStats = new LiquidSimulationStats(simulationTick, 0, 0, 0, 0, 0, 0, TimeSpan.Zero);
+                return;
+            }
+
+            List<long> keys = new(cells.Keys);
+            for (int i = 0; i < keys.Count; i++)
+            {
+                if (!cells.TryGetValue(keys[i], out LiquidCell cell) || cell.IsEmpty)
+                    continue;
+
+                cell.SettledTicks = (byte)Math.Min(byte.MaxValue, rules.SettlingThreshold);
+                cell.Flags &= ~LiquidCellFlags.Active;
+                cells[keys[i]] = cell;
+            }
+
+            activeCells.Clear();
+            activeCellKeys.Clear();
+            wokenChunkTicks.Clear();
+            LastStats = new LiquidSimulationStats(simulationTick, 0, 0, 0, cells.Count, totalLiquidAmount, 0, TimeSpan.Zero);
+        }
+
+        public void WakeAllLiquids()
+        {
+            WakeAllLiquid();
         }
 
         public void MarkPersisted()
@@ -191,7 +494,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
         public int Clear()
         {
-            int count = waterAmounts.Count;
+            int count = cells.Count;
             ClearInternal(markDirty: count > 0);
             return count;
         }
@@ -201,8 +504,10 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             for (int cellY = tileY - 1; cellY <= tileY + 1; cellY++)
             {
                 for (int cellX = tileX - 1; cellX <= tileX + 1; cellX++)
-                    AddActiveWater(cellX, cellY);
+                    AddActiveCell(cellX, cellY);
             }
+
+            WakeChunkForCell(tileX, tileY);
         }
 
         public void WakeAreaAroundPixel(int pixelX, int pixelY)
@@ -211,48 +516,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
                 return;
 
             WakeNeighbors(cellX, cellY);
-        }
-
-        public bool HasLiquidInRectangle(int pixelX, int pixelY, int width, int height)
-        {
-            if (width <= 0 || height <= 0 || Width <= 0 || Height <= 0)
-                return false;
-
-            int minCellY = Math.Max(0, PixelToCellY(pixelY));
-            int maxCellY = Math.Min(CellHeight - 1, PixelToCellY(pixelY + height - 1));
-            if (minCellY > maxCellY)
-                return false;
-
-            int rawMinCellX = PixelToRawCellX(pixelX);
-            int rawMaxCellX = PixelToRawCellX(pixelX + width - 1);
-            Rectangle query = new(pixelX, pixelY, width, height);
-            for (int cellY = minCellY; cellY <= maxCellY; cellY++)
-            {
-                if (!waterRows.TryGetValue(cellY, out SortedSet<int> row) || row.Count == 0)
-                    continue;
-
-                int currentRawStartX = rawMinCellX;
-                while (currentRawStartX <= rawMaxCellX)
-                {
-                    int wrappedStartX = WrapCellX(currentRawStartX);
-                    int segmentMaxLength = CellWidth - wrappedStartX;
-                    int currentRawEndX = Math.Min(rawMaxCellX, currentRawStartX + segmentMaxLength - 1);
-                    int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
-                    int drawOffsetX = currentRawStartX - wrappedStartX;
-
-                    foreach (int cellX in row.GetViewBetween(wrappedStartX, wrappedEndX))
-                    {
-                        Rectangle waterBounds = CreateWaterRectangle(cellX, cellY);
-                        waterBounds.X += drawOffsetX;
-                        if (waterBounds.Intersects(query))
-                            return true;
-                    }
-
-                    currentRawStartX = currentRawEndX + 1;
-                }
-            }
-
-            return false;
+            WakeChunkForCell(cellX, cellY);
         }
 
         public IEnumerable<Rectangle> GetVisibleSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY)
@@ -270,13 +534,16 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             Rectangle visible = new(minPixelX, minPixelY, maxPixelX - minPixelX + 1, maxPixelY - minPixelY + 1);
             for (int cellY = minCellY; cellY <= maxCellY; cellY++)
             {
-                if (!waterRows.TryGetValue(cellY, out SortedSet<int> row) || row.Count == 0)
+                if (!occupiedRows.TryGetValue(cellY, out SortedSet<int> row) || row.Count == 0)
                     continue;
 
                 foreach (int cellX in row.GetViewBetween(minCellX, maxCellX))
                 {
-                    Rectangle waterBounds = CreateWaterRectangle(cellX, cellY);
-                    Rectangle clipped = Rectangle.Intersect(waterBounds, visible);
+                    Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY);
+                    if (liquidBounds.Height <= 0)
+                        continue;
+
+                    Rectangle clipped = Rectangle.Intersect(liquidBounds, visible);
                     if (!clipped.IsEmpty)
                         yield return clipped;
                 }
@@ -298,17 +565,20 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             Rectangle visible = new(minPixelX, minPixelY, maxPixelX - minPixelX + 1, maxPixelY - minPixelY + 1);
             for (int cellY = minCellY; cellY <= maxCellY; cellY++)
             {
-                if (!waterRows.TryGetValue(cellY, out SortedSet<int> row) || row.Count == 0)
+                if (!occupiedRows.TryGetValue(cellY, out SortedSet<int> row) || row.Count == 0)
                     continue;
 
                 foreach (int cellX in row.GetViewBetween(minCellX, maxCellX))
                 {
-                    if (GetAmount(cellX, cellY - 1) > 0)
+                    if (GetLiquidAmountAtTile(cellX, cellY - 1) > 0)
                         continue;
 
-                    Rectangle waterBounds = CreateWaterRectangle(cellX, cellY);
-                    int surfaceHeight = Math.Min(SurfaceLineHeight, waterBounds.Height);
-                    Rectangle surfaceBounds = new(waterBounds.X, waterBounds.Y, waterBounds.Width, surfaceHeight);
+                    Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY);
+                    if (liquidBounds.Height <= 0)
+                        continue;
+
+                    int surfaceHeight = Math.Min(rules.SurfaceLineHeight, liquidBounds.Height);
+                    Rectangle surfaceBounds = new(liquidBounds.X, liquidBounds.Y, liquidBounds.Width, surfaceHeight);
                     Rectangle clipped = Rectangle.Intersect(surfaceBounds, visible);
                     if (!clipped.IsEmpty)
                         yield return clipped;
@@ -316,546 +586,202 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             }
         }
 
-        private void ImportTileAmountSnapshot(BinaryReader reader)
+        private bool ProcessCell(int cellX, int cellY)
         {
-            int count = reader.ReadInt32();
-            for (int i = 0; i < count; i++)
-            {
-                int cellX = reader.ReadInt32();
-                int cellY = reader.ReadInt32();
-                LiquidType liquidType = (LiquidType)reader.ReadByte();
-                int amount = reader.ReadByte();
-                if (liquidType != LiquidType.Water ||
-                    amount <= 0 ||
-                    !IsCellInBounds(cellX, cellY) ||
-                    !CanOccupyCell(cellX, cellY))
-                {
-                    continue;
-                }
-
-                SetAmount(cellX, cellY, amount);
-            }
-        }
-
-        private void ImportLegacyCellSnapshot(BinaryReader reader, int legacyCellSize)
-        {
-            if (legacyCellSize <= 0)
-                return;
-
-            int count = reader.ReadInt32();
-            int cellsPerTileX = Math.Max(1, TileSize / legacyCellSize);
-            int legacyCellsPerTile = Math.Max(1, cellsPerTileX * cellsPerTileX);
-            int amountPerLegacyCell = Math.Max(1, (int)MathF.Ceiling(MaxAmount / (float)legacyCellsPerTile));
-            Dictionary<long, int> accumulatedAmounts = new();
-
-            for (int i = 0; i < count; i++)
-            {
-                int legacyCellX = reader.ReadInt32();
-                int legacyCellY = reader.ReadInt32();
-                LiquidType liquidType = (LiquidType)reader.ReadByte();
-                if (liquidType != LiquidType.Water)
-                    continue;
-
-                int cellX = WrapCellX((legacyCellX * legacyCellSize) / TileSize);
-                int cellY = (legacyCellY * legacyCellSize) / TileSize;
-                if (!IsCellInBounds(cellX, cellY) || !CanOccupyCell(cellX, cellY))
-                    continue;
-
-                long key = CreateCellKey(cellX, cellY);
-                accumulatedAmounts.TryGetValue(key, out int amount);
-                accumulatedAmounts[key] = Math.Min(MaxAmount, amount + amountPerLegacyCell);
-            }
-
-            foreach (KeyValuePair<long, int> entry in accumulatedAmounts)
-            {
-                DecodeCellKey(entry.Key, out int cellX, out int cellY);
-                SetAmount(cellX, cellY, entry.Value);
-            }
-        }
-
-        private void WakeAllUnsettledWater()
-        {
-            foreach (long key in waterAmounts.Keys)
-            {
-                DecodeCellKey(key, out int cellX, out int cellY);
-                if (ShouldStayActive(cellX, cellY))
-                    AddActiveWater(cellX, cellY);
-            }
-        }
-
-        private void TickWaterCell(int cellX, int cellY)
-        {
-            int amount = GetAmount(cellX, cellY);
-            if (amount <= 0)
-                return;
-
-            bool moved = false;
-            if (TryTransferWater(cellX, cellY, cellX, cellY + 1, Math.Min(amount, DownFlowPerTick)))
-            {
-                moved = true;
-                amount = GetAmount(cellX, cellY);
-            }
-
-            if (amount <= 0)
-                return;
-
-            int firstDx = ((cellX + cellY + revision) & 1) == 0 ? -1 : 1;
-            int secondDx = -firstDx;
-
-            if (!CanAcceptWater(cellX, cellY + 1))
-            {
-                if (TryTransferWater(cellX, cellY, cellX + firstDx, cellY + 1, Math.Min(amount, DownFlowPerTick)))
-                {
-                    moved = true;
-                    amount = GetAmount(cellX, cellY);
-                }
-
-                if (amount <= 0)
-                    return;
-
-                if (TryTransferWater(cellX, cellY, cellX + secondDx, cellY + 1, Math.Min(amount, DownFlowPerTick)))
-                {
-                    moved = true;
-                    amount = GetAmount(cellX, cellY);
-                }
-            }
-
-            if (amount > MinSideFlowDifference)
-            {
-                if (((cellX + cellY + revision) & 1) == 0)
-                {
-                    moved |= TryEqualizeSide(cellX, cellY, -1);
-                    moved |= TryEqualizeSide(cellX, cellY, 1);
-                }
-                else
-                {
-                    moved |= TryEqualizeSide(cellX, cellY, 1);
-                    moved |= TryEqualizeSide(cellX, cellY, -1);
-                }
-            }
-
-            if (!moved)
-                TrySettleLocalPool(cellX, cellY);
-        }
-
-        private bool TrySettleLocalPool(int startCellX, int startCellY)
-        {
-            long seedKey = CreateCellKey(WrapCellX(startCellX), startCellY);
-            if (settledPoolKeysThisTick.Contains(seedKey) ||
-                GetAmount(startCellX, startCellY) <= 0)
-            {
-                return false;
-            }
-
-            List<Point> poolCells = new();
-            HashSet<long> poolKeys = new();
-            Queue<Point> pending = new();
-            EnqueueWaterCell(startCellX, startCellY);
-
-            while (pending.Count > 0)
-            {
-                Point current = pending.Dequeue();
-                poolCells.Add(current);
-                if (poolCells.Count > MaxPoolSettleCells)
-                {
-                    foreach (long key in poolKeys)
-                        settledPoolKeysThisTick.Add(key);
-
-                    return false;
-                }
-
-                EnqueueWaterCell(current.X - 1, current.Y);
-                EnqueueWaterCell(current.X + 1, current.Y);
-                EnqueueWaterCell(current.X, current.Y - 1);
-                EnqueueWaterCell(current.X, current.Y + 1);
-            }
-
-            foreach (long key in poolKeys)
-                settledPoolKeysThisTick.Add(key);
-
-            if (poolCells.Count < 2 || !IsPoolSettled(poolCells))
+            cellX = WrapCellX(cellX);
+            if (!TryGetLiquidCell(cellX, cellY, out LiquidCell cell))
                 return false;
 
-            return RedistributePoolSurface(poolCells, poolKeys);
+            if (!CanContainLiquid(cellX, cellY))
+                return DisplaceLiquidForPlacedTile(cellX, cellY);
 
-            void EnqueueWaterCell(int cellX, int cellY)
-            {
-                cellX = WrapCellX(cellX);
-                if (!IsCellInBounds(cellX, cellY) || GetAmount(cellX, cellY) <= 0)
-                    return;
-
-                long key = CreateCellKey(cellX, cellY);
-                if (poolKeys.Add(key))
-                    pending.Enqueue(new Point(cellX, cellY));
-            }
-        }
-
-        private bool IsPoolSettled(List<Point> poolCells)
-        {
-            foreach (Point cell in poolCells)
-            {
-                if (CanAcceptWater(cell.X, cell.Y + 1) ||
-                    CanAcceptWater(cell.X - 1, cell.Y + 1) ||
-                    CanAcceptWater(cell.X + 1, cell.Y + 1))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private bool RedistributePoolSurface(List<Point> poolCells, HashSet<long> poolKeys)
-        {
-            Dictionary<int, PoolColumnState> columnsByX = new();
-            long totalAmount = 0;
-            foreach (Point cell in poolCells)
-            {
-                int amount = GetAmount(cell.X, cell.Y);
-                totalAmount += amount;
-                int columnX = WrapCellX(cell.X);
-                if (!columnsByX.TryGetValue(columnX, out PoolColumnState column))
-                {
-                    column = new PoolColumnState(columnX, cell.Y);
-                    columnsByX[columnX] = column;
-                }
-
-                column.BottomY = Math.Max(column.BottomY, cell.Y);
-            }
-
-            if (totalAmount <= 0 || columnsByX.Count <= 1)
-                return false;
-
-            List<PoolColumnState> columns = new(columnsByX.Values);
-            int minSurfaceUnit = int.MaxValue;
-            int maxSurfaceUnit = 0;
-            foreach (PoolColumnState column in columns)
-            {
-                column.TopLimitY = FindPoolColumnTopLimit(column.X, column.BottomY);
-                column.CapacityAmount = ((column.BottomY - column.TopLimitY) + 1) * MaxAmount;
-                column.BottomUnit = (column.BottomY + 1) * MaxAmount;
-                column.TopUnit = column.TopLimitY * MaxAmount;
-                minSurfaceUnit = Math.Min(minSurfaceUnit, column.TopUnit);
-                maxSurfaceUnit = Math.Max(maxSurfaceUnit, column.BottomUnit);
-            }
-
-            int targetSurfaceUnit = FindSurfaceUnitForVolume(columns, totalAmount, minSurfaceUnit, maxSurfaceUnit);
-            long desiredTotal = 0;
-            foreach (PoolColumnState column in columns)
-            {
-                column.DesiredAmount = GetColumnAmountAtSurface(column, targetSurfaceUnit);
-                desiredTotal += column.DesiredAmount;
-            }
-
-            BalanceDesiredColumnAmounts(columns, totalAmount, ref desiredTotal);
-
-            Dictionary<long, int> targetAmounts = new();
-            foreach (PoolColumnState column in columns)
-            {
-                int remaining = column.DesiredAmount;
-                for (int y = column.BottomY; y >= column.TopLimitY && remaining > 0; y--)
-                {
-                    int amount = Math.Min(MaxAmount, remaining);
-                    long key = CreateCellKey(column.X, y);
-                    if (waterAmounts.ContainsKey(key) && !poolKeys.Contains(key))
-                        return false;
-
-                    targetAmounts[key] = amount;
-                    remaining -= amount;
-                }
-            }
-
-            return ApplyGradualPoolRelaxation(poolKeys, targetAmounts);
-        }
-
-        private int FindPoolColumnTopLimit(int cellX, int bottomY)
-        {
-            int topY = bottomY;
-            while (topY > 0 && CanOccupyCell(cellX, topY - 1))
-                topY--;
-
-            return topY;
-        }
-
-        private bool ApplyGradualPoolRelaxation(
-            HashSet<long> poolKeys,
-            Dictionary<long, int> targetAmounts)
-        {
-            List<PoolAmountDelta> donors = new();
-            List<PoolAmountDelta> receivers = new();
-            HashSet<long> comparedKeys = new(poolKeys);
-            foreach (long key in targetAmounts.Keys)
-                comparedKeys.Add(key);
-
-            foreach (long key in comparedKeys)
-            {
-                waterAmounts.TryGetValue(key, out int currentAmount);
-                targetAmounts.TryGetValue(key, out int targetAmount);
-                if (currentAmount == targetAmount)
-                    continue;
-
-                DecodeCellKey(key, out int cellX, out int cellY);
-                if (currentAmount > targetAmount)
-                    donors.Add(new PoolAmountDelta(key, cellX, cellY, currentAmount - targetAmount));
-                else
-                    receivers.Add(new PoolAmountDelta(key, cellX, cellY, targetAmount - currentAmount));
-            }
-
-            if (donors.Count == 0 || receivers.Count == 0)
-                return false;
-
-            donors.Sort((a, b) =>
-            {
-                int y = a.Y.CompareTo(b.Y);
-                return y != 0 ? y : a.X.CompareTo(b.X);
-            });
-            receivers.Sort((a, b) =>
-            {
-                int y = b.Y.CompareTo(a.Y);
-                return y != 0 ? y : a.X.CompareTo(b.X);
-            });
-
-            int donorIndex = 0;
-            int receiverIndex = 0;
-            int remainingBudget = PoolSettleAmountPerTick;
+            LiquidType type = cell.Type;
             bool changed = false;
-            HashSet<long> changedKeys = new();
 
-            while (remainingBudget > 0 &&
-                   donorIndex < donors.Count &&
-                   receiverIndex < receivers.Count)
+            int amount = GetLiquidAmountAtTile(cellX, cellY);
+            changed |= TryTransferLiquid(
+                cellX,
+                cellY,
+                cellX,
+                cellY + 1,
+                Math.Min(amount, rules.MaxFlowPerTick),
+                rules.MaxCompressedAmount);
+
+            amount = GetLiquidAmountAtTile(cellX, cellY);
+            if (amount <= 0)
+                return changed;
+
+            if (!CanAcceptLiquid(cellX, cellY + 1, type, rules.MaxCompressedAmount))
             {
-                PoolAmountDelta donor = donors[donorIndex];
-                PoolAmountDelta receiver = receivers[receiverIndex];
-                int flow = Math.Min(remainingBudget, Math.Min(donor.RemainingAmount, receiver.RemainingAmount));
-                if (flow <= 0)
-                {
-                    if (donor.RemainingAmount <= 0)
-                        donorIndex++;
-                    if (receiver.RemainingAmount <= 0)
-                        receiverIndex++;
-                    continue;
-                }
+                int firstDx = ((cellX + cellY + simulationTick) & 1) == 0 ? -1 : 1;
+                int secondDx = -firstDx;
 
-                int donorAmount = GetAmount(donor.X, donor.Y);
-                int receiverAmount = GetAmount(receiver.X, receiver.Y);
-                int actualFlow = Math.Min(flow, Math.Min(donorAmount, MaxAmount - receiverAmount));
-                if (actualFlow <= 0)
-                {
-                    if (donorAmount <= 0)
-                        donorIndex++;
-                    if (receiverAmount >= MaxAmount)
-                        receiverIndex++;
-                    continue;
-                }
-
-                if (!SetAmount(donor.X, donor.Y, donorAmount - actualFlow))
-                {
-                    donorIndex++;
-                    continue;
-                }
-
-                if (!SetAmount(receiver.X, receiver.Y, receiverAmount + actualFlow))
-                {
-                    SetAmount(donor.X, donor.Y, donorAmount);
-                    receiverIndex++;
-                    continue;
-                }
-
-                donor.RemainingAmount -= actualFlow;
-                receiver.RemainingAmount -= actualFlow;
-                remainingBudget -= actualFlow;
-                changed = true;
-                changedKeys.Add(donor.Key);
-                changedKeys.Add(receiver.Key);
-
-                if (donor.RemainingAmount <= 0)
-                    donorIndex++;
-                if (receiver.RemainingAmount <= 0)
-                    receiverIndex++;
+                changed |= TryEqualizeSide(cellX, cellY, firstDx);
+                changed |= TryEqualizeSide(cellX, cellY, secondDx);
             }
 
-            if (!changed)
-                return false;
-
-            revision++;
-            foreach (long key in changedKeys)
+            amount = GetLiquidAmountAtTile(cellX, cellY);
+            if (amount > rules.MaxLiquidAmount)
             {
-                DecodeCellKey(key, out int cellX, out int cellY);
-                WakeNeighbors(cellX, cellY);
-                WakeSandAboveCell(cellX, cellY);
+                int excess = amount - rules.MaxLiquidAmount;
+                changed |= TryTransferLiquid(
+                    cellX,
+                    cellY,
+                    cellX,
+                    cellY - 1,
+                    Math.Min(excess, rules.MaxFlowPerTick / 2),
+                    rules.MaxLiquidAmount);
             }
 
-            return true;
-        }
+            if (changed)
+                ResetSettledTicks(cellX, cellY);
 
-        private int FindSurfaceUnitForVolume(
-            List<PoolColumnState> columns,
-            long totalAmount,
-            int minSurfaceUnit,
-            int maxSurfaceUnit)
-        {
-            int low = minSurfaceUnit;
-            int high = maxSurfaceUnit;
-            int best = minSurfaceUnit;
-            while (low <= high)
-            {
-                int mid = low + ((high - low) / 2);
-                long volume = GetPoolVolumeAtSurface(columns, mid);
-                if (volume >= totalAmount)
-                {
-                    best = mid;
-                    low = mid + 1;
-                }
-                else
-                {
-                    high = mid - 1;
-                }
-            }
-
-            return best;
-        }
-
-        private long GetPoolVolumeAtSurface(List<PoolColumnState> columns, int surfaceUnit)
-        {
-            long volume = 0;
-            foreach (PoolColumnState column in columns)
-                volume += GetColumnAmountAtSurface(column, surfaceUnit);
-
-            return volume;
-        }
-
-        private static int GetColumnAmountAtSurface(PoolColumnState column, int surfaceUnit)
-        {
-            return Math.Clamp(column.BottomUnit - surfaceUnit, 0, column.CapacityAmount);
-        }
-
-        private static void BalanceDesiredColumnAmounts(
-            List<PoolColumnState> columns,
-            long totalAmount,
-            ref long desiredTotal)
-        {
-            long excess = desiredTotal - totalAmount;
-            while (excess > 0)
-            {
-                bool changed = false;
-                foreach (PoolColumnState column in columns)
-                {
-                    if (excess <= 0)
-                        break;
-
-                    if (column.DesiredAmount <= 0)
-                        continue;
-
-                    column.DesiredAmount--;
-                    desiredTotal--;
-                    excess--;
-                    changed = true;
-                }
-
-                if (!changed)
-                    break;
-            }
-
-            long missing = totalAmount - desiredTotal;
-            while (missing > 0)
-            {
-                bool changed = false;
-                foreach (PoolColumnState column in columns)
-                {
-                    if (missing <= 0)
-                        break;
-
-                    if (column.DesiredAmount >= column.CapacityAmount)
-                        continue;
-
-                    column.DesiredAmount++;
-                    desiredTotal++;
-                    missing--;
-                    changed = true;
-                }
-
-                if (!changed)
-                    break;
-            }
+            return changed;
         }
 
         private bool TryEqualizeSide(int cellX, int cellY, int direction)
         {
-            int targetX = WrapCellX(cellX + direction);
-            int amount = GetAmount(cellX, cellY);
-            int targetAmount = GetAmount(targetX, cellY);
-            int difference = amount - targetAmount;
-            if (difference <= MinSideFlowDifference || !CanAcceptWater(targetX, cellY))
+            LiquidType type = GetLiquidTypeAtTile(cellX, cellY);
+            int amount = GetLiquidAmountAtTile(cellX, cellY);
+            if (!TryFindLateralEqualizationTarget(cellX, cellY, type, amount, direction, out int targetX, out int targetAmount))
                 return false;
 
-            int flow = Math.Min(SideFlowPerTick, Math.Max(1, difference / 2));
-            return TryTransferWater(cellX, cellY, targetX, cellY, flow);
+            int desired = (amount - targetAmount) / 2;
+            if (desired < rules.MinFlow)
+                return false;
+
+            int requestedFlow = Math.Min(desired, rules.MaxLateralFlowPerTick);
+            return TryTransferLiquid(cellX, cellY, targetX, cellY, requestedFlow, rules.MaxLiquidAmount);
         }
 
-        private bool TryTransferWater(int fromX, int fromY, int toX, int toY, int requestedAmount)
+        private bool TryTransferLiquid(
+            int fromX,
+            int fromY,
+            int toX,
+            int toY,
+            int requestedAmount,
+            int targetMaxAmount)
         {
             fromX = WrapCellX(fromX);
             toX = WrapCellX(toX);
-            if (requestedAmount <= 0 ||
+            if (requestedAmount < rules.MinFlow ||
                 !IsCellInBounds(fromX, fromY) ||
-                !CanAcceptWater(toX, toY))
+                !IsCellInBounds(toX, toY) ||
+                !TryGetLiquidCell(fromX, fromY, out LiquidCell fromCell) ||
+                !CanAcceptLiquid(toX, toY, fromCell.Type, targetMaxAmount))
             {
                 return false;
             }
 
-            int fromAmount = GetAmount(fromX, fromY);
-            int toAmount = GetAmount(toX, toY);
-            int flow = Math.Min(requestedAmount, Math.Min(fromAmount, MaxAmount - toAmount));
-            if (flow <= 0)
+            int targetAmount = GetLiquidAmountAtTile(toX, toY);
+            int capacity = targetMaxAmount - targetAmount;
+            int flow = Math.Min(requestedAmount, Math.Min(fromCell.Amount, capacity));
+            if (flow < rules.MinFlow)
                 return false;
 
-            if (!SetAmount(fromX, fromY, fromAmount - flow))
+            if (!SetCellAmount(fromX, fromY, fromCell.Type, fromCell.Amount - flow))
                 return false;
 
-            if (!SetAmount(toX, toY, toAmount + flow))
+            if (!SetCellAmount(toX, toY, fromCell.Type, targetAmount + flow))
             {
-                SetAmount(fromX, fromY, fromAmount);
+                SetCellAmount(fromX, fromY, fromCell.Type, fromCell.Amount);
                 return false;
             }
 
             revision++;
+            transfersThisTick++;
             WakeNeighbors(fromX, fromY);
             WakeNeighbors(toX, toY);
             WakeSandAboveCell(fromX, fromY);
             WakeSandAboveCell(toX, toY);
+            WakeChunkForCell(toX, toY);
             return true;
         }
 
         private bool ShouldStayActive(int cellX, int cellY)
         {
-            int amount = GetAmount(cellX, cellY);
-            if (amount <= 0)
+            if (!TryGetLiquidCell(cellX, cellY, out LiquidCell cell))
                 return false;
 
-            return CanAcceptWater(cellX, cellY + 1) ||
-                   CanAcceptWater(cellX - 1, cellY + 1) ||
-                   CanAcceptWater(cellX + 1, cellY + 1) ||
-                   CanEqualizeSide(cellX, cellY, -1) ||
-                   CanEqualizeSide(cellX, cellY, 1);
+            if (cell.SettledTicks >= rules.SettlingThreshold && !HasFlowOpportunity(cellX, cellY, cell))
+                return false;
+
+            return HasFlowOpportunity(cellX, cellY, cell);
         }
 
-        private bool CanEqualizeSide(int cellX, int cellY, int direction)
+        private bool HasFlowOpportunity(int cellX, int cellY, LiquidCell cell)
         {
-            int targetX = WrapCellX(cellX + direction);
-            return CanAcceptWater(targetX, cellY) &&
-                   GetAmount(cellX, cellY) - GetAmount(targetX, cellY) > MinSideFlowDifference;
+            return CanAcceptLiquid(cellX, cellY + 1, cell.Type, rules.MaxCompressedAmount) ||
+                   CanEqualizeSide(cellX, cellY, cell.Type, -1) ||
+                   CanEqualizeSide(cellX, cellY, cell.Type, 1) ||
+                   (cell.Amount > rules.MaxLiquidAmount &&
+                    CanAcceptLiquid(cellX, cellY - 1, cell.Type, rules.MaxLiquidAmount));
         }
 
-        private bool CanAcceptWater(int cellX, int cellY)
+        private bool CanEqualizeSide(int cellX, int cellY, LiquidType type, int direction)
+        {
+            int amount = GetLiquidAmountAtTile(cellX, cellY);
+            return TryFindLateralEqualizationTarget(cellX, cellY, type, amount, direction, out _, out _);
+        }
+
+        private bool TryFindLateralEqualizationTarget(
+            int cellX,
+            int cellY,
+            LiquidType type,
+            int amount,
+            int direction,
+            out int targetX,
+            out int targetAmount)
         {
             cellX = WrapCellX(cellX);
-            return IsCellInBounds(cellX, cellY) &&
-                   CanOccupyCell(cellX, cellY) &&
-                   GetAmount(cellX, cellY) < MaxAmount;
+            targetX = cellX;
+            targetAmount = amount;
+
+            if (type == LiquidType.None || amount < rules.MinFlow * 2 || direction == 0)
+                return false;
+
+            int maxSearchTiles = Math.Min(Math.Max(1, rules.MaxLateralSearchTiles), Math.Max(0, CellWidth - 1));
+            for (int step = 1; step <= maxSearchTiles; step++)
+            {
+                int scanX = WrapCellX(cellX + (direction * step));
+                if (!CanContainLiquid(scanX, cellY))
+                    break;
+
+                LiquidType scanType = GetLiquidTypeAtTile(scanX, cellY);
+                if (scanType != LiquidType.None && scanType != type)
+                    break;
+
+                int scanAmount = GetLiquidAmountAtTile(scanX, cellY);
+                if (scanAmount < targetAmount && scanAmount < rules.MaxLiquidAmount)
+                {
+                    targetX = scanX;
+                    targetAmount = scanAmount;
+                    if (scanAmount == 0)
+                        break;
+                }
+            }
+
+            return targetX != cellX && amount - targetAmount >= rules.MinFlow * 2;
         }
 
-        private bool CanOccupyCell(int cellX, int cellY)
+        private bool CanAcceptLiquid(int cellX, int cellY, LiquidType type, int targetMaxAmount)
+        {
+            cellX = WrapCellX(cellX);
+            if (type == LiquidType.None ||
+                !IsCellInBounds(cellX, cellY) ||
+                !CanContainLiquid(cellX, cellY))
+            {
+                return false;
+            }
+
+            LiquidType targetType = GetLiquidTypeAtTile(cellX, cellY);
+            if (targetType != LiquidType.None && targetType != type)
+                return false;
+
+            return GetLiquidAmountAtTile(cellX, cellY) < targetMaxAmount;
+        }
+
+        private bool CanContainLiquid(int cellX, int cellY)
         {
             cellX = WrapCellX(cellX);
             return IsCellInBounds(cellX, cellY) &&
@@ -872,69 +798,92 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
                 TileSize) == true;
         }
 
-        private int GetAmount(int cellX, int cellY)
-        {
-            cellX = WrapCellX(cellX);
-            return IsCellInBounds(cellX, cellY) &&
-                   waterAmounts.TryGetValue(CreateCellKey(cellX, cellY), out int amount)
-                ? amount
-                : 0;
-        }
-
-        private bool SetAmount(int cellX, int cellY, int amount)
+        private bool SetCellAmount(int cellX, int cellY, LiquidType type, int amount)
         {
             cellX = WrapCellX(cellX);
             if (!IsCellInBounds(cellX, cellY))
                 return false;
 
-            amount = Math.Clamp(amount, 0, MaxAmount);
-            if (amount > 0 && !CanOccupyCell(cellX, cellY))
-                return false;
+            amount = Math.Clamp(amount, 0, rules.MaxCompressedAmount);
+            if (amount > 0)
+            {
+                if (type == LiquidType.None || !CanContainLiquid(cellX, cellY))
+                    return false;
+            }
+            else
+            {
+                type = LiquidType.None;
+            }
 
             long key = CreateCellKey(cellX, cellY);
-            waterAmounts.TryGetValue(key, out int oldAmount);
-            if (oldAmount == amount)
+            cells.TryGetValue(key, out LiquidCell oldCell);
+            int oldAmount = oldCell.Amount;
+            LiquidType oldType = oldCell.Type;
+            if (oldAmount == amount && oldType == type)
                 return false;
 
             if (oldAmount > 0)
+                totalLiquidAmount -= oldAmount;
+
+            if (amount <= 0)
             {
-                totalWaterAmount -= oldAmount;
-                if (amount == 0)
-                {
-                    waterAmounts.Remove(key);
-                    RemoveOccupiedCell(cellX, cellY);
-                    activeWaterKeys.Remove(key);
-                }
+                cells.Remove(key);
+                RemoveOccupiedCell(cellX, cellY);
+                activeCellKeys.Remove(key);
+                return true;
             }
 
-            if (amount > 0)
-            {
-                waterAmounts[key] = amount;
-                totalWaterAmount += amount;
-                if (oldAmount == 0)
-                    AddOccupiedCell(cellX, cellY);
-            }
+            LiquidCell next = oldCell.IsEmpty
+                ? new LiquidCell(type, amount)
+                : oldCell;
+            next.Type = type;
+            next.Amount = amount;
+            next.SettledTicks = 0;
+            next.Flags |= LiquidCellFlags.Dirty;
+            cells[key] = next;
+            totalLiquidAmount += amount;
+
+            if (oldAmount <= 0)
+                AddOccupiedCell(cellX, cellY);
 
             return true;
         }
 
-        private void AddActiveWater(int cellX, int cellY)
+        private void AddActiveCell(int cellX, int cellY)
         {
             cellX = WrapCellX(cellX);
-            if (!IsCellInBounds(cellX, cellY) || GetAmount(cellX, cellY) <= 0)
+            if (!IsCellInBounds(cellX, cellY))
                 return;
 
             long key = CreateCellKey(cellX, cellY);
-            if (activeWaterKeys.Add(key))
-                activeWater.Add(new Point(cellX, cellY));
+            if (!cells.TryGetValue(key, out LiquidCell cell) || cell.IsEmpty)
+                return;
+
+            cell.Flags |= LiquidCellFlags.Active;
+            cells[key] = cell;
+            if (activeCellKeys.Add(key))
+                activeCells.Add(key);
         }
 
         private void WakeNeighbors(int cellX, int cellY)
         {
-            for (int y = cellY - 1; y <= cellY + 1; y++)
+            AddActiveCell(cellX, cellY);
+            AddActiveCell(cellX, cellY - 1);
+            AddActiveCell(cellX, cellY + 1);
+            AddActiveCell(cellX - 1, cellY);
+            AddActiveCell(cellX + 1, cellY);
+            AddActiveCell(cellX - 1, cellY + 1);
+            AddActiveCell(cellX + 1, cellY + 1);
+        }
+
+        private void WakeAllLiquid()
+        {
+            activeCells.Clear();
+            activeCellKeys.Clear();
+            foreach (long key in cells.Keys)
             {
-                for (int x = cellX - 1; x <= cellX + 1; x++)
-                    AddActiveWater(x, y);
+                activeCellKeys.Add(key);
+                activeCells.Add(key);
             }
         }
 
@@ -943,27 +892,242 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             SandSystem?.WakeAreaAboveTile(WrapCellX(cellX), cellY);
         }
 
+        private void WakeChunkForCell(int cellX, int cellY)
+        {
+            if (!IsCellInBounds(WrapCellX(cellX), cellY))
+                return;
+
+            WorldChunkCoord chunk = worldMap.GetChunkCoordForTile(cellX, cellY);
+            if (activeSimulationChunks.Contains(chunk))
+                return;
+
+            wokenChunkTicks[chunk] = rules.ChunkWakeTicks;
+        }
+
+        private void WakeChunkCells(WorldChunkCoord chunk)
+        {
+            if (worldMap.ChunkCountX <= 0 || worldMap.ChunkCountY <= 0)
+                return;
+
+            Rectangle bounds = worldMap.GetChunkTileBounds(chunk);
+            for (int y = bounds.Top; y < bounds.Bottom; y++)
+            {
+                if (!occupiedRows.TryGetValue(y, out SortedSet<int> row) || row.Count == 0)
+                    continue;
+
+                foreach (int x in row.GetViewBetween(bounds.Left, bounds.Right - 1))
+                    AddActiveCell(x, y);
+            }
+        }
+
+        private bool IsChunkSimulatable(int cellX, int cellY)
+        {
+            if (activeSimulationChunks.Count == 0)
+                return true;
+
+            WorldChunkCoord chunk = worldMap.GetChunkCoordForTile(cellX, cellY);
+            return activeSimulationChunks.Contains(chunk) || wokenChunkTicks.ContainsKey(chunk);
+        }
+
+        private void AgeWokenChunks()
+        {
+            expiredWokenChunks.Clear();
+            foreach (KeyValuePair<WorldChunkCoord, int> entry in wokenChunkTicks)
+                expiredWokenChunks.Add(entry.Key);
+
+            for (int i = 0; i < expiredWokenChunks.Count; i++)
+            {
+                WorldChunkCoord chunk = expiredWokenChunks[i];
+                int ticks = wokenChunkTicks[chunk] - 1;
+                if (ticks <= 0)
+                    wokenChunkTicks.Remove(chunk);
+                else
+                    wokenChunkTicks[chunk] = ticks;
+            }
+        }
+
+        private WorldChunkCoord NormalizeChunk(WorldChunkCoord chunk)
+        {
+            return new WorldChunkCoord(
+                worldMap.WrapChunkX(chunk.X),
+                Math.Clamp(chunk.Y, 0, worldMap.ChunkCountY - 1));
+        }
+
+        private void IncrementSettledTicks(int cellX, int cellY)
+        {
+            cellX = WrapCellX(cellX);
+            long key = CreateCellKey(cellX, cellY);
+            if (!cells.TryGetValue(key, out LiquidCell cell))
+                return;
+
+            if (cell.SettledTicks < byte.MaxValue)
+                cell.SettledTicks++;
+
+            cell.Flags &= ~LiquidCellFlags.Active;
+            cells[key] = cell;
+        }
+
+        private void ResetSettledTicks(int cellX, int cellY)
+        {
+            cellX = WrapCellX(cellX);
+            long key = CreateCellKey(cellX, cellY);
+            if (!cells.TryGetValue(key, out LiquidCell cell))
+                return;
+
+            cell.SettledTicks = 0;
+            cells[key] = cell;
+        }
+
+        private void MarkCellSettled(int cellX, int cellY)
+        {
+            cellX = WrapCellX(cellX);
+            long key = CreateCellKey(cellX, cellY);
+            if (!cells.TryGetValue(key, out LiquidCell cell) || cell.IsEmpty)
+                return;
+
+            cell.SettledTicks = (byte)Math.Min(byte.MaxValue, rules.SettlingThreshold);
+            cell.Flags &= ~LiquidCellFlags.Active;
+            cells[key] = cell;
+            activeCellKeys.Remove(key);
+        }
+
         private void ClearInternal(bool markDirty)
         {
-            waterAmounts.Clear();
-            waterRows.Clear();
-            activeWater.Clear();
-            activeWaterKeys.Clear();
-            totalWaterAmount = 0;
+            cells.Clear();
+            occupiedRows.Clear();
+            activeCells.Clear();
+            activeCellKeys.Clear();
+            wokenChunkTicks.Clear();
+            totalLiquidAmount = 0;
+            LastStats = new LiquidSimulationStats(simulationTick, 0, 0, 0, 0, 0, 0, TimeSpan.Zero);
             if (markDirty)
                 revision++;
         }
 
-        private void CompactActiveWaterList()
+        private void CompactActiveCellList()
         {
-            activeWaterKeys.Clear();
-            for (int i = activeWater.Count - 1; i >= 0; i--)
+            activeCellKeys.Clear();
+            for (int i = activeCells.Count - 1; i >= 0; i--)
             {
-                Point current = activeWater[i];
-                long key = CreateCellKey(current.X, current.Y);
-                if (!waterAmounts.ContainsKey(key) || !activeWaterKeys.Add(key))
-                    activeWater.RemoveAt(i);
+                long key = activeCells[i];
+                if (!cells.TryGetValue(key, out LiquidCell cell) ||
+                    cell.IsEmpty ||
+                    !activeCellKeys.Add(key))
+                {
+                    activeCells.RemoveAt(i);
+                }
             }
+        }
+
+        private void ImportCurrentSnapshot(BinaryReader reader, int savedCellSize)
+        {
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                int savedCellX = reader.ReadInt32();
+                int savedCellY = reader.ReadInt32();
+                LiquidType liquidType = (LiquidType)reader.ReadByte();
+                int amount = reader.ReadInt32();
+                MapSavedCell(savedCellX, savedCellY, savedCellSize, out int cellX, out int cellY);
+                if (amount <= 0 ||
+                    liquidType == LiquidType.None ||
+                    !IsSupportedLiquidType(liquidType) ||
+                    !IsCellInBounds(WrapCellX(cellX), cellY) ||
+                    !CanContainLiquid(cellX, cellY))
+                {
+                    continue;
+                }
+
+                SetCellAmount(cellX, cellY, liquidType, amount);
+            }
+        }
+
+        private void ImportLegacyTileAmountSnapshot(BinaryReader reader, int savedCellSize)
+        {
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                int savedCellX = reader.ReadInt32();
+                int savedCellY = reader.ReadInt32();
+                LiquidType liquidType = (LiquidType)reader.ReadByte();
+                int legacyAmount = reader.ReadByte();
+                MapSavedCell(savedCellX, savedCellY, savedCellSize, out int cellX, out int cellY);
+                int amount = ScaleLegacyAmount(legacyAmount);
+                if (amount <= 0 ||
+                    liquidType != LiquidType.Water ||
+                    !IsCellInBounds(WrapCellX(cellX), cellY) ||
+                    !CanContainLiquid(cellX, cellY))
+                {
+                    continue;
+                }
+
+                SetCellAmount(cellX, cellY, LiquidType.Water, amount);
+            }
+        }
+
+        private void ImportLegacyCellSnapshot(BinaryReader reader, int legacyCellSize)
+        {
+            if (legacyCellSize <= 0)
+                return;
+
+            int count = reader.ReadInt32();
+            int cellsPerTileX = Math.Max(1, TileSize / legacyCellSize);
+            int legacyCellsPerTile = Math.Max(1, cellsPerTileX * cellsPerTileX);
+            int amountPerLegacyCell = Math.Max(1, (int)MathF.Ceiling(rules.MaxLiquidAmount / (float)legacyCellsPerTile));
+            Dictionary<long, int> accumulatedAmounts = new();
+
+            for (int i = 0; i < count; i++)
+            {
+                int legacyCellX = reader.ReadInt32();
+                int legacyCellY = reader.ReadInt32();
+                LiquidType liquidType = (LiquidType)reader.ReadByte();
+                if (liquidType != LiquidType.Water)
+                    continue;
+
+                int cellX = WrapCellX((legacyCellX * legacyCellSize) / TileSize);
+                int cellY = (legacyCellY * legacyCellSize) / TileSize;
+                if (!IsCellInBounds(cellX, cellY) || !CanContainLiquid(cellX, cellY))
+                    continue;
+
+                long key = CreateCellKey(cellX, cellY);
+                accumulatedAmounts.TryGetValue(key, out int amount);
+                accumulatedAmounts[key] = Math.Min(rules.MaxLiquidAmount, amount + amountPerLegacyCell);
+            }
+
+            foreach (KeyValuePair<long, int> entry in accumulatedAmounts)
+            {
+                DecodeCellKey(entry.Key, out int cellX, out int cellY);
+                SetCellAmount(cellX, cellY, LiquidType.Water, entry.Value);
+            }
+        }
+
+        private void MapSavedCell(int savedCellX, int savedCellY, int savedCellSize, out int cellX, out int cellY)
+        {
+            if (savedCellSize <= 0 || savedCellSize == TileSize)
+            {
+                cellX = WrapCellX(savedCellX);
+                cellY = savedCellY;
+                return;
+            }
+
+            cellX = WrapCellX((savedCellX * savedCellSize) / TileSize);
+            cellY = (savedCellY * savedCellSize) / TileSize;
+        }
+
+        private int ScaleLegacyAmount(int amount)
+        {
+            if (amount <= 0)
+                return 0;
+
+            if (amount >= LegacyMaxAmount)
+                return rules.MaxLiquidAmount;
+
+            return Math.Max(1, (int)MathF.Round((amount / (float)LegacyMaxAmount) * rules.MaxLiquidAmount));
+        }
+
+        private static bool IsSupportedLiquidType(LiquidType liquidType)
+        {
+            return liquidType == LiquidType.Water;
         }
 
         private bool TryPixelToCell(int pixelX, int pixelY, out int cellX, out int cellY)
@@ -999,7 +1163,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
         private long CreateCellKey(int cellX, int cellY)
         {
-            return ((long)cellY << 32) | (uint)cellX;
+            return ((long)cellY << 32) | (uint)WrapCellX(cellX);
         }
 
         private void DecodeCellKey(long key, out int cellX, out int cellY)
@@ -1010,74 +1174,45 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
         private void AddOccupiedCell(int cellX, int cellY)
         {
-            if (!waterRows.TryGetValue(cellY, out SortedSet<int> row))
+            if (!occupiedRows.TryGetValue(cellY, out SortedSet<int> row))
             {
                 row = new SortedSet<int>();
-                waterRows[cellY] = row;
+                occupiedRows[cellY] = row;
             }
 
-            row.Add(cellX);
+            row.Add(WrapCellX(cellX));
         }
 
         private void RemoveOccupiedCell(int cellX, int cellY)
         {
-            if (!waterRows.TryGetValue(cellY, out SortedSet<int> row))
+            if (!occupiedRows.TryGetValue(cellY, out SortedSet<int> row))
                 return;
 
-            row.Remove(cellX);
+            row.Remove(WrapCellX(cellX));
             if (row.Count == 0)
-                waterRows.Remove(cellY);
+                occupiedRows.Remove(cellY);
         }
 
-        private Rectangle CreateWaterRectangle(int cellX, int cellY)
+        private Rectangle CreateLiquidRectangle(int cellX, int cellY)
         {
-            int waterHeight = AmountToPixelHeight(GetAmount(cellX, cellY));
+            int liquidHeight = AmountToPixelHeight(GetLiquidAmountAtTile(cellX, cellY));
             return new Rectangle(
-                cellX * TileSize,
-                ((cellY + 1) * TileSize) - waterHeight,
+                WrapCellX(cellX) * TileSize,
+                ((cellY + 1) * TileSize) - liquidHeight,
                 TileSize,
-                waterHeight);
+                liquidHeight);
         }
 
         private int AmountToPixelHeight(int amount)
         {
-            if (amount < MinVisibleAmount)
+            if (amount < rules.MinRenderableAmount)
                 return 0;
 
-            return Math.Clamp((int)MathF.Floor((amount / (float)MaxAmount) * TileSize), 1, TileSize);
-        }
+            if (amount >= rules.MaxLiquidAmount)
+                return TileSize;
 
-        private sealed class PoolColumnState
-        {
-            public PoolColumnState(int x, int bottomY)
-            {
-                X = x;
-                BottomY = bottomY;
-            }
-
-            public int X { get; }
-            public int BottomY { get; set; }
-            public int TopLimitY { get; set; }
-            public int CapacityAmount { get; set; }
-            public int BottomUnit { get; set; }
-            public int TopUnit { get; set; }
-            public int DesiredAmount { get; set; }
-        }
-
-        private sealed class PoolAmountDelta
-        {
-            public PoolAmountDelta(long key, int x, int y, int remainingAmount)
-            {
-                Key = key;
-                X = x;
-                Y = y;
-                RemainingAmount = remainingAmount;
-            }
-
-            public long Key { get; }
-            public int X { get; }
-            public int Y { get; }
-            public int RemainingAmount { get; set; }
+            int height = (int)(((long)amount * TileSize + rules.MaxLiquidAmount - 1) / rules.MaxLiquidAmount);
+            return Math.Clamp(height, 1, TileSize);
         }
     }
 }
