@@ -235,9 +235,94 @@ namespace Nyvorn.Source.Game.States
 
         public string GetWaterStatusText()
         {
-            return LiquidSystem == null
-                ? "Water: unavailable"
-                : $"Water tiles:{LiquidSystem.CellCount} active:{LiquidSystem.ActiveCellCount} volume:{LiquidSystem.TotalTileVolume:0.##}";
+            if (LiquidSystem == null)
+                return "Water: unavailable";
+
+            LiquidSimulationStats stats = LiquidSystem.LastStats;
+            return $"Water cells:{LiquidSystem.CellCount} active:{LiquidSystem.ActiveCellCount} " +
+                   $"volume:{LiquidSystem.TotalTileVolume:0.##} processed:{stats.ProcessedCells} " +
+                   $"moves:{stats.Transfers} chunks:{stats.WokenChunks}";
+        }
+
+        public string GetWaterTuningText()
+        {
+            if (LiquidSystem == null)
+                return "Water tune: unavailable";
+
+            LiquidRules rules = LiquidSystem.Rules;
+            return $"Water tune tps:{rules.LiquidTicksPerSecond} fall:{rules.MaxFlowPerTick} " +
+                   $"side:{rules.MaxLateralFlowPerTick} search:{rules.MaxLateralSearchTiles} " +
+                   $"cells:{rules.MaxLiquidCellsPerTick}";
+        }
+
+        public bool TryApplyWaterTuningPreset(string preset, out string message)
+        {
+            message = "Water tune: unavailable";
+            if (LiquidSystem == null)
+                return false;
+
+            LiquidRules rules = LiquidSystem.Rules;
+            if (preset.Equals("slow", System.StringComparison.OrdinalIgnoreCase))
+                rules.ApplySlowPreset();
+            else if (preset.Equals("balanced", System.StringComparison.OrdinalIgnoreCase) ||
+                     preset.Equals("normal", System.StringComparison.OrdinalIgnoreCase) ||
+                     preset.Equals("default", System.StringComparison.OrdinalIgnoreCase) ||
+                     preset.Equals("reset", System.StringComparison.OrdinalIgnoreCase))
+                rules.ApplyBalancedPreset();
+            else if (preset.Equals("fast", System.StringComparison.OrdinalIgnoreCase))
+                rules.ApplyFastPreset();
+            else
+            {
+                message = "Uso: /water tune slow|balanced|fast";
+                return false;
+            }
+
+            LiquidSystem.WakeAllLiquids();
+            message = GetWaterTuningText();
+            return true;
+        }
+
+        public bool TrySetWaterTuningValue(string parameter, int value, out string message)
+        {
+            message = "Water tune: unavailable";
+            if (LiquidSystem == null)
+                return false;
+
+            LiquidRules rules = LiquidSystem.Rules;
+            if (parameter.Equals("tps", System.StringComparison.OrdinalIgnoreCase) ||
+                parameter.Equals("rate", System.StringComparison.OrdinalIgnoreCase))
+            {
+                rules.LiquidTicksPerSecond = System.Math.Clamp(value, 1, 120);
+            }
+            else if (parameter.Equals("fall", System.StringComparison.OrdinalIgnoreCase) ||
+                     parameter.Equals("down", System.StringComparison.OrdinalIgnoreCase))
+            {
+                rules.MaxFlowPerTick = System.Math.Clamp(value, 1, rules.MaxLiquidAmount);
+            }
+            else if (parameter.Equals("side", System.StringComparison.OrdinalIgnoreCase) ||
+                     parameter.Equals("lateral", System.StringComparison.OrdinalIgnoreCase))
+            {
+                rules.MaxLateralFlowPerTick = System.Math.Clamp(value, 1, rules.MaxLiquidAmount);
+            }
+            else if (parameter.Equals("search", System.StringComparison.OrdinalIgnoreCase) ||
+                     parameter.Equals("reach", System.StringComparison.OrdinalIgnoreCase))
+            {
+                rules.MaxLateralSearchTiles = System.Math.Clamp(value, 1, 64);
+            }
+            else if (parameter.Equals("cells", System.StringComparison.OrdinalIgnoreCase) ||
+                     parameter.Equals("budget", System.StringComparison.OrdinalIgnoreCase))
+            {
+                rules.MaxLiquidCellsPerTick = System.Math.Clamp(value, 256, 50000);
+            }
+            else
+            {
+                message = "Uso: /water tune <tps|fall|side|search|cells> <valor>";
+                return false;
+            }
+
+            LiquidSystem.WakeAllLiquids();
+            message = GetWaterTuningText();
+            return true;
         }
 
         public void StepWorldTicks(int cycles)

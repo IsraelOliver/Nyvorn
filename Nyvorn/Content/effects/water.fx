@@ -7,10 +7,7 @@
 #endif
 
 float4x4 MatrixTransform;
-float4 WaterShallowColor;
-float4 WaterDeepColor;
-float4 WaterSurfaceColor;
-float WaterDepthStrength;
+float4 WaterColor;
 
 sampler TextureSampler : register(s0);
 
@@ -43,14 +40,8 @@ float4 MainPS(VertexOutput input) : COLOR0
     float alpha = saturate(mask.a);
     clip(alpha - 0.001);
 
-    float surfaceHint = saturate((mask.r - 0.16) * 7.5);
-    float localDepth = smoothstep(0.05, 1.0, input.TexCoord.y) * WaterDepthStrength;
-
-    float3 bodyColor = lerp(WaterShallowColor.rgb, WaterDeepColor.rgb, saturate(localDepth));
-    float3 color = lerp(bodyColor, WaterSurfaceColor.rgb, surfaceHint);
-
-    float finalAlpha = saturate(alpha * (0.90 + surfaceHint * 0.16));
-    return float4(color * finalAlpha, finalAlpha);
+    float finalAlpha = alpha * WaterColor.a;
+    return float4(WaterColor.rgb * finalAlpha, finalAlpha);
 }
 
 technique Water

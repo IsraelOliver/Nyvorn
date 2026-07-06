@@ -16,6 +16,7 @@ namespace Nyvorn.Source.World.Generation
             new WorldGenPhaseDefinition("DirtToStoneTransition", "Misturando terra e pedra", 8f),
             new WorldGenPhaseDefinition("Cave", "Cavando cavernas", 25f),
             new WorldGenPhaseDefinition("CaveEntrance", "Abrindo entradas naturais", 14f),
+            new WorldGenPhaseDefinition("Hydrology", "Distribuindo agua inicial", 8f),
             new WorldGenPhaseDefinition("Tissue", "Tecendo rede organica", 20f),
             new WorldGenPhaseDefinition("TreeGeneration", "Plantando arvores modulares", 4f),
             new WorldGenPhaseDefinition("WorldBounds", "Selando limites do mundo", 2f)
@@ -35,6 +36,7 @@ namespace Nyvorn.Source.World.Generation
                 new DirtToStoneTransitionPass(),
                 new CavePass(),
                 new CaveEntrancePass(),
+                new HydrologyPass(),
                 new TissuePass(),
                 new TreeGenerationPass(),
                 new WorldBoundsPass()

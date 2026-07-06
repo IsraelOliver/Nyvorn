@@ -90,7 +90,7 @@ namespace Nyvorn.Source.Game.States
                                 (constructionMode
                                     ? WorldMap.CanPlaceBackgroundTile(tile.X, tile.Y, placeTileType)
                                     : WorldMap.CanPlaceTile(tile.X, tile.Y, placeTileType)) &&
-                                (constructionMode || !HasForegroundDynamicMatter(HoveredTileBounds)) &&
+                                (constructionMode || !HasForegroundPlacementBlocker(HoveredTileBounds)) &&
                                 (constructionMode || !HoveredTileBounds.Intersects(Player.Hurtbox));
 
                 HoveredTileState = canPlace ? WorldTilePreviewState.PlaceValid : WorldTilePreviewState.PlaceInvalid;
@@ -154,7 +154,7 @@ namespace Nyvorn.Source.Game.States
             if (tileBounds.Intersects(Player.Hurtbox))
                 return;
 
-            if (HasForegroundDynamicMatter(tileBounds))
+            if (HasForegroundPlacementBlocker(tileBounds))
                 return;
 
             if (!IsWithinBlockPlacementRange(tile))
@@ -163,6 +163,8 @@ namespace Nyvorn.Source.Game.States
             if (!WorldMap.TryPlaceTile(tile.X, tile.Y, tileType))
                 return;
 
+            LiquidSystem?.DisplaceLiquidForPlacedTile(tile.X, tile.Y);
+            LiquidSystem?.WakeAreaAroundTile(tile.X, tile.Y);
             selectedSlot.RemoveOne();
             blockPlaceCooldownTimer = BlockPlaceInterval;
         }
@@ -541,6 +543,11 @@ namespace Nyvorn.Source.Game.States
         {
             return (SandSystem != null && SandSystem.HasSandInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)) ||
                    (LiquidSystem != null && LiquidSystem.HasLiquidInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+        }
+
+        private bool HasForegroundPlacementBlocker(Rectangle bounds)
+        {
+            return SandSystem != null && SandSystem.HasSandInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height);
         }
 
         private int WrapPixelX(int pixelX)

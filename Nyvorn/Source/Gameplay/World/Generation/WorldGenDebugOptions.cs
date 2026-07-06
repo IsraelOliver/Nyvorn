@@ -6,6 +6,7 @@ namespace Nyvorn.Source.World.Generation
         public bool EnableSurfaceProfilePass { get; init; } = true;
         public bool EnableBaseTerrainFillPass { get; init; } = true;
         public bool EnableDirtToStoneTransitionPass { get; init; } = true;
+        public bool EnableHydrologyPass { get; init; } = true;
         public bool EnableTreeGenerationPass { get; init; } = true;
         public bool EnableWorldBoundsPass { get; init; } = true;
 
@@ -17,6 +18,7 @@ namespace Nyvorn.Source.World.Generation
                 "SurfaceProfile" => EnableSurfaceProfilePass,
                 "BaseTerrainFill" => EnableBaseTerrainFillPass,
                 "DirtToStoneTransition" => EnableDirtToStoneTransitionPass,
+                "Hydrology" => EnableHydrologyPass,
                 "TreeGeneration" => EnableTreeGenerationPass,
                 "WorldBounds" => EnableWorldBoundsPass,
                 _ => true

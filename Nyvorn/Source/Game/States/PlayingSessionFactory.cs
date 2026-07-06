@@ -261,6 +261,7 @@ namespace Nyvorn.Source.Game.States
         private BuildOperation CreateBuildOperation(PlanetWorldMetadata planetMetadata, PlanetSaveData saveData)
         {
             BuildContext build = new();
+            build.ApplyGeneratedLiquidPlacements = saveData == null;
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
             build.SavedLiquidSnapshot = saveData != null && saveData.Version >= 15
@@ -322,6 +323,9 @@ namespace Nyvorn.Source.Game.States
                 for (int i = 0; i < generationPasses.Count; i++)
                 {
                     WorldGenPhaseDefinition generationPass = generationPasses[i];
+                    if (saveData != null && generationPass.Name == "Hydrology")
+                        continue;
+
                     string generationPassName = generationPass.Name;
                     steps.Add(new BuildOperation.BuildStep(generationPass.Label, () =>
                     {
@@ -779,11 +783,28 @@ namespace Nyvorn.Source.Game.States
                 session.SandSystem.ImportSnapshot(build.SavedSandSnapshot);
             if (build.SavedLiquidSnapshot != null && build.SavedLiquidSnapshot.Length > 0)
                 session.LiquidSystem.ImportSnapshot(build.SavedLiquidSnapshot);
+            else if (build.ApplyGeneratedLiquidPlacements)
+                ApplyGeneratedLiquidPlacements(session, build);
 
             session.SetSelectedHotbarIndex(selectedHotbarIndex);
             session.InitializeRuntimeState();
             PrewarmVisibleTerrainChunks(session);
             return session;
+        }
+
+        private static void ApplyGeneratedLiquidPlacements(PlayingSession session, BuildContext build)
+        {
+            if (session?.LiquidSystem == null || build?.GenerationContext?.LiquidPlacements == null)
+                return;
+
+            IReadOnlyList<WorldGenLiquidPlacement> placements = build.GenerationContext.LiquidPlacements;
+            for (int i = 0; i < placements.Count; i++)
+            {
+                WorldGenLiquidPlacement placement = placements[i];
+                session.LiquidSystem.SetSettledLiquid(placement.X, placement.Y, placement.Type, placement.Amount);
+            }
+
+            session.LiquidSystem.SettleAllLiquids();
         }
 
         private Texture2D CreateDebugPixelTexture()
@@ -1025,6 +1046,7 @@ namespace Nyvorn.Source.Game.States
             public TissueNetwork TissueNetwork { get; set; }
             public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
+            public bool ApplyGeneratedLiquidPlacements { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
             public byte[] SavedLiquidSnapshot { get; set; }
             public byte[] SavedTissueFieldDeltaSnapshot { get; set; }

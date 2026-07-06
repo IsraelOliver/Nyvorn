@@ -61,21 +61,27 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             SandSystem sandSystem,
             float desiredVelocityX,
             bool useDodgeHurtbox,
-            bool isInWater = false,
+            PlayerWaterState waterState = PlayerWaterState.Dry,
+            float waterSubmergedRatio = 0f,
             Vector2 waterMoveInput = default,
-            bool hasWaterSurfaceLimit = false,
-            float waterSurfaceY = 0f)
+            bool waterSurfaceJumpRequested = false)
         {
             LastLandingImpactVelocity = 0f;
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
             UpdateHurtboxSize(collision, useDodgeHurtbox);
 
             bool wasGrounded = IsGrounded;
+            bool usesAquaticMovement = waterState == PlayerWaterState.PartialWater ||
+                                        waterState == PlayerWaterState.DeepWater;
+            bool usesShallowMovement = waterState == PlayerWaterState.ShallowWater;
 
-            if (isInWater)
-                ApplyWaterHorizontalMovement(dt, waterMoveInput.X);
+            if (usesAquaticMovement)
+                ApplyWaterDrag(dt, waterState);
+
+            if (usesAquaticMovement)
+                ApplyWaterHorizontalMovement(dt, waterMoveInput.X, waterState, waterSubmergedRatio);
             else
-                velocity.X = desiredVelocityX;
+                velocity.X = usesShallowMovement ? desiredVelocityX * config.ShallowMoveMultiplier : desiredVelocityX;
 
             float totalVelocityX = velocity.X + knockbackVelocityX;
             float yBeforeHorizontalResolution = position.Y;
@@ -83,7 +89,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             if (position.Y != yBeforeHorizontalResolution)
                 velocity.Y = 0f;
 
-            if (!isInWater && wasGrounded && TrySnapToSandSurface(collision, sandSystem, totalVelocityX))
+            if (!usesAquaticMovement && wasGrounded && TrySnapToSandSurface(collision, sandSystem, totalVelocityX))
             {
                 velocity.Y = 0f;
                 IsGrounded = true;
@@ -95,15 +101,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * config.KnockbackRecovery, 0f, 1f));
             stepVisualOffsetY = MathHelper.Lerp(stepVisualOffsetY, 0f, MathHelper.Clamp(dt * 20f, 0f, 1f));
 
-            if (isInWater)
-                ApplyWaterVerticalMovement(dt, waterMoveInput.Y);
+            if (usesAquaticMovement)
+            {
+                ApplyWaterVerticalMovement(dt, waterMoveInput.Y, waterState, waterSubmergedRatio);
+                if (waterSurfaceJumpRequested)
+                    ApplyWaterSurfaceJump();
+            }
             else
                 ApplyGravity(dt);
 
             MoveVertically(collision, sandSystem, velocity.Y * dt);
-
-            if (isInWater && hasWaterSurfaceLimit && velocity.Y >= 0f)
-                ClampToWaterSurfaceLimit(collision, waterSurfaceY);
         }
 
         public void UpdateDebugFly(float dt, WorldMap worldMap, Vector2 direction, float speed)
@@ -125,12 +132,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             kinematicMotor.Reset(position);
         }
 
-        public void TryJump()
+        public void TryJump(float speedMultiplier = 1f)
         {
             if (!IsGrounded)
                 return;
 
-            velocity.Y = -config.JumpSpeed;
+            velocity.Y = -config.JumpSpeed * MathHelper.Clamp(speedMultiplier, 0f, 1f);
             IsGrounded = false;
         }
 
@@ -156,41 +163,68 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             velocity.Y += PhysicsSettings.WorldGravity * config.GravityScale * dt;
         }
 
-        private void ApplyWaterHorizontalMovement(float dt, float inputX)
+        private void ApplyWaterDrag(float dt, PlayerWaterState waterState)
         {
-            float targetVelocityX = MathHelper.Clamp(inputX, -1f, 1f) * config.WaterHorizontalSpeed;
-            float acceleration = inputX == 0f ? config.WaterIdleBrake : config.WaterSwimAcceleration;
+            float drag = waterState == PlayerWaterState.DeepWater
+                ? config.WaterDrag
+                : config.PartialWaterDrag;
+            float dragFactor = System.MathF.Pow(MathHelper.Clamp(drag, 0f, 1f), dt * 60f);
+            velocity.X *= dragFactor;
+            velocity.Y *= dragFactor;
+            knockbackVelocityX *= dragFactor;
+        }
+
+        private void ApplyWaterHorizontalMovement(float dt, float inputX, PlayerWaterState waterState, float submergedRatio)
+        {
+            float depthFactor = GetAquaticDepthFactor(waterState, submergedRatio);
+            float targetVelocityX = MathHelper.Clamp(inputX, -1f, 1f) * config.WaterMaxHorizontalSpeed * depthFactor;
+            float acceleration = config.WaterHorizontalAcceleration * depthFactor;
             velocity.X = MoveTowards(velocity.X, targetVelocityX, acceleration * dt);
         }
 
-        private void ApplyWaterVerticalMovement(float dt, float inputY)
+        private void ApplyWaterVerticalMovement(float dt, float inputY, PlayerWaterState waterState, float submergedRatio)
         {
-            float targetVelocityY = 0f;
-            float acceleration = inputY == 0f ? config.WaterIdleBrake : config.WaterSwimAcceleration;
+            float depthFactor = GetAquaticDepthFactor(waterState, submergedRatio);
+            float targetVelocityY = config.IdleSinkSpeed * depthFactor;
+            float acceleration = config.IdleSinkAcceleration * depthFactor;
 
             if (inputY < 0f)
-                targetVelocityY = -config.WaterVerticalSpeed;
+            {
+                targetVelocityY = -config.WaterMaxVerticalSpeed * depthFactor;
+                acceleration = config.WaterVerticalAcceleration * depthFactor;
+            }
             else if (inputY > 0f)
-                targetVelocityY = config.WaterVerticalSpeed;
+            {
+                targetVelocityY = config.WaterMaxVerticalSpeed * depthFactor;
+                acceleration = config.WaterVerticalAcceleration * depthFactor;
+            }
+
+            if (inputY >= 0f)
+            {
+                float gravityMultiplier = MathHelper.Lerp(
+                    config.PartialWaterGravityMultiplier,
+                    config.WaterGravityMultiplier,
+                    depthFactor);
+                velocity.Y += PhysicsSettings.WorldGravity * gravityMultiplier * dt;
+            }
 
             velocity.Y = MoveTowards(velocity.Y, targetVelocityY, acceleration * dt);
         }
 
-        private void ClampToWaterSurfaceLimit(WorldCollisionQuery collision, float waterSurfaceY)
+        private void ApplyWaterSurfaceJump()
         {
-            float maxBodyAboveSurface = currentHurtboxSize.Y * MathHelper.Clamp(config.WaterMaxBodyAboveSurfaceRatio, 0f, 1f);
-            float minimumTopY = waterSurfaceY - maxBodyAboveSurface;
-            if (HitTop >= minimumTopY)
-                return;
+            velocity.Y = System.MathF.Min(velocity.Y, -config.WaterSurfaceJumpBoost);
+            IsGrounded = false;
+        }
 
-            float targetBottomY = minimumTopY + currentHurtboxSize.Y - 1f;
-            if (targetBottomY <= position.Y || !CanOccupyBottomAt(collision, targetBottomY))
-                return;
+        private float GetAquaticDepthFactor(PlayerWaterState waterState, float submergedRatio)
+        {
+            if (waterState == PlayerWaterState.DeepWater)
+                return 1f;
 
-            position.Y = targetBottomY;
-            kinematicMotor.Reset(position);
-            if (velocity.Y < 0f)
-                velocity.Y = 0f;
+            float partialRange = System.MathF.Max(0.01f, config.WaterDeepThreshold - config.WaterPartialThreshold);
+            float partial01 = MathHelper.Clamp((submergedRatio - config.WaterPartialThreshold) / partialRange, 0f, 1f);
+            return MathHelper.Lerp(0.65f, 1f, partial01);
         }
 
         private static float MoveTowards(float current, float target, float maxDelta)
