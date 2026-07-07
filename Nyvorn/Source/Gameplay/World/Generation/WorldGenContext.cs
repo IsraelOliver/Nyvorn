@@ -19,6 +19,7 @@ namespace Nyvorn.Source.World.Generation
         public Point SpawnTile { get; set; }
         public Dictionary<string, string> DebugStats { get; } = new();
         public List<WorldGenLiquidPlacement> LiquidPlacements { get; } = new();
+        public List<GeneratedSandPlacement> SandPlacements { get; } = new();
         public TissueField TissueField { get; set; }
         public TissueGenerationResult TissueGeneration { get; set; }
         public WorldGenProgressReporter ProgressReporter { get; set; }
