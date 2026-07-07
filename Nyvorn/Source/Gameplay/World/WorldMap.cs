@@ -489,6 +489,7 @@ namespace Nyvorn.Source.World
                 || tileType == TileType.Grass
                 || tileType == TileType.Stone
                 || tileType == TileType.Sand
+                || tileType == TileType.HardenedSand
                 || tileType == TileType.Wood;
         }
 
@@ -702,6 +703,7 @@ namespace Nyvorn.Source.World
                 TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background),
                 TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background),
                 TileType.Sand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
+                TileType.HardenedSand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
                 TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background),
                 _ => Rectangle.Empty
             };
@@ -1110,6 +1112,7 @@ namespace Nyvorn.Source.World
                         TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
                         TileType.Stone => GetStoneAutoTileSourceRectangle(x, y),
                         TileType.Sand => GetAutoTileSourceRectangle(x, y),
+                        TileType.HardenedSand => GetAutoTileSourceRectangle(x, y),
                         TileType.Wood => GetDirtAutoTileSourceRectangle(x, y),
                         _ => null
                     };
@@ -1144,6 +1147,7 @@ namespace Nyvorn.Source.World
                         TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Sand => GetBackgroundAutoTileSourceRectangle(x, y),
+                        TileType.HardenedSand => GetBackgroundAutoTileSourceRectangle(x, y),
                         TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         _ => null
                     };
@@ -1161,6 +1165,8 @@ namespace Nyvorn.Source.World
                 TileType.Dirt => _dirt,
                 TileType.Grass => _grass,
                 TileType.Sand => _sand,
+                // TODO: give HardenedSand its own spritesheet once the desert tile art is ready.
+                TileType.HardenedSand => _sand,
                 TileType.Stone => _stone,
                 TileType.Wood => _wood,
                 _ => null

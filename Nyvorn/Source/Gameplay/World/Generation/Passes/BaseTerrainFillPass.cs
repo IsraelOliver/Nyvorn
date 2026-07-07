@@ -36,7 +36,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                             grassCount++;
                         else if (biome.SurfaceTile == TileType.Dirt)
                             dirtCount++;
-                        else if (biome.SurfaceTile == TileType.Sand)
+                        else if (IsSandLike(biome.SurfaceTile))
                             sandCount++;
                     }
                     else
@@ -47,7 +47,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                         context.WorldMap.SetTile(x, y, fillTile);
                         if (fillTile == TileType.Grass)
                             grassCount++;
-                        else if (fillTile == TileType.Sand)
+                        else if (IsSandLike(fillTile))
                             sandCount++;
                         else
                             dirtCount++;
@@ -106,6 +106,11 @@ namespace Nyvorn.Source.World.Generation.Passes
             while (promotedAny);
 
             return promotedTotal;
+        }
+
+        private static bool IsSandLike(TileType tile)
+        {
+            return tile == TileType.Sand || tile == TileType.HardenedSand;
         }
 
     }
