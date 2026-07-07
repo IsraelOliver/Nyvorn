@@ -59,7 +59,8 @@ namespace Nyvorn.Source.World.Generation.Passes
             if (regions.Count == 0)
                 return 0;
 
-            Shuffle(regions, context.Random);
+            Random random = context.CreateRandom(context.Seeds.HydrologySeed);
+            Shuffle(regions, random);
             int area = Math.Max(1, context.WorldMap.Width * context.WorldMap.Height);
             int density = Math.Max(1, context.Config.UndergroundWaterDensityArea);
             int targetFeatureCount = Math.Clamp(area / density, 28, 130);
@@ -71,7 +72,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             {
                 CaveRegion region = regions[i];
                 bool preferFull = stats.FullCaves < targetFullCaves;
-                if (!TryCreateCavePoolPlan(context, region, preferFull, out CavePoolPlan plan))
+                if (!TryCreateCavePoolPlan(context, random, region, preferFull, out CavePoolPlan plan))
                     continue;
 
                 if (!CanPlaceUndergroundSite(context, createdSites, plan.CenterX, plan.CenterY, plan.Radius))
@@ -109,8 +110,11 @@ namespace Nyvorn.Source.World.Generation.Passes
             {
                 for (int x = 0; x < context.WorldMap.Width; x++)
                 {
-                    if (visited[x, y - minY] || context.WorldMap.IsSolidAt(x, y))
+                    if (visited[x, y - minY] ||
+                        context.WorldMap.IsSolidAt(x, y))
+                    {
                         continue;
+                    }
 
                     CaveRegion region = CollectCaveRegion(context, x, y, minY, maxY, visited);
                     if (region.Cells.Count < MinCaveRegionCells ||
@@ -187,8 +191,11 @@ namespace Nyvorn.Source.World.Generation.Passes
             if (x < 0 || x >= context.WorldMap.Width || y < minY || y > maxY)
                 return;
 
-            if (visited[x, y - minY] || context.WorldMap.IsSolidAt(x, y))
+            if (visited[x, y - minY] ||
+                context.WorldMap.IsSolidAt(x, y))
+            {
                 return;
+            }
 
             visited[x, y - minY] = true;
             queue.Enqueue(new CaveCell(x, y));
@@ -196,6 +203,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         private static bool TryCreateCavePoolPlan(
             WorldGenContext context,
+            Random random,
             CaveRegion sourceRegion,
             bool preferFull,
             out CavePoolPlan plan)
@@ -204,7 +212,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             CaveRegion region = sourceRegion;
             if (sourceRegion.IsLarge || sourceRegion.ProcessedCellCount > MaxWholeCavePoolCells)
             {
-                if (!TryCreateLocalCaveBay(context, sourceRegion, out region))
+                if (!TryCreateLocalCaveBay(context, random, sourceRegion, out region))
                     return false;
             }
 
@@ -216,8 +224,8 @@ namespace Nyvorn.Source.World.Generation.Passes
             if (width < 8 || height < 4)
                 return false;
 
-            CaveFillMode mode = PickCaveFillMode(context, region, preferFull);
-            int fillY = CalculateCaveFillY(context, region, mode);
+            CaveFillMode mode = PickCaveFillMode(random, region, preferFull);
+            int fillY = CalculateCaveFillY(random, region, mode);
             int maxCells = mode switch
             {
                 CaveFillMode.Full => MaxFullCaveCells,
@@ -245,7 +253,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             return true;
         }
 
-        private static bool TryCreateLocalCaveBay(WorldGenContext context, CaveRegion sourceRegion, out CaveRegion bay)
+        private static bool TryCreateLocalCaveBay(WorldGenContext context, Random random, CaveRegion sourceRegion, out CaveRegion bay)
         {
             bay = null;
             if (sourceRegion.FloorCells.Count == 0)
@@ -253,9 +261,9 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             for (int attempt = 0; attempt < 8; attempt++)
             {
-                CaveCell anchor = sourceRegion.FloorCells[context.Random.Next(0, sourceRegion.FloorCells.Count)];
-                int halfWidth = context.Random.Next(18, 46);
-                int halfHeight = context.Random.Next(10, 30);
+                CaveCell anchor = sourceRegion.FloorCells[random.Next(0, sourceRegion.FloorCells.Count)];
+                int halfWidth = random.Next(18, 46);
+                int halfHeight = random.Next(10, 30);
                 if (TryCollectLocalCaveRegion(context, anchor.X, anchor.Y, halfWidth, halfHeight, out CaveRegion localBay) &&
                     localBay.Cells.Count >= MinCaveRegionCells &&
                     localBay.FloorCells.Count >= MinCaveFloorCells)
@@ -278,7 +286,9 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             region = null;
             if (context.WorldMap.IsSolidAt(centerX, startY))
+            {
                 return false;
+            }
 
             WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
             WorldLayerDefinition deepLayer = context.GetLayerDefinition(WorldLayerType.DeepCavern);
@@ -347,14 +357,17 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             int localX = x - minX;
             int localY = y - minY;
-            if (visited[localX, localY] || context.WorldMap.IsSolidAt(x, y))
+            if (visited[localX, localY] ||
+                context.WorldMap.IsSolidAt(x, y))
+            {
                 return;
+            }
 
             visited[localX, localY] = true;
             queue.Enqueue(new CaveCell(x, y));
         }
 
-        private static CaveFillMode PickCaveFillMode(WorldGenContext context, CaveRegion region, bool preferFull)
+        private static CaveFillMode PickCaveFillMode(Random random, CaveRegion region, bool preferFull)
         {
             int width = region.MaxX - region.MinX + 1;
             int height = region.MaxY - region.MinY + 1;
@@ -364,10 +377,10 @@ namespace Nyvorn.Source.World.Generation.Passes
                 width <= 54 &&
                 height <= 24;
 
-            if (canFillCompletely && preferFull && context.Random.Next(0, 100) < 70)
+            if (canFillCompletely && preferFull && random.Next(0, 100) < 70)
                 return CaveFillMode.Full;
 
-            int roll = context.Random.Next(0, 100);
+            int roll = random.Next(0, 100);
             if (canFillCompletely && roll < 18)
                 return CaveFillMode.Full;
             if (roll < 72)
@@ -376,14 +389,14 @@ namespace Nyvorn.Source.World.Generation.Passes
             return CaveFillMode.Bottom;
         }
 
-        private static int CalculateCaveFillY(WorldGenContext context, CaveRegion region, CaveFillMode mode)
+        private static int CalculateCaveFillY(Random random, CaveRegion region, CaveFillMode mode)
         {
             int height = Math.Max(1, region.MaxY - region.MinY + 1);
             return mode switch
             {
                 CaveFillMode.Full => region.MinY,
-                CaveFillMode.Partial => region.MaxY - Math.Max(2, (int)MathF.Round(height * (0.40f + (float)context.Random.NextDouble() * 0.30f))) + 1,
-                _ => region.MaxY - context.Random.Next(2, Math.Min(7, height) + 1) + 1
+                CaveFillMode.Partial => region.MaxY - Math.Max(2, (int)MathF.Round(height * (0.40f + (float)random.NextDouble() * 0.30f))) + 1,
+                _ => region.MaxY - random.Next(2, Math.Min(7, height) + 1) + 1
             };
         }
 

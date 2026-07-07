@@ -214,12 +214,17 @@ namespace Nyvorn.Source.Game.States
 
         public PlayingSession Create()
         {
-            return Create("Elyra", WorldSizePreset.Medium, 1337);
+            return Create("Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
         }
 
         public PlayingSession Create(string planetName, WorldSizePreset sizePreset, int seed)
         {
             return CompleteBuild(CreateBuildOperation(planetName, sizePreset, seed));
+        }
+
+        public PlayingSession Create(string planetName, WorldSizePreset sizePreset, string seedText)
+        {
+            return CompleteBuild(CreateBuildOperation(planetName, sizePreset, seedText));
         }
 
         public PlayingSession Create(PlanetSaveData saveData)
@@ -237,10 +242,17 @@ namespace Nyvorn.Source.Game.States
             return CreateBuildOperation(planetMetadata, saveData: null);
         }
 
+        public BuildOperation CreateBuildOperation(string planetName, WorldSizePreset sizePreset, string seedText)
+        {
+            WorldGenConfig worldGenConfig = WorldGenConfig.CreatePreset(sizePreset, seedText);
+            PlanetWorldMetadata planetMetadata = PlanetWorldMetadata.Create(planetName, worldGenConfig);
+            return CreateBuildOperation(planetMetadata, saveData: null);
+        }
+
         public BuildOperation CreateBuildOperation(PlanetSaveData saveData)
         {
             if (saveData == null)
-                return CreateBuildOperation("Elyra", WorldSizePreset.Medium, 1337);
+                return CreateBuildOperation("Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
 
             return CreateBuildOperationFromSaveData(saveData);
         }
@@ -260,6 +272,7 @@ namespace Nyvorn.Source.Game.States
 
         private BuildOperation CreateBuildOperation(PlanetWorldMetadata planetMetadata, PlanetSaveData saveData)
         {
+            planetMetadata = planetMetadata.WithSeedMetadataDefaults();
             BuildContext build = new();
             build.ApplyGeneratedLiquidPlacements = saveData == null;
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
@@ -354,7 +367,7 @@ namespace Nyvorn.Source.Game.States
             {
                 if (build.TissueGeneration == null)
                 {
-                    build.TissueGeneration = new TissueGenerator(build.WorldGenConfig.Seed).Generate(build.WorldMap);
+                    build.TissueGeneration = new TissueGenerator(SeedHash.ToIntSeed(build.WorldGenConfig.SeedSet.TissueSeed)).Generate(build.WorldMap);
                     build.TissueNetwork = build.TissueGeneration.Network;
                 }
 
@@ -371,7 +384,7 @@ namespace Nyvorn.Source.Game.States
                         build.SavedTissueFieldDeltaSnapshot,
                         generatedField,
                         build.WorldMap,
-                        build.WorldGenConfig.Seed,
+                        SeedHash.ToIntSeed(build.WorldGenConfig.SeedSet.TissueSeed),
                         build.TissueGeneration.Stats.DeterministicHash,
                         TissueGenerator.AlgorithmVersion);
                 }
@@ -396,7 +409,7 @@ namespace Nyvorn.Source.Game.States
             build.WoodTexture = content.Load<Texture2D>("blocks/wood_spritesheet");
             build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
 
-            build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.Seed);
+            build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.CreateSeedSet());
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
             build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture, build.WoodTexture);
             build.WorldMap.SetTreeTexture(build.TreeTexture);
@@ -621,7 +634,7 @@ namespace Nyvorn.Source.Game.States
                 WorldItemRuntimeSystem = worldItemRuntimeSystem,
                 EnemyRespawnController = enemyRespawnController
             };
-            TissueNetwork tissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, build.WorldGenConfig.Seed);
+            TissueNetwork tissueNetwork = build.TissueNetwork ?? CreateEmptyTissueNetwork(build.WorldMap, SeedHash.ToIntSeed(build.WorldGenConfig.SeedSet.TissueSeed));
             if (build.TissueGeneration == null ||
                 !ReferenceEquals(build.WorldMap.TissueField, build.TissueGeneration.RasterizedField))
             {
@@ -733,7 +746,7 @@ namespace Nyvorn.Source.Game.States
             };
             WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
             WorldEnvironmentSystem environmentSystem = new(
-                planetMetadata.Seed,
+                SeedHash.ToIntSeed(build.WorldGenConfig.SeedSet.EnvironmentSeed),
                 build.SavedWorldEnvironment,
                 dayNightCycle.CreateSnapshot());
             entityRuntimeSystem.EnvironmentSystem = environmentSystem;

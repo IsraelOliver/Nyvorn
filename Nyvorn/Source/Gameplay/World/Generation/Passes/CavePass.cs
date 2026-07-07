@@ -1,4 +1,5 @@
 using System;
+using Nyvorn.Source.World.Generation.Biomes;
 
 namespace Nyvorn.Source.World.Generation.Passes
 {
@@ -17,9 +18,10 @@ namespace Nyvorn.Source.World.Generation.Passes
             int startY = shallowLayer.StartY;
             int endY = deepLayer.EndY;
 
-            OpenSimplexNoise caveNoise = new OpenSimplexNoise(context.Config.Seed + 1000);
-            OpenSimplexNoise warpNoise = new OpenSimplexNoise(context.Config.Seed + 2000);
-            OpenSimplexNoise deepNoise = new OpenSimplexNoise(context.Config.Seed + 3000);
+            int caveSeed = SeedHash.ToIntSeed(context.Seeds.CaveSeed);
+            OpenSimplexNoise caveNoise = new OpenSimplexNoise(caveSeed + 1000);
+            OpenSimplexNoise warpNoise = new OpenSimplexNoise(caveSeed + 2000);
+            OpenSimplexNoise deepNoise = new OpenSimplexNoise(caveSeed + 3000);
 
             int caveFadeHeight = 30;
             int transitionHeight = Math.Max(20, cavernLayer.Height / 6);
@@ -51,7 +53,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                         bool cavernCarve = ShouldCarveCavern(context, caveNoise, warpNoise, x, y, startY, cavernLayer.EndY, caveFadeHeight);
                         bool deepCarve = ShouldCarveDeepCavern(context, caveNoise, warpNoise, deepNoise, x, y, deepLayer);
 
-                        float selector = (float)deepNoise.Evaluate(x * 0.05f, y * 0.05f);
+                        float selector = WorldFieldSampler.SampleSeamedNoise(context, deepNoise, x, y, 0.05f, 0.05f);
                         float bias = Lerp(-0.35f, 0.35f, blendT);
                         bool finalCarve = (selector + bias) > 0f ? deepCarve : cavernCarve;
 
@@ -82,12 +84,10 @@ namespace Nyvorn.Source.World.Generation.Passes
             float warpFrequency = 0.040f;
             float warpStrength = 18f;
 
-            float warpX = Fractal(warpNoise, x * warpFrequency, y * warpFrequency) * warpStrength;
-            float warpY = Fractal(warpNoise, (x + 1000f) * warpFrequency, (y + 1000f) * warpFrequency) * warpStrength;
+            float warpX = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency) * warpStrength;
+            float warpY = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 1000f, 1000f) * warpStrength;
 
-            float sample = (float)caveNoise.Evaluate(
-                (x + warpX) * frequency,
-                (y + warpY) * frequency);
+            float sample = WorldFieldSampler.SampleSeamedNoise(context, caveNoise, x, y, frequency, frequency, warpX, warpY);
 
             float depthT = (y - startY) / (float)Math.Max(1, cavernEndY - startY);
             depthT = Math.Clamp(depthT, 0f, 1f);
@@ -96,7 +96,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             float topFadeT = (y - startY) / (float)Math.Max(1, fadeHeight);
             topFadeT = SmoothStep01(Math.Clamp(topFadeT, 0f, 1f));
             float topFadeBias = Lerp(0.40f, 0f, topFadeT);
-            float effectiveThreshold = threshold + depthBias + topFadeBias;
+            float effectiveThreshold = threshold + depthBias + topFadeBias + GetCaveThresholdOffset(context, x);
 
             return sample > effectiveThreshold;
         }
@@ -115,16 +115,13 @@ namespace Nyvorn.Source.World.Generation.Passes
             float warpFrequency = 0.045f;
             float warpStrength = 22f;
 
-            float warpX = Fractal(warpNoise, x * warpFrequency, y * warpFrequency) * warpStrength;
-            float warpY = Fractal(warpNoise, (x + 1400f) * warpFrequency, (y + 1400f) * warpFrequency) * warpStrength;
+            float warpX = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency) * warpStrength;
+            float warpY = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 1400f, 1400f) * warpStrength;
 
-            float baseSample = (float)caveNoise.Evaluate(
-                (x + warpX) * baseFrequency,
-                (y + warpY) * baseFrequency);
-
-            float largeVoid = Fractal(deepNoise, x * 0.018f, y * 0.018f);
-            float macroVoid = (float)deepNoise.Evaluate(x * 0.006f, y * 0.006f);
-            float verticalBias = MathF.Abs((float)deepNoise.Evaluate(x * 0.004f, y * 0.090f));
+            float baseSample = WorldFieldSampler.SampleSeamedNoise(context, caveNoise, x, y, baseFrequency, baseFrequency, warpX, warpY);
+            float largeVoid = WorldFieldSampler.Fractal(context, deepNoise, x, y, 0.018f, 0.018f);
+            float macroVoid = WorldFieldSampler.SampleSeamedNoise(context, deepNoise, x, y, 0.006f, 0.006f);
+            float verticalBias = MathF.Abs(WorldFieldSampler.SampleSeamedNoise(context, deepNoise, x, y, 0.004f, 0.090f));
             float deepAggression = Lerp(0.08f, 0.24f, depthT);
 
             float combined =
@@ -133,29 +130,17 @@ namespace Nyvorn.Source.World.Generation.Passes
                 (macroVoid * 0.8f) +
                 (verticalBias * 0.6f);
 
-            float effectiveThreshold = 0.18f + deepAggression;
+            float effectiveThreshold = 0.18f + deepAggression + GetCaveThresholdOffset(context, x);
             return combined > effectiveThreshold;
         }
 
-        private static float Fractal(OpenSimplexNoise noise, float x, float y)
+        private static float GetCaveThresholdOffset(WorldGenContext context, int x)
         {
-            float value = 0f;
-            float amplitude = 1f;
-            float frequency = 1f;
-            float amplitudeSum = 0f;
-
-            for (int i = 0; i < 3; i++)
-            {
-                value += (float)noise.Evaluate(x * frequency, y * frequency) * amplitude;
-                amplitudeSum += amplitude;
-                frequency *= 2f;
-                amplitude *= 0.5f;
-            }
-
-            if (amplitudeSum <= 0f)
-                return 0f;
-
-            return value / amplitudeSum;
+            BiomeSample sample = context.SampleBiome(x);
+            return Lerp(
+                sample.SecondaryDefinition.CaveThresholdOffset,
+                sample.PrimaryDefinition.CaveThresholdOffset,
+                sample.Blend);
         }
 
         private static float Lerp(float a, float b, float t)

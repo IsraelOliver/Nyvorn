@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Nyvorn.Source.Gameplay.World.Simulation;
+using Nyvorn.Source.World.Generation.Biomes;
 
 namespace Nyvorn.Source.World.Generation.Passes
 {
@@ -14,10 +15,12 @@ namespace Nyvorn.Source.World.Generation.Passes
             int airCount = 0;
             int dirtCount = 0;
             int grassCount = 0;
+            int sandCount = 0;
 
             for (int x = 0; x < context.WorldMap.Width; x++)
             {
                 int surfaceY = context.SurfaceHeights[x];
+                BiomeDefinition biome = context.SampleBiome(x).PrimaryDefinition;
 
                 for (int y = 0; y < context.WorldMap.Height; y++)
                 {
@@ -28,13 +31,26 @@ namespace Nyvorn.Source.World.Generation.Passes
                     }
                     else if (y == surfaceY)
                     {
-                        context.WorldMap.SetTile(x, y, TileType.Grass);
-                        grassCount++;
+                        context.WorldMap.SetTile(x, y, biome.SurfaceTile);
+                        if (biome.SurfaceTile == TileType.Grass)
+                            grassCount++;
+                        else if (biome.SurfaceTile == TileType.Dirt)
+                            dirtCount++;
+                        else if (biome.SurfaceTile == TileType.Sand)
+                            sandCount++;
                     }
                     else
                     {
-                        context.WorldMap.SetTile(x, y, TileType.Dirt);
-                        dirtCount++;
+                        TileType fillTile = y <= surfaceY + biome.SubsurfaceDepth
+                            ? biome.SubsurfaceTile
+                            : TileType.Dirt;
+                        context.WorldMap.SetTile(x, y, fillTile);
+                        if (fillTile == TileType.Grass)
+                            grassCount++;
+                        else if (fillTile == TileType.Sand)
+                            sandCount++;
+                        else
+                            dirtCount++;
                     }
                 }
 
@@ -49,6 +65,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             context.DebugStats["BaseTerrain.AirTiles"] = airCount.ToString();
             context.DebugStats["BaseTerrain.DirtTiles"] = dirtCount.ToString();
             context.DebugStats["BaseTerrain.GrassTiles"] = grassCount.ToString();
+            context.DebugStats["BaseTerrain.SandTiles"] = sandCount.ToString();
             context.DebugStats["BaseTerrain.StoneTiles"] = "0";
             context.ProgressReporter?.Complete(Name, "Crosta preenchida");
         }

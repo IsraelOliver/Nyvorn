@@ -1,4 +1,5 @@
 using System;
+using Nyvorn.Source.World.Generation.Biomes;
 
 namespace Nyvorn.Source.World.Generation.Passes
 {
@@ -36,9 +37,12 @@ namespace Nyvorn.Source.World.Generation.Passes
                         continue;
 
                     float depth01 = (y - undergroundStartY) / (float)undergroundDepth;
+                    BiomeSample biome = context.SampleBiome(x);
+                    float shallowStoneOffset = BlendBiomeValue(biome, definition => definition.ShallowStoneThresholdOffset);
+                    float deepDirtOffset = BlendBiomeValue(biome, definition => definition.DeepDirtThresholdOffset);
 
-                    float stoneThreshold = GetTopStoneThreshold(depth01);
-                    float dirtThreshold = GetBottomDirtThreshold(depth01);
+                    float stoneThreshold = GetTopStoneThreshold(depth01) + shallowStoneOffset;
+                    float dirtThreshold = GetBottomDirtThreshold(depth01) + deepDirtOffset;
 
                     TileType nextTile;
                     if (depth01 < InversionDepthPercent)
@@ -102,6 +106,13 @@ namespace Nyvorn.Source.World.Generation.Passes
         private static float Lerp(float a, float b, float t)
         {
             return a + ((b - a) * Math.Clamp(t, 0f, 1f));
+        }
+
+        private static float BlendBiomeValue(BiomeSample sample, Func<BiomeDefinition, float> selector)
+        {
+            float secondary = selector(sample.SecondaryDefinition);
+            float primary = selector(sample.PrimaryDefinition);
+            return Lerp(secondary, primary, sample.Blend);
         }
 
         private static float InverseLerp(float a, float b, float value)

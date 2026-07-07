@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.World.Generation.Biomes;
 using Nyvorn.Source.World.Generation;
 using System;
 using System.Collections.Generic;
@@ -21,14 +22,16 @@ namespace Nyvorn.Source.World.Decorations
 
             List<TreeInstance> trees = new();
             WorldMap worldMap = context.WorldMap;
-            Random random = new(context.Config.Seed ^ unchecked((int)0x6D2B79F5));
+            Random random = context.CreateRandom(context.Seeds.DecorationSeed);
 
             int minX = Math.Max(context.Config.BorderThickness + 2, 2);
             int maxX = worldMap.Width - Math.Max(context.Config.BorderThickness + 3, 3);
 
             for (int x = minX; x <= maxX; x++)
             {
-                if (random.NextDouble() > settings.TreeSpawnChance)
+                BiomeDefinition biome = context.SampleBiome(x).PrimaryDefinition;
+                float spawnChance = settings.TreeSpawnChance * biome.TreeSpawnMultiplier;
+                if (spawnChance <= 0f || random.NextDouble() > spawnChance)
                     continue;
 
                 int groundY = FindSurfaceGrassY(worldMap, context.SurfaceHeights, x);

@@ -29,7 +29,7 @@ namespace Nyvorn.Source.World.Generation
 
         public static float Sample(WorldGenContext context, int x, int y)
         {
-            NoiseSet noiseSet = GetNoiseSet(context.Config.Seed);
+            NoiseSet noiseSet = GetNoiseSet(SeedHash.ToIntSeed(context.Seeds.MaterialSeed));
             WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
             WorldLayerDefinition deepLayer = context.GetLayerDefinition(WorldLayerType.DeepCavern);
 
@@ -55,7 +55,7 @@ namespace Nyvorn.Source.World.Generation
 
         public static float SampleShallowStonePocketField(WorldGenContext context, int x, int y)
         {
-            NoiseSet noiseSet = GetNoiseSet(context.Config.Seed);
+            NoiseSet noiseSet = GetNoiseSet(SeedHash.ToIntSeed(context.Seeds.MaterialSeed));
             return SampleScaledCavernField(
                 context,
                 noiseSet.CaveNoise,
@@ -68,7 +68,7 @@ namespace Nyvorn.Source.World.Generation
 
         public static float SampleDeepDirtPocketField(WorldGenContext context, int x, int y)
         {
-            NoiseSet noiseSet = GetNoiseSet(context.Config.Seed);
+            NoiseSet noiseSet = GetNoiseSet(SeedHash.ToIntSeed(context.Seeds.MaterialSeed));
 
             float warpX = Fractal(context, noiseSet.WarpNoise, x, y, DeepDirtPocketWarpFrequency, DeepDirtPocketWarpFrequency, 2200f, 400f) * DeepDirtPocketWarpStrength;
             float warpY = Fractal(context, noiseSet.WarpNoise, x, y, DeepDirtPocketWarpFrequency, DeepDirtPocketWarpFrequency, 3200f, 1400f) * DeepDirtPocketWarpStrength;
@@ -92,7 +92,7 @@ namespace Nyvorn.Source.World.Generation
 
         public static bool UsesDeepThreshold(WorldGenContext context, int x, int y)
         {
-            NoiseSet noiseSet = GetNoiseSet(context.Config.Seed);
+            NoiseSet noiseSet = GetNoiseSet(SeedHash.ToIntSeed(context.Seeds.MaterialSeed));
             WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
             WorldLayerDefinition deepLayer = context.GetLayerDefinition(WorldLayerType.DeepCavern);
 

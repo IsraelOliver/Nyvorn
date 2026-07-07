@@ -11,6 +11,7 @@ namespace Nyvorn.Source.World.Generation
         {
             new WorldGenPhaseDefinition("ClearWorld", "Limpando mapa base", 3f),
             new WorldGenPhaseDefinition("LayerBoundary", "Definindo camadas do planeta", 2f),
+            new WorldGenPhaseDefinition("BiomeField", "Distribuindo biomas", 3f),
             new WorldGenPhaseDefinition("SurfaceProfile", "Modelando superficie", 8f),
             new WorldGenPhaseDefinition("BaseTerrainFill", "Preenchendo crosta", 12f),
             new WorldGenPhaseDefinition("DirtToStoneTransition", "Misturando terra e pedra", 8f),
@@ -31,6 +32,7 @@ namespace Nyvorn.Source.World.Generation
             {
                 new ClearWorldPass(),
                 new LayerBoundaryPass(),
+                new BiomeFieldPass(),
                 new SurfaceProfilePass(),
                 new BaseTerrainFillPass(),
                 new DirtToStoneTransitionPass(),
@@ -79,7 +81,7 @@ namespace Nyvorn.Source.World.Generation
             {
                 WorldMap = worldMap,
                 Config = config,
-                Random = new Random(config.Seed)
+                Random = new Random(SeedHash.ToIntSeed(config.SeedSet.MasterSeed))
             };
         }
 

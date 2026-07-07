@@ -14,7 +14,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             context.ProgressReporter?.Begin(Name, "Tecendo rede cosmica subterranea");
 
-            TissueGenerationResult generation = new TissueGenerator(context.Config.Seed).Generate(context.WorldMap);
+            TissueGenerationResult generation = new TissueGenerator(SeedHash.ToIntSeed(context.Seeds.TissueSeed)).Generate(context.WorldMap);
             context.TissueField = generation.RasterizedField;
             context.TissueGeneration = generation;
             context.WorldMap.SetTissueField(generation.RasterizedField);

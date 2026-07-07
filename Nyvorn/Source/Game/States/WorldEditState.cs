@@ -108,7 +108,7 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, wrappedSubtitle, titlePos + new Vector2(0f, 26f), new Color(168, 230, 207));
 
             DrawLabeledField(spriteBatch, "Nome", nameBounds, string.IsNullOrWhiteSpace(planetName) ? "Mundo" : planetName);
-            string wrappedMeta = TextLayout.WrapText(font, $"Seed {worldSummary.Metadata.Seed} | {GetPresetLabel(worldSummary.Metadata.SizePreset)}", nameBounds.Width);
+            string wrappedMeta = TextLayout.WrapText(font, $"Seed {GetSeedLabel(worldSummary.Metadata)} | {GetPresetLabel(worldSummary.Metadata.SizePreset)}", nameBounds.Width);
             spriteBatch.DrawString(font, wrappedMeta, new Vector2(nameBounds.X, nameBounds.Bottom + 20), new Color(143, 211, 255));
 
             DrawButton(spriteBatch, saveBounds, "Salvar", new Color(255, 241, 193), new Color(16, 31, 36));
@@ -209,6 +209,13 @@ namespace Nyvorn.Source.Game.States
                 WorldSizePreset.Medium => "Medio",
                 _ => "Grande"
             };
+        }
+
+        private static string GetSeedLabel(PlanetWorldMetadata metadata)
+        {
+            return string.IsNullOrWhiteSpace(metadata.SeedText)
+                ? metadata.Seed.ToString()
+                : metadata.SeedText;
         }
 
         private void ReturnToWorldSelect()

@@ -195,7 +195,7 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(pixel, bounds, fill);
 
             string title = summary.Metadata.PlanetName;
-            string subtitle = $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {summary.Metadata.Seed}";
+            string subtitle = $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {GetSeedLabel(summary.Metadata)}";
             string saveInfo = $"Salvo em {summary.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}";
 
             float textWidth = GetWorldEntryTextWidth(bounds);
@@ -273,7 +273,7 @@ namespace Nyvorn.Source.Game.States
             float textWidth = GetWorldEntryTextWidth(entryWidth);
 
             string wrappedTitle = TextLayout.WrapText(font, summary.Metadata.PlanetName, textWidth);
-            string wrappedSubtitle = TextLayout.WrapText(font, $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {summary.Metadata.Seed}", textWidth);
+            string wrappedSubtitle = TextLayout.WrapText(font, $"{GetPresetLabel(summary.Metadata.SizePreset)} | Seed {GetSeedLabel(summary.Metadata)}", textWidth);
             string wrappedSaveInfo = TextLayout.WrapText(font, $"Salvo em {summary.SavedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}", textWidth);
             int lineCount = TextLayout.CountLines(wrappedTitle) +
                             TextLayout.CountLines(wrappedSubtitle) +
@@ -313,6 +313,13 @@ namespace Nyvorn.Source.Game.States
                 WorldSizePreset.Medium => "Medio",
                 _ => "Grande"
             };
+        }
+
+        private static string GetSeedLabel(PlanetWorldMetadata metadata)
+        {
+            return string.IsNullOrWhiteSpace(metadata.SeedText)
+                ? metadata.Seed.ToString()
+                : metadata.SeedText;
         }
 
         private Rectangle GetEditButtonBounds(Rectangle entryBounds)

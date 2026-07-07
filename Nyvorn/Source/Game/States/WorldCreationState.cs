@@ -36,7 +36,7 @@ namespace Nyvorn.Source.Game.States
         private FocusField focusField = FocusField.PlanetName;
 
         private string planetName = "Elyra";
-        private string seedText = "1337";
+        private string seedText = SeedHash.CreateRandomSeedText();
         private WorldSizePreset selectedPreset = WorldSizePreset.Medium;
 
         public WorldCreationState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
@@ -186,9 +186,9 @@ namespace Nyvorn.Source.Game.States
                     if (planetName.Length < 18)
                         planetName += planetChar;
                 }
-                else if (focusField == FocusField.Seed && TryGetSeedCharacter(key, out char seedChar))
+                else if (focusField == FocusField.Seed && TryGetSeedCharacter(keyboard, key, out char seedChar))
                 {
-                    if (seedText.Length < 10)
+                    if (seedText.Length < 32)
                         seedText += seedChar;
                 }
             }
@@ -230,7 +230,7 @@ namespace Nyvorn.Source.Game.States
 
         private void DrawPresetDescription(SpriteBatch spriteBatch)
         {
-            WorldGenConfig settings = WorldGenConfig.CreatePreset(selectedPreset, 1337);
+            WorldGenConfig settings = WorldGenConfig.CreatePreset(selectedPreset, WorldGenConfig.DefaultSeed);
             Rectangle area = GetDescriptionBounds();
             spriteBatch.Draw(pixel, area, new Color(18, 34, 40, 210));
 
@@ -275,7 +275,7 @@ namespace Nyvorn.Source.Game.States
 
         private void CreateWorld()
         {
-            int seed = ParseSeed();
+            string seed = ResolveSeedText();
             string finalPlanetName = string.IsNullOrWhiteSpace(planetName) ? "Elyra" : planetName.Trim();
             PlayingSessionFactory factory = new PlayingSessionFactory(graphicsDevice, content);
             stateMachine.ReplaceState(new LoadingWorldState(
@@ -287,12 +287,12 @@ namespace Nyvorn.Source.Game.States
                 session => saveService.Save(session)));
         }
 
-        private int ParseSeed()
+        private string ResolveSeedText()
         {
-            if (int.TryParse(seedText, out int seed))
-                return seed;
+            if (string.IsNullOrWhiteSpace(seedText))
+                seedText = SeedHash.CreateRandomSeedText();
 
-            return Random.Shared.Next(1, int.MaxValue);
+            return seedText.Trim();
         }
 
         private FocusField NextFocus(FocusField current)
@@ -337,7 +337,7 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            if (TryGetSeedCharacter(key, out result))
+            if (TryGetSeedCharacter(keyboard, key, out result))
                 return true;
 
             if (key == Keys.Space)
@@ -355,9 +355,17 @@ namespace Nyvorn.Source.Game.States
             return false;
         }
 
-        private bool TryGetSeedCharacter(Keys key, out char result)
+        private bool TryGetSeedCharacter(KeyboardState keyboard, Keys key, out char result)
         {
             result = '\0';
+            bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                char baseChar = (char)('a' + (key - Keys.A));
+                result = shift ? char.ToUpperInvariant(baseChar) : baseChar;
+                return true;
+            }
 
             if (key >= Keys.D0 && key <= Keys.D9)
             {
@@ -368,6 +376,24 @@ namespace Nyvorn.Source.Game.States
             if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
             {
                 result = (char)('0' + (key - Keys.NumPad0));
+                return true;
+            }
+
+            if (key == Keys.Space)
+            {
+                result = ' ';
+                return true;
+            }
+
+            if (key == Keys.OemMinus && shift)
+            {
+                result = '_';
+                return true;
+            }
+
+            if (key == Keys.OemMinus || key == Keys.Subtract)
+            {
+                result = '-';
                 return true;
             }
 

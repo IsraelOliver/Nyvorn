@@ -20,6 +20,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
             int worldWidth = context.WorldMap.Width;
             int margin = Math.Max(20, worldWidth / 12);
+            Random random = context.CreateRandom(context.Seeds.CaveSeed ^ 0xC0FFEEUL);
 
             for (int i = 0; i < entranceCount; i++)
             {
@@ -30,14 +31,14 @@ namespace Nyvorn.Source.World.Generation.Passes
                 bandMinX = Math.Clamp(bandMinX, margin, worldWidth - 1 - margin);
                 bandMaxX = Math.Clamp(bandMaxX, margin, worldWidth - 1 - margin);
 
-                int startX = context.Random.Next(bandMinX, Math.Max(bandMinX + 1, bandMaxX + 1));
+                int startX = random.Next(bandMinX, Math.Max(bandMinX + 1, bandMaxX + 1));
                 int startY = context.SurfaceHeights[startX];
                 int targetY = cavernLayer.StartY + (cavernLayer.Height / 2);
 
-                OpenSimplexNoise entranceNoise = new OpenSimplexNoise(context.Config.Seed + 5000);
+                OpenSimplexNoise entranceNoise = new OpenSimplexNoise(SeedHash.ToIntSeed(context.Seeds.CaveSeed) + 5000);
 
-                CarveNaturalEntrance(context, startX, startY, targetY, 2, entranceNoise, i * 1000f, i, entranceCount);
-                CarveMouth(context, startX, startY);
+                CarveNaturalEntrance(context, random, startX, startY, targetY, 2, entranceNoise, i * 1000f, i, entranceCount);
+                CarveMouth(context, random, startX, startY);
                 context.ProgressReporter?.Report(Name, (i + 1) / (float)entranceCount, $"Abrindo entradas naturais ({i + 1}/{entranceCount})");
             }
 
@@ -46,6 +47,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         private static void CarveNaturalEntrance(
             WorldGenContext context,
+            Random random,
             int startX,
             int startY,
             int targetY,
@@ -108,14 +110,14 @@ namespace Nyvorn.Source.World.Generation.Passes
             };
         }
 
-        private static void CarveMouth(WorldGenContext context, int centerX, int surfaceY)
+        private static void CarveMouth(WorldGenContext context, Random random, int centerX, int surfaceY)
         {
-            int width = 3 + context.Random.Next(0, 2);
+            int width = 3 + random.Next(0, 2);
 
             for (int dx = -width; dx <= width; dx++)
             {
                 int x = WrapX(centerX + dx, context.WorldMap.Width);
-                int extraDepth = 2 - Math.Abs(dx) / 2 + context.Random.Next(0, 2);
+                int extraDepth = 2 - Math.Abs(dx) / 2 + random.Next(0, 2);
 
                 for (int y = surfaceY - 1; y <= surfaceY + extraDepth; y++)
                 {

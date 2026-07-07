@@ -2,8 +2,13 @@ namespace Nyvorn.Source.World.Generation
 {
     public sealed class WorldGenConfig
     {
+        public const int DefaultSeed = 1337;
+        public const int MinimumRandomSeed = 10000;
+        public const int WorldgenVersion = 2;
+
         public WorldSizePreset SizePreset { get; init; } = WorldSizePreset.Medium;
-        public int Seed { get; init; } = 1337;
+        public int Seed { get; init; } = DefaultSeed;
+        public WorldSeedSet SeedSet { get; init; } = WorldSeedSet.FromLegacyInt(DefaultSeed);
         public int WorldWidth { get; init; } = 240;
         public int WorldHeight { get; init; } = 80;
         public int TileSize { get; init; } = 8;
@@ -25,17 +30,27 @@ namespace Nyvorn.Source.World.Generation
         public int HydrologySpawnProtectionRadiusTiles { get; init; } = 96;
         public int UndergroundWaterDensityArea { get; init; } = 70000;
 
-        public static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, int seed = 1337)
+        public static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, int seed = DefaultSeed)
+        {
+            return CreatePreset(sizePreset, WorldSeedSet.FromLegacyInt(seed));
+        }
+
+        public static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, string seedText)
+        {
+            return CreatePreset(sizePreset, WorldSeedSet.FromSeedText(seedText));
+        }
+
+        public static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, WorldSeedSet seedSet)
         {
             return sizePreset switch
             {
-                WorldSizePreset.Small => CreatePreset(sizePreset, seed, 2800, 900),
-                WorldSizePreset.Medium => CreatePreset(sizePreset, seed, 4200, 1200),
-                _ => CreatePreset(sizePreset, seed, 6000, 1600)
+                WorldSizePreset.Small => CreatePreset(sizePreset, seedSet, 2800, 900),
+                WorldSizePreset.Medium => CreatePreset(sizePreset, seedSet, 4200, 1200),
+                _ => CreatePreset(sizePreset, seedSet, 6000, 1600)
             };
         }
 
-        private static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, int seed, int worldWidth, int worldHeight)
+        private static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, WorldSeedSet seedSet, int worldWidth, int worldHeight)
         {
             int spawnApproximateTileX = System.Math.Max(40, (int)System.MathF.Round(worldWidth * 0.065625f));
 
@@ -48,7 +63,8 @@ namespace Nyvorn.Source.World.Generation
             return new WorldGenConfig
             {
                 SizePreset = sizePreset,
-                Seed = seed,
+                Seed = seedSet.LegacyIntSeed,
+                SeedSet = seedSet,
                 WorldWidth = worldWidth,
                 WorldHeight = worldHeight,
                 TileSize = 8,

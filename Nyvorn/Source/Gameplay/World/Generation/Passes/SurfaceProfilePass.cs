@@ -1,4 +1,5 @@
 using System;
+using Nyvorn.Source.World.Generation.Biomes;
 
 namespace Nyvorn.Source.World.Generation.Passes
 {
@@ -14,7 +15,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             WorldLayerDefinition surfaceLayer = context.GetLayerDefinition(WorldLayerType.Surface);
             int flatY = ClampSurfaceHeight(context.Config.SurfaceBaseHeight, surfaceLayer, context.WorldMap.Height);
 
-            OpenSimplexNoise noise = new OpenSimplexNoise(context.Config.Seed);
+            OpenSimplexNoise noise = new OpenSimplexNoise(SeedHash.ToIntSeed(context.Seeds.TerrainSeed));
 
             int minY = int.MaxValue;
             int maxY = int.MinValue;
@@ -25,10 +26,17 @@ namespace Nyvorn.Source.World.Generation.Passes
                 float terrainOffset = GetTerrainOffset(context, noise, x);
                 float detail = context.SampleTerrain1D(noise, x, 0.090f, 9000f) * 3.0f;
                 float centerMask = GetCenterPlainsMask(x, context.WorldMap.Width);
+                BiomeSample biome = context.SampleBiome(x);
+                float amplitudeScale = BlendBiomeValue(biome, definition => definition.TerrainAmplitudeScale);
+                float detailScale = BlendBiomeValue(biome, definition => definition.TerrainDetailScale);
+                float smoothness = BlendBiomeValue(biome, definition => definition.TerrainSmoothness);
 
-                float softenedTerrainOffset = Lerp(terrainOffset * 0.18f, terrainOffset, 1f - centerMask);
-                float softenedDetail = Lerp(detail * 0.10f, detail, 1f - centerMask);
-                float softenedMacroShape = Lerp(macroShape * 0.35f, macroShape, 1f - centerMask);
+                float softenedTerrainOffset = Lerp(terrainOffset * 0.18f, terrainOffset, 1f - centerMask) * amplitudeScale;
+                float softenedDetail = Lerp(detail * 0.10f, detail, 1f - centerMask) * detailScale;
+                float softenedMacroShape = Lerp(macroShape * 0.35f, macroShape, 1f - centerMask) * amplitudeScale;
+
+                softenedTerrainOffset = Lerp(softenedTerrainOffset, softenedTerrainOffset * 0.45f, smoothness);
+                softenedDetail = Lerp(softenedDetail, softenedDetail * 0.20f, smoothness);
 
                 int surfaceY = flatY + (int)MathF.Round(softenedMacroShape + softenedTerrainOffset + softenedDetail);
                 surfaceY = Math.Clamp(surfaceY, 8, context.WorldMap.Height - 10);
@@ -127,6 +135,13 @@ namespace Nyvorn.Source.World.Generation.Passes
         private static float Lerp(float a, float b, float t)
         {
             return a + ((b - a) * t);
+        }
+
+        private static float BlendBiomeValue(BiomeSample sample, Func<BiomeDefinition, float> selector)
+        {
+            float secondary = selector(sample.SecondaryDefinition);
+            float primary = selector(sample.PrimaryDefinition);
+            return Lerp(secondary, primary, sample.Blend);
         }
 
         private static float SmoothStep(float edge0, float edge1, float x)

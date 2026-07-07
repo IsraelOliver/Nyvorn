@@ -76,15 +76,19 @@ namespace Nyvorn.Source.World.Persistence
 
             string finalPlanetName = string.IsNullOrWhiteSpace(newPlanetName) ? "Mundo" : newPlanetName.Trim();
             PlanetSaveData saveData = Load(filePath);
+            PlanetWorldMetadata metadata = saveData.Metadata.WithSeedMetadataDefaults();
             saveData.Metadata = new PlanetWorldMetadata
             {
-                WorldId = saveData.Metadata.WorldId,
+                WorldId = metadata.WorldId,
                 PlanetName = finalPlanetName,
-                Seed = saveData.Metadata.Seed,
-                SizePreset = saveData.Metadata.SizePreset,
-                WorldWidth = saveData.Metadata.WorldWidth,
-                WorldHeight = saveData.Metadata.WorldHeight,
-                TileSize = saveData.Metadata.TileSize
+                Seed = metadata.Seed,
+                SeedText = metadata.SeedText,
+                MasterSeed = metadata.MasterSeed,
+                WorldgenVersion = metadata.WorldgenVersion,
+                SizePreset = metadata.SizePreset,
+                WorldWidth = metadata.WorldWidth,
+                WorldHeight = metadata.WorldHeight,
+                TileSize = metadata.TileSize
             };
 
             Save(saveData);

@@ -6,7 +6,7 @@ namespace Nyvorn.Source.World.Persistence
 {
     public sealed class PlanetSaveData
     {
-        public int Version { get; init; } = 15;
+        public int Version { get; init; } = 16;
         public required PlanetWorldMetadata Metadata { get; set; }
         public DateTime SavedAtUtc { get; init; } = DateTime.UtcNow;
         public float TimeOfDay01 { get; init; } = 0.25f;
