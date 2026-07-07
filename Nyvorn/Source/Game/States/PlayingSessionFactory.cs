@@ -275,7 +275,6 @@ namespace Nyvorn.Source.Game.States
             planetMetadata = planetMetadata.WithSeedMetadataDefaults();
             BuildContext build = new();
             build.ApplyGeneratedLiquidPlacements = saveData == null;
-            build.ApplyGeneratedSandPlacements = saveData == null;
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
             build.SavedLiquidSnapshot = saveData != null && saveData.Version >= 15
@@ -795,8 +794,6 @@ namespace Nyvorn.Source.Game.States
             session.InitializeSandSystem();
             if (build.SavedSandSnapshot != null && build.SavedSandSnapshot.Length > 0)
                 session.SandSystem.ImportSnapshot(build.SavedSandSnapshot);
-            else if (build.ApplyGeneratedSandPlacements)
-                ApplyGeneratedSandPlacements(session, build.GenerationContext);
             if (build.SavedLiquidSnapshot != null && build.SavedLiquidSnapshot.Length > 0)
                 session.LiquidSystem.ImportSnapshot(build.SavedLiquidSnapshot);
             else if (build.ApplyGeneratedLiquidPlacements)
@@ -821,57 +818,6 @@ namespace Nyvorn.Source.Game.States
             }
 
             session.LiquidSystem.SettleAllLiquids();
-        }
-
-        private static void ApplyGeneratedSandPlacements(PlayingSession session, WorldGenContext context)
-        {
-            if (session?.SandSystem == null || context?.SandPlacements == null || context.SandPlacements.Count == 0)
-                return;
-
-            int sandWidth = session.SandSystem.Width;
-            int sandHeight = session.SandSystem.Height;
-            if (sandWidth <= 0 || sandHeight <= 0)
-                return;
-
-            IReadOnlyList<GeneratedSandPlacement> placements = context.SandPlacements;
-            for (int i = 0; i < placements.Count; i++)
-            {
-                GeneratedSandPlacement placement = placements[i];
-                int startY = Math.Max(0, placement.StartPixelY);
-                int endY = Math.Min(sandHeight, placement.StartPixelY + placement.Height);
-                int endX = placement.StartPixelX + placement.Width;
-
-                for (int pixelY = startY; pixelY < endY; pixelY++)
-                {
-                    for (int rawPixelX = placement.StartPixelX; rawPixelX < endX; rawPixelX++)
-                    {
-                        int pixelX = WrapPixelX(rawPixelX, sandWidth);
-                        if (IsPixelInsideSolid(session.WorldMap, pixelX, pixelY))
-                            continue;
-
-                        session.SandSystem.SetSandAt(pixelX, pixelY, true);
-                    }
-                }
-            }
-        }
-
-        private static bool IsPixelInsideSolid(WorldMap worldMap, int pixelX, int pixelY)
-        {
-            if (worldMap == null || pixelY < 0 || pixelY >= worldMap.Height * worldMap.TileSize)
-                return true;
-
-            int tileX = pixelX / worldMap.TileSize;
-            int tileY = pixelY / worldMap.TileSize;
-            return worldMap.IsSolidAt(tileX, tileY);
-        }
-
-        private static int WrapPixelX(int pixelX, int pixelWidth)
-        {
-            if (pixelWidth <= 0)
-                return 0;
-
-            int wrapped = pixelX % pixelWidth;
-            return wrapped < 0 ? wrapped + pixelWidth : wrapped;
         }
 
         private Texture2D CreateDebugPixelTexture()
@@ -1114,7 +1060,6 @@ namespace Nyvorn.Source.Game.States
             public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public bool ApplyGeneratedLiquidPlacements { get; set; }
-            public bool ApplyGeneratedSandPlacements { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
             public byte[] SavedLiquidSnapshot { get; set; }
             public byte[] SavedTissueFieldDeltaSnapshot { get; set; }
