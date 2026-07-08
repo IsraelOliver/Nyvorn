@@ -21,6 +21,7 @@ namespace Nyvorn.Source.Game.States
         private const float MinimumMiningDurationSeconds = 0.15f;
         private const float TreeChopDurationSeconds = 3f;
         private const float AxeTreeChopStepSeconds = 0.3f;
+        private const float TreeSupportTileMiningDurationSeconds = TreeChopDurationSeconds;
         private const int PixelSandHarvestSize = 8;
         private const int PixelSandHarvestPixels = PixelSandHarvestSize * PixelSandHarvestSize;
 
@@ -352,11 +353,12 @@ namespace Nyvorn.Source.Game.States
                 miningProgressSeconds = 0f;
             }
 
-            MiningDurationSeconds = GetMiningDuration(miningDefinition);
+            MiningDurationSeconds = GetForegroundTileMiningDuration(miningDefinition, tile);
             miningProgressSeconds += dt;
             if (miningProgressSeconds < MiningDurationSeconds)
                 return;
 
+            bool supportsTree = TryGetSupportedTree(tile, out TreeInstance supportedTree);
             if (!WorldMap.TryBreakTile(tile.X, tile.Y, out TileType removedTile))
             {
                 ResetMiningProgress();
@@ -367,6 +369,8 @@ namespace Nyvorn.Source.Game.States
             LiquidSystem?.WakeAreaAroundTile(tile.X, tile.Y);
             BlockParticleSystem?.SpawnFromTile(targetTile, tile, background: false);
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);
+            if (supportsTree && WorldMap.TryRemoveTree(supportedTree))
+                WorldItemRuntimeSystem.SpawnItemDrops(ItemId.RawWood, System.Math.Max(1, supportedTree.Height), WorldMap.GetTileCenter(supportedTree.BaseTile.X, supportedTree.BaseTile.Y));
             WorldObjectRegistry?.NotifyForegroundTileBroken(new ForegroundTileBrokenContext(
                 tile,
                 removedTile,
@@ -551,6 +555,15 @@ namespace Nyvorn.Source.Game.States
                 MinimumMiningDurationSeconds);
         }
 
+        private float GetForegroundTileMiningDuration(TileMiningDefinition miningDefinition, Point tile)
+        {
+            float duration = GetMiningDuration(miningDefinition);
+            if (IsTreeSupportTile(tile))
+                return System.Math.Max(duration, TreeSupportTileMiningDurationSeconds);
+
+            return duration;
+        }
+
         private float GetMiningDuration(WorldObjectMiningDefinition miningDefinition)
         {
             return WorldObjectMining.GetMiningDuration(
@@ -616,6 +629,21 @@ namespace Nyvorn.Source.Game.States
         private bool HasForegroundPlacementBlocker(Rectangle bounds)
         {
             return SandSystem != null && SandSystem.HasSandInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        }
+
+        private bool IsTreeSupportTile(Point tile)
+        {
+            return TryGetSupportedTree(tile, out _);
+        }
+
+        private bool TryGetSupportedTree(Point tile, out TreeInstance tree)
+        {
+            Point above = new Point(tile.X, tile.Y - 1);
+            if (WorldMap.InBounds(above.X, above.Y) && WorldMap.TryGetTreeAtTile(above, out tree))
+                return true;
+
+            tree = null;
+            return false;
         }
 
         private bool HasPixelSandInHarvestCell(Point tile)

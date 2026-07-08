@@ -24,12 +24,19 @@ namespace Nyvorn.Source.Game.States
         public bool DrawBelow => false;
         public bool BlockInputBelow => true;
 
+        private const int PlanetNameMaxLength = 18;
+        private const int SeedTextMaxLength = 32;
+        private const double KeyRepeatInitialDelaySeconds = 0.34;
+        private const double KeyRepeatIntervalSeconds = 0.045;
+        private const float CaretBlinkIntervalSeconds = 0.48f;
+
         private readonly GraphicsDevice graphicsDevice;
         private readonly ContentManager content;
         private readonly StateMachine stateMachine;
         private readonly SpriteFont font;
         private readonly Texture2D pixel;
         private readonly PlanetSaveService saveService = new();
+        private readonly Dictionary<Keys, double> nextRepeatByKey = new();
 
         private KeyboardState previousKeyboard;
         private MouseState previousMouse;
@@ -38,6 +45,10 @@ namespace Nyvorn.Source.Game.States
         private string planetName = "Elyra";
         private string seedText = SeedHash.CreateRandomSeedText();
         private WorldSizePreset selectedPreset = WorldSizePreset.Medium;
+        private int planetNameCaretIndex;
+        private int seedCaretIndex;
+        private double textEditClockSeconds;
+        private float caretBlinkTimer;
 
         public WorldCreationState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
         {
@@ -47,6 +58,8 @@ namespace Nyvorn.Source.Game.States
             font = content.Load<SpriteFont>("ui/UIFont");
             pixel = new Texture2D(graphicsDevice, 1, 1);
             pixel.SetData(new[] { Color.White });
+            planetNameCaretIndex = planetName.Length;
+            seedCaretIndex = seedText.Length;
         }
 
         public void OnEnter()
@@ -65,15 +78,19 @@ namespace Nyvorn.Source.Game.States
             MouseState mouse = Mouse.GetState();
             bool leftClickPressed = mouse.LeftButton == ButtonState.Pressed &&
                                     previousMouse.LeftButton == ButtonState.Released;
+            float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            textEditClockSeconds += gameTime.ElapsedGameTime.TotalSeconds;
+            caretBlinkTimer += dt;
+            RemoveReleasedRepeatKeys(keyboard);
 
             if ((keyboard.IsKeyDown(Keys.Tab) && !previousKeyboard.IsKeyDown(Keys.Tab)) ||
                 (keyboard.IsKeyDown(Keys.Down) && !previousKeyboard.IsKeyDown(Keys.Down)))
             {
-                focusField = NextFocus(focusField);
+                SetFocus(NextFocus(focusField));
             }
             else if (keyboard.IsKeyDown(Keys.Up) && !previousKeyboard.IsKeyDown(Keys.Up))
             {
-                focusField = PreviousFocus(focusField);
+                SetFocus(PreviousFocus(focusField));
             }
             else if (keyboard.IsKeyDown(Keys.Escape) && !previousKeyboard.IsKeyDown(Keys.Escape))
             {
@@ -124,7 +141,13 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, wrappedSubtitle, titlePos + new Vector2(0f, 26f), new Color(168, 230, 207));
 
             DrawLabeledField(spriteBatch, "Planeta", GetPlanetNameBounds(), planetName, focusField == FocusField.PlanetName);
-            DrawLabeledField(spriteBatch, "Seed", GetSeedBounds(), string.IsNullOrWhiteSpace(seedText) ? "Aleatoria" : seedText, focusField == FocusField.Seed);
+            DrawLabeledField(
+                spriteBatch,
+                "Seed",
+                GetSeedBounds(),
+                seedText,
+                focusField == FocusField.Seed,
+                placeholder: "Aleatoria");
             DrawPresetSelector(spriteBatch);
             DrawCreateButton(spriteBatch);
             DrawPresetDescription(spriteBatch);
@@ -136,13 +159,17 @@ namespace Nyvorn.Source.Game.States
         {
             if (GetPlanetNameBounds().Contains(mousePosition))
             {
-                focusField = FocusField.PlanetName;
+                SetFocus(FocusField.PlanetName);
+                planetNameCaretIndex = GetCaretIndexFromMouse(planetName, GetPlanetNameBounds(), mousePosition);
+                ResetCaretBlink();
                 return;
             }
 
             if (GetSeedBounds().Contains(mousePosition))
             {
-                focusField = FocusField.Seed;
+                SetFocus(FocusField.Seed);
+                seedCaretIndex = GetCaretIndexFromMouse(seedText, GetSeedBounds(), mousePosition);
+                ResetCaretBlink();
                 return;
             }
 
@@ -153,12 +180,12 @@ namespace Nyvorn.Source.Game.States
                     continue;
 
                 selectedPreset = preset;
-                focusField = FocusField.SizePreset;
+                SetFocus(FocusField.SizePreset);
                 return;
             }
 
             if (GetCreateButtonBounds().Contains(mousePosition))
-                focusField = FocusField.CreateButton;
+                SetFocus(FocusField.CreateButton);
         }
 
         private void HandleTextInput(KeyboardState keyboard)
@@ -168,33 +195,30 @@ namespace Nyvorn.Source.Game.States
 
             foreach (Keys key in keyboard.GetPressedKeys())
             {
-                if (previousKeyboard.IsKeyDown(key))
+                if (!ShouldTriggerKey(key, keyboard))
                     continue;
 
-                if (key == Keys.Back)
-                {
-                    if (focusField == FocusField.PlanetName && planetName.Length > 0)
-                        planetName = planetName[..^1];
-                    else if (focusField == FocusField.Seed && seedText.Length > 0)
-                        seedText = seedText[..^1];
-
+                if (HandleTextCommand(key))
                     continue;
-                }
 
                 if (focusField == FocusField.PlanetName && TryGetPlanetCharacter(keyboard, key, out char planetChar))
                 {
-                    if (planetName.Length < 18)
-                        planetName += planetChar;
+                    InsertActiveTextCharacter(planetChar, PlanetNameMaxLength);
                 }
                 else if (focusField == FocusField.Seed && TryGetSeedCharacter(keyboard, key, out char seedChar))
                 {
-                    if (seedText.Length < 32)
-                        seedText += seedChar;
+                    InsertActiveTextCharacter(seedChar, SeedTextMaxLength);
                 }
             }
         }
 
-        private void DrawLabeledField(SpriteBatch spriteBatch, string label, Rectangle bounds, string value, bool isFocused)
+        private void DrawLabeledField(
+            SpriteBatch spriteBatch,
+            string label,
+            Rectangle bounds,
+            string value,
+            bool isFocused,
+            string placeholder = null)
         {
             Color border = isFocused ? new Color(255, 241, 193) : new Color(143, 211, 255);
             Color fill = isFocused ? new Color(34, 61, 69) : new Color(28, 50, 58);
@@ -203,8 +227,230 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, label, labelPos, border);
             spriteBatch.Draw(pixel, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), border * 0.75f);
             spriteBatch.Draw(pixel, bounds, fill);
-            string wrappedValue = TextLayout.WrapText(font, value, bounds.Width - 24);
-            spriteBatch.DrawString(font, wrappedValue, new Vector2(bounds.X + 12, bounds.Y + 10), Color.White);
+
+            bool isPlaceholder = string.IsNullOrEmpty(value) && !string.IsNullOrWhiteSpace(placeholder);
+            string displayValue = isPlaceholder ? placeholder : value;
+            Color textColor = isPlaceholder ? new Color(143, 211, 255, 120) : Color.White;
+            Vector2 textPos = new Vector2(bounds.X + 12, bounds.Y + 10);
+
+            spriteBatch.DrawString(font, displayValue, textPos, textColor);
+
+            if (isFocused && IsCaretVisible())
+                DrawTextCaret(spriteBatch, bounds, textPos, value, GetActiveCaretIndex());
+        }
+
+        private void DrawTextCaret(SpriteBatch spriteBatch, Rectangle bounds, Vector2 textPos, string value, int caretIndex)
+        {
+            int clampedCaret = Math.Clamp(caretIndex, 0, value.Length);
+            string beforeCaret = clampedCaret <= 0 ? string.Empty : value[..clampedCaret];
+            float caretX = textPos.X + font.MeasureString(beforeCaret).X;
+            int x = Math.Clamp((int)MathF.Round(caretX), bounds.X + 8, bounds.Right - 10);
+            int y = (int)MathF.Round(textPos.Y + 2f);
+            int height = Math.Min(bounds.Height - 18, Math.Max(12, font.LineSpacing - 6));
+
+            spriteBatch.Draw(pixel, new Rectangle(x, y, 2, height), Color.White);
+        }
+
+        private bool HandleTextCommand(Keys key)
+        {
+            switch (key)
+            {
+                case Keys.Back:
+                    RemoveActiveTextBeforeCaret();
+                    return true;
+
+                case Keys.Delete:
+                    RemoveActiveTextAtCaret();
+                    return true;
+
+                case Keys.Left:
+                    MoveActiveCaret(-1);
+                    return true;
+
+                case Keys.Right:
+                    MoveActiveCaret(1);
+                    return true;
+
+                case Keys.Home:
+                    SetActiveCaretIndex(0);
+                    ResetCaretBlink();
+                    return true;
+
+                case Keys.End:
+                    SetActiveCaretIndex(GetActiveText().Length);
+                    ResetCaretBlink();
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private void InsertActiveTextCharacter(char character, int maxLength)
+        {
+            string value = GetActiveText();
+            if (value.Length >= maxLength)
+                return;
+
+            int caretIndex = Math.Clamp(GetActiveCaretIndex(), 0, value.Length);
+            string nextValue = value.Insert(caretIndex, character.ToString());
+            SetActiveText(nextValue);
+            SetActiveCaretIndex(caretIndex + 1);
+            ResetCaretBlink();
+        }
+
+        private void RemoveActiveTextBeforeCaret()
+        {
+            string value = GetActiveText();
+            int caretIndex = Math.Clamp(GetActiveCaretIndex(), 0, value.Length);
+            if (caretIndex <= 0)
+                return;
+
+            string nextValue = value.Remove(caretIndex - 1, 1);
+            SetActiveText(nextValue);
+            SetActiveCaretIndex(caretIndex - 1);
+            ResetCaretBlink();
+        }
+
+        private void RemoveActiveTextAtCaret()
+        {
+            string value = GetActiveText();
+            int caretIndex = Math.Clamp(GetActiveCaretIndex(), 0, value.Length);
+            if (caretIndex >= value.Length)
+                return;
+
+            string nextValue = value.Remove(caretIndex, 1);
+            SetActiveText(nextValue);
+            SetActiveCaretIndex(caretIndex);
+            ResetCaretBlink();
+        }
+
+        private void MoveActiveCaret(int direction)
+        {
+            SetActiveCaretIndex(GetActiveCaretIndex() + direction);
+            ResetCaretBlink();
+        }
+
+        private string GetActiveText()
+        {
+            return focusField == FocusField.Seed ? seedText : planetName;
+        }
+
+        private void SetActiveText(string value)
+        {
+            if (focusField == FocusField.Seed)
+                seedText = value;
+            else
+                planetName = value;
+        }
+
+        private int GetActiveCaretIndex()
+        {
+            return focusField == FocusField.Seed ? seedCaretIndex : planetNameCaretIndex;
+        }
+
+        private void SetActiveCaretIndex(int index)
+        {
+            if (focusField == FocusField.Seed)
+                seedCaretIndex = Math.Clamp(index, 0, seedText.Length);
+            else
+                planetNameCaretIndex = Math.Clamp(index, 0, planetName.Length);
+        }
+
+        private int GetCaretIndexFromMouse(string value, Rectangle bounds, Point mousePosition)
+        {
+            if (string.IsNullOrEmpty(value))
+                return 0;
+
+            float localX = Math.Max(0f, mousePosition.X - (bounds.X + 12f));
+            int bestIndex = 0;
+            float bestDistance = Math.Abs(localX);
+
+            for (int i = 1; i <= value.Length; i++)
+            {
+                float width = font.MeasureString(value[..i]).X;
+                float distance = Math.Abs(localX - width);
+                if (distance >= bestDistance)
+                    continue;
+
+                bestDistance = distance;
+                bestIndex = i;
+            }
+
+            return bestIndex;
+        }
+
+        private bool ShouldTriggerKey(Keys key, KeyboardState keyboard)
+        {
+            if (!keyboard.IsKeyDown(key))
+                return false;
+
+            if (!previousKeyboard.IsKeyDown(key))
+            {
+                nextRepeatByKey[key] = textEditClockSeconds + KeyRepeatInitialDelaySeconds;
+                return true;
+            }
+
+            if (!nextRepeatByKey.TryGetValue(key, out double nextRepeatAt))
+            {
+                nextRepeatByKey[key] = textEditClockSeconds + KeyRepeatInitialDelaySeconds;
+                return false;
+            }
+
+            if (textEditClockSeconds < nextRepeatAt)
+                return false;
+
+            nextRepeatByKey[key] = textEditClockSeconds + KeyRepeatIntervalSeconds;
+            return true;
+        }
+
+        private void RemoveReleasedRepeatKeys(KeyboardState keyboard)
+        {
+            if (nextRepeatByKey.Count == 0)
+                return;
+
+            List<Keys> releasedKeys = null;
+            foreach (KeyValuePair<Keys, double> entry in nextRepeatByKey)
+            {
+                if (keyboard.IsKeyDown(entry.Key))
+                    continue;
+
+                releasedKeys ??= new List<Keys>();
+                releasedKeys.Add(entry.Key);
+            }
+
+            if (releasedKeys == null)
+                return;
+
+            for (int i = 0; i < releasedKeys.Count; i++)
+                nextRepeatByKey.Remove(releasedKeys[i]);
+        }
+
+        private void SetFocus(FocusField nextFocus)
+        {
+            if (focusField == nextFocus)
+                return;
+
+            focusField = nextFocus;
+            nextRepeatByKey.Clear();
+            ClampTextCarets();
+            ResetCaretBlink();
+        }
+
+        private void ClampTextCarets()
+        {
+            planetNameCaretIndex = Math.Clamp(planetNameCaretIndex, 0, planetName.Length);
+            seedCaretIndex = Math.Clamp(seedCaretIndex, 0, seedText.Length);
+        }
+
+        private bool IsCaretVisible()
+        {
+            return (caretBlinkTimer % (CaretBlinkIntervalSeconds * 2f)) < CaretBlinkIntervalSeconds;
+        }
+
+        private void ResetCaretBlink()
+        {
+            caretBlinkTimer = 0f;
         }
 
         private void DrawPresetSelector(SpriteBatch spriteBatch)

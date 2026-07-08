@@ -11,32 +11,32 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         private readonly Texture2D enemyTexture;
         private readonly Func<Vector2> spawnPositionProvider;
         private readonly float respawnDelay;
+        private readonly bool spawningEnabled;
 
         private float respawnTimer = -1f;
 
-        public EnemyRespawnController(Texture2D enemyTexture, Vector2 spawnPosition, EnemyConfig enemyConfig = null, float respawnDelay = 3f)
-            : this(enemyTexture, () => spawnPosition, enemyConfig, respawnDelay)
-        {
-        }
-
-        public EnemyRespawnController(Texture2D enemyTexture, Func<Vector2> spawnPositionProvider, EnemyConfig enemyConfig = null, float respawnDelay = 3f)
+        public EnemyRespawnController(
+            Texture2D enemyTexture,
+            Func<Vector2> spawnPositionProvider,
+            EnemyConfig enemyConfig = null,
+            float respawnDelay = 3f,
+            bool spawningEnabled = true)
         {
             this.enemyConfig = enemyConfig ?? EnemyConfig.Default;
             this.enemyTexture = enemyTexture;
             this.spawnPositionProvider = spawnPositionProvider ?? throw new ArgumentNullException(nameof(spawnPositionProvider));
             this.respawnDelay = respawnDelay;
-        }
-
-        public void SpawnInitial(ICollection<Enemy> enemies)
-        {
-            if (enemies.Count > 0)
-                return;
-
-            enemies.Add(CreateEnemy());
+            this.spawningEnabled = spawningEnabled;
         }
 
         public void Update(float dt, ICollection<Enemy> enemies, float delayMultiplier = 1f)
         {
+            if (!spawningEnabled)
+            {
+                respawnTimer = -1f;
+                return;
+            }
+
             if (enemies.Count == 0)
             {
                 if (respawnTimer < 0f)

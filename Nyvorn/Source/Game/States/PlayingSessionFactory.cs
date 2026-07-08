@@ -429,7 +429,6 @@ namespace Nyvorn.Source.Game.States
             int worldCenterTileX = build.WorldMap.Width / 2;
             build.PlayerSpawnTileX = worldCenterTileX;
             build.ItemSpawnTileX = WrapTileX(build.PlayerSpawnTileX + 5, build.WorldMap.Width);
-            build.EnemySpawnTileX = WrapTileX(build.PlayerSpawnTileX + 16, build.WorldMap.Width);
 
             build.WorldMap.ResetTrackedTileChanges();
             build.WorldMap.ApplyPersistentTileChanges(tileChanges);
@@ -603,15 +602,14 @@ namespace Nyvorn.Source.Game.States
             EnemyRespawnController enemyRespawnController = new(
                 build.EnemyTexture,
                 () => ResolveEnemySpawnNearPlayer(build.WorldMap, player.Position),
-                build.EnemyConfig);
-            enemyRespawnController.SpawnInitial(enemies);
+                build.EnemyConfig,
+                spawningEnabled: false);
 
             Hotbar hotbar = new(9);
             Inventory inventory = new(10);
             int selectedHotbarIndex = 0;
             ApplyPlayerInventory(build.PlayerSaveData, hotbar, inventory, ref selectedHotbarIndex);
-            GiveStarterSandBlocks(build.PlayerSaveData, hotbar, inventory);
-            GiveStarterPickaxe(build.PlayerSaveData, hotbar, inventory);
+            GiveAndEquipStarterWoodAxe(hotbar, inventory, ref selectedHotbarIndex);
             List<WorldItem> worldItems = CreateWorldItems(build, pickaxeSpawn);
             Camera2D camera = CreateCamera();
             SessionRuntimeContext runtimeContext = new SessionRuntimeContext
@@ -852,31 +850,138 @@ namespace Nyvorn.Source.Game.States
             return debugPixel;
         }
 
-        private static void GiveStarterSandBlocks(PlayerSaveData playerSaveData, Hotbar hotbar, Inventory inventory)
+        private static void GiveAndEquipStarterWoodAxe(Hotbar hotbar, Inventory inventory, ref int selectedHotbarIndex)
         {
-            if (hotbar.ContainsItem(ItemId.SandBlock) || inventory.ContainsItem(ItemId.SandBlock))
+            if (hotbar == null || inventory == null)
                 return;
 
-            ItemDefinition sandDefinition = ItemDefinitions.Get(ItemId.SandBlock);
-            if (!hotbar.TryAdd(sandDefinition, 100))
-                inventory.TryAdd(sandDefinition, 100);
-        }
-
-        private static void GiveStarterPickaxe(PlayerSaveData playerSaveData, Hotbar hotbar, Inventory inventory)
-        {
-            if (HasAnyPickaxe(hotbar) || HasAnyPickaxe(inventory))
+            if (TryFindItemSlot(hotbar, ItemId.WoodAxe, out int hotbarIndex))
+            {
+                selectedHotbarIndex = hotbarIndex;
                 return;
+            }
 
-            ItemDefinition pickaxeDefinition = ItemDefinitions.Get(ItemId.WoodPickaxe);
-            if (!hotbar.TryAdd(pickaxeDefinition, 1))
-                inventory.TryAdd(pickaxeDefinition, 1);
+            if (TryFindItemSlot(inventory, ItemId.WoodAxe, out int inventoryIndex) &&
+                TryMoveInventorySlotToHotbar(inventory, inventoryIndex, hotbar, selectedHotbarIndex, out int movedHotbarIndex))
+            {
+                selectedHotbarIndex = movedHotbarIndex;
+                return;
+            }
+
+            ItemDefinition axeDefinition = ItemDefinitions.Get(ItemId.WoodAxe);
+            if (TryPlaceItemInHotbar(axeDefinition, hotbar, inventory, selectedHotbarIndex, out int placedHotbarIndex))
+                selectedHotbarIndex = placedHotbarIndex;
+            else
+                inventory.TryAdd(axeDefinition, 1);
         }
 
-        private static bool HasAnyPickaxe(Inventory inventory)
+        private static bool TryFindItemSlot(Inventory inventory, ItemId itemId, out int slotIndex)
         {
-            return inventory.ContainsItem(ItemId.WoodPickaxe) ||
-                   inventory.ContainsItem(ItemId.StonePickaxe) ||
-                   inventory.ContainsItem(ItemId.IronPickaxe);
+            for (int i = 0; i < inventory.Capacity; i++)
+            {
+                InventorySlot slot = inventory.GetSlot(i);
+                if (!slot.IsEmpty && slot.ItemId == itemId)
+                {
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            slotIndex = -1;
+            return false;
+        }
+
+        private static bool TryFindEmptySlot(Inventory inventory, out int slotIndex)
+        {
+            for (int i = 0; i < inventory.Capacity; i++)
+            {
+                if (inventory.GetSlot(i).IsEmpty)
+                {
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            slotIndex = -1;
+            return false;
+        }
+
+        private static bool TryMoveInventorySlotToHotbar(
+            Inventory inventory,
+            int inventoryIndex,
+            Hotbar hotbar,
+            int preferredHotbarIndex,
+            out int hotbarIndex)
+        {
+            InventorySlot sourceSlot = inventory.GetSlot(inventoryIndex);
+            if (sourceSlot.IsEmpty)
+            {
+                hotbarIndex = -1;
+                return false;
+            }
+
+            if (!TryResolveHotbarTarget(hotbar, inventory, preferredHotbarIndex, out hotbarIndex))
+                return false;
+
+            hotbar.GetSlot(hotbarIndex).CopyFrom(sourceSlot);
+            sourceSlot.Clear();
+            return true;
+        }
+
+        private static bool TryPlaceItemInHotbar(
+            ItemDefinition definition,
+            Hotbar hotbar,
+            Inventory inventory,
+            int preferredHotbarIndex,
+            out int hotbarIndex)
+        {
+            if (!TryResolveHotbarTarget(hotbar, inventory, preferredHotbarIndex, out hotbarIndex))
+                return false;
+
+            hotbar.GetSlot(hotbarIndex).Set(definition.Id, 1);
+            return true;
+        }
+
+        private static bool TryResolveHotbarTarget(
+            Hotbar hotbar,
+            Inventory inventory,
+            int preferredHotbarIndex,
+            out int hotbarIndex)
+        {
+            int preferredIndex = Math.Clamp(preferredHotbarIndex, 0, hotbar.Capacity - 1);
+            if (hotbar.GetSlot(preferredIndex).IsEmpty)
+            {
+                hotbarIndex = preferredIndex;
+                return true;
+            }
+
+            if (TryFindEmptySlot(hotbar, out hotbarIndex))
+                return true;
+
+            InventorySlot preferredSlot = hotbar.GetSlot(preferredIndex);
+            if (TryMoveSlotToInventory(preferredSlot, inventory))
+            {
+                hotbarIndex = preferredIndex;
+                return true;
+            }
+
+            hotbarIndex = -1;
+            return false;
+        }
+
+        private static bool TryMoveSlotToInventory(InventorySlot sourceSlot, Inventory inventory)
+        {
+            if (sourceSlot == null || sourceSlot.IsEmpty)
+                return true;
+
+            if (!ItemDefinitions.TryGet(sourceSlot.ItemId, out ItemDefinition definition))
+                return false;
+
+            if (!inventory.TryAdd(definition, sourceSlot.Quantity))
+                return false;
+
+            sourceSlot.Clear();
+            return true;
         }
 
         private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
@@ -1080,7 +1185,6 @@ namespace Nyvorn.Source.Game.States
             public WorldGenProgressReporter GenerationProgress { get; set; }
             public int PlayerSpawnTileX { get; set; }
             public int ItemSpawnTileX { get; set; }
-            public int EnemySpawnTileX { get; set; }
             public TissueNetwork TissueNetwork { get; set; }
             public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }

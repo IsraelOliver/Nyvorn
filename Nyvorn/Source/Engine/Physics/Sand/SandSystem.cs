@@ -16,6 +16,7 @@ namespace Nyvorn.Source.Engine.Physics.Sand
         private readonly Dictionary<int, SortedSet<int>> occupiedSandRows = new();
         private readonly Dictionary<int, SortedSet<int>> occupiedSandColumns = new();
         private readonly HashSet<long> activeSandKeys = new();
+        private readonly HashSet<long> awakenedOpenSandChunks = new();
 
         private readonly List<Point> activeSand = new();
 
@@ -104,6 +105,31 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             return added;
         }
 
+        public void WakeOpenSandInChunk(int chunkX, int chunkY)
+        {
+            if (worldMap.ChunkCountX <= 0 || worldMap.ChunkCountY <= 0)
+                return;
+
+            if (chunkY < 0 || chunkY >= worldMap.ChunkCountY)
+                return;
+
+            int wrappedChunkX = worldMap.WrapChunkX(chunkX);
+            long chunkKey = CreatePixelKey(wrappedChunkX, chunkY);
+            if (!awakenedOpenSandChunks.Add(chunkKey))
+                return;
+
+            int startTileX = wrappedChunkX * worldMap.ChunkTileSize;
+            int startTileY = chunkY * worldMap.ChunkTileSize;
+            int tileWidth = Math.Min(worldMap.ChunkTileSize, worldMap.Width - startTileX);
+            int tileHeight = Math.Min(worldMap.ChunkTileSize, worldMap.Height - startTileY);
+
+            WakeOpenSandInRectangle(
+                startTileX * TileSize,
+                startTileY * TileSize,
+                tileWidth * TileSize,
+                tileHeight * TileSize);
+        }
+
         private bool CanPlaceGeneratedSandAt(int pixelX, int pixelY)
         {
             if (!IsInBounds(pixelX, pixelY))
@@ -143,6 +169,51 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                         AddActiveSand(x, y);
                     }
                 }
+            }
+        }
+
+        private void WakeOpenSandInRectangle(int pixelX, int pixelY, int width, int height)
+        {
+            if (width <= 0 || height <= 0 || Width <= 0 || Height <= 0)
+                return;
+
+            int minY = Math.Max(0, pixelY);
+            int maxY = Math.Min(Height - 1, pixelY + height - 1);
+            if (minY > maxY)
+                return;
+
+            int rawMinX = pixelX;
+            int rawMaxX = pixelX + width - 1;
+            for (int y = minY; y <= maxY; y++)
+            {
+                if (!occupiedSandRows.TryGetValue(y, out SortedSet<int> row) || row.Count == 0)
+                    continue;
+
+                WakeOpenSandInRow(row, y, rawMinX, rawMaxX);
+            }
+        }
+
+        private void WakeOpenSandInRow(SortedSet<int> row, int y, int rawMinX, int rawMaxX)
+        {
+            int currentRawStartX = rawMinX;
+            while (currentRawStartX <= rawMaxX)
+            {
+                int wrappedStartX = WrapPixelX(currentRawStartX);
+                int segmentMaxLength = Width - wrappedStartX;
+                int currentRawEndX = Math.Min(rawMaxX, currentRawStartX + segmentMaxLength - 1);
+                int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
+
+                foreach (int x in row.GetViewBetween(wrappedStartX, wrappedEndX))
+                {
+                    if (CanMoveTo(x, y + 1) ||
+                        CanMoveTo(x - 1, y + 1) ||
+                        CanMoveTo(x + 1, y + 1))
+                    {
+                        AddActiveSand(x, y);
+                    }
+                }
+
+                currentRawStartX = currentRawEndX + 1;
             }
         }
 
@@ -259,6 +330,7 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             occupiedSandColumns.Clear();
             activeSand.Clear();
             activeSandKeys.Clear();
+            awakenedOpenSandChunks.Clear();
 
             if (snapshot == null || snapshot.Length == 0)
                 return;

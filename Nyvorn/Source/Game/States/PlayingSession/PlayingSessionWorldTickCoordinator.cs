@@ -81,8 +81,21 @@ namespace Nyvorn.Source.Game.States
         private void OnFastTick()
         {
             LiquidSystem?.SetActiveSimulationChunks(ViewCoordinator.ActiveSimulationChunks);
+            WakeOpenSandInActiveChunks();
             SandSystem?.TickFast();
             TickLiquidSystem();
+        }
+
+        private void WakeOpenSandInActiveChunks()
+        {
+            if (SandSystem == null)
+                return;
+
+            for (int i = 0; i < ViewCoordinator.ActiveSimulationChunks.Count; i++)
+            {
+                WorldChunkCoord chunk = ViewCoordinator.ActiveSimulationChunks[i];
+                SandSystem.WakeOpenSandInChunk(chunk.X, chunk.Y);
+            }
         }
 
         private void TickLiquidSystem()
