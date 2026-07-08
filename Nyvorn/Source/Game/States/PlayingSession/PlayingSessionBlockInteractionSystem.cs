@@ -21,6 +21,8 @@ namespace Nyvorn.Source.Game.States
         private const float MinimumMiningDurationSeconds = 0.15f;
         private const float TreeChopDurationSeconds = 3f;
         private const float AxeTreeChopStepSeconds = 0.3f;
+        private const int PixelSandHarvestSize = 8;
+        private const int PixelSandHarvestPixels = PixelSandHarvestSize * PixelSandHarvestSize;
 
         private Point miningTile = new Point(int.MinValue, int.MinValue);
         private TileType miningTileType = TileType.Empty;
@@ -71,7 +73,7 @@ namespace Nyvorn.Source.Game.States
             HoveredTileState = WorldTilePreviewState.Hidden;
 
             InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (!constructionMode && !selectedSlot.IsEmpty && (selectedSlot.ItemId == ItemId.SandBlock || selectedSlot.ItemId == ItemId.Workbench || selectedSlot.ItemId == ItemId.WoodDoor))
+            if (!constructionMode && !selectedSlot.IsEmpty && (selectedSlot.ItemId == ItemId.Sand || selectedSlot.ItemId == ItemId.Workbench || selectedSlot.ItemId == ItemId.WoodDoor))
                 return;
 
             Point tile = WorldMap.WorldToTile(mouseWorld);
@@ -116,6 +118,15 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (CanUseSelectedSlotForMining(selectedSlot) && HasPixelSandInHarvestCell(tile))
+            {
+                HoveredTileBounds = GetPixelSandHarvestBounds(tile);
+                HoveredTileState = inBreakRange && Player.CanBreakTile(TileType.Sand)
+                    ? WorldTilePreviewState.BreakValid
+                    : WorldTilePreviewState.BreakInvalid;
+                return;
+            }
+
             TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
             if (!WorldMap.IsSolid(targetTile))
                 return;
@@ -140,7 +151,7 @@ namespace Nyvorn.Source.Game.States
             if (selectedSlot.IsEmpty)
                 return;
 
-            if (selectedSlot.ItemId == ItemId.SandBlock)
+            if (selectedSlot.ItemId == ItemId.Sand)
             {
                 TryPlaceSandPixel(selectedSlot, mouseWorld);
                 return;
@@ -311,6 +322,9 @@ namespace Nyvorn.Source.Game.States
             if (TryMineTargetWorldObject(dt, toolItemId, tile))
                 return;
 
+            if (TryMinePixelSand(dt, toolItemId, tile))
+                return;
+
             TileType targetTile = WorldMap.GetTile(tile.X, tile.Y);
             TileMiningDefinition miningDefinition = TileMiningDefinitions.Get(targetTile);
             if (!miningDefinition.IsMineable || !Player.CanBreakTile(targetTile))
@@ -359,6 +373,60 @@ namespace Nyvorn.Source.Game.States
                 tileCenter,
                 WorldItemRuntimeSystem));
             ResetMiningProgress();
+        }
+
+        private bool TryMinePixelSand(float dt, ItemId toolItemId, Point tile)
+        {
+            if (!HasPixelSandInHarvestCell(tile))
+                return false;
+
+            Rectangle harvestBounds = GetPixelSandHarvestBounds(tile);
+            Vector2 harvestCenter = new Vector2(
+                harvestBounds.X + (harvestBounds.Width * 0.5f),
+                harvestBounds.Y + (harvestBounds.Height * 0.5f));
+
+            if (!Player.CanBreakTile(TileType.Sand) ||
+                Vector2.Distance(Player.Position, harvestCenter) > Player.WorldBreakRange)
+            {
+                ResetMiningProgress();
+                return true;
+            }
+
+            if (miningWorldObject ||
+                miningTile != tile ||
+                miningTileType != TileType.Sand ||
+                miningToolItemId != toolItemId)
+            {
+                miningWorldObject = false;
+                miningTile = tile;
+                miningTileType = TileType.Sand;
+                miningToolItemId = toolItemId;
+                miningProgressSeconds = 0f;
+            }
+
+            TileMiningDefinition miningDefinition = TileMiningDefinitions.Get(TileType.Sand);
+            MiningDurationSeconds = GetMiningDuration(miningDefinition);
+            miningProgressSeconds += dt;
+            if (miningProgressSeconds < MiningDurationSeconds)
+                return true;
+
+            int removedPixels = SandSystem.RemoveSandInRectangle(
+                harvestBounds.X,
+                harvestBounds.Y,
+                harvestBounds.Width,
+                harvestBounds.Height,
+                PixelSandHarvestPixels);
+
+            if (removedPixels > 0)
+            {
+                int storedPixels = WorldItemRuntimeSystem.StoreItem(ItemId.Sand, removedPixels, preferInventory: false);
+                int droppedPixels = removedPixels - storedPixels;
+                if (droppedPixels > 0)
+                    WorldItemRuntimeSystem.SpawnItemDrops(ItemId.Sand, droppedPixels, harvestCenter);
+            }
+
+            ResetMiningProgress();
+            return true;
         }
 
         private bool TryMineTargetWorldObject(float dt, ItemId toolItemId, Point tile)
@@ -445,7 +513,7 @@ namespace Nyvorn.Source.Game.States
             if (slot.IsEmpty)
                 return true;
 
-            if (slot.ItemId == ItemId.SandBlock || slot.ItemId == ItemId.Workbench || slot.ItemId == ItemId.WoodDoor)
+            if (slot.ItemId == ItemId.Sand || slot.ItemId == ItemId.Workbench || slot.ItemId == ItemId.WoodDoor)
                 return false;
 
             return !TileItemMapper.TryGetTileType(slot.ItemId, out _);
@@ -548,6 +616,29 @@ namespace Nyvorn.Source.Game.States
         private bool HasForegroundPlacementBlocker(Rectangle bounds)
         {
             return SandSystem != null && SandSystem.HasSandInRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        }
+
+        private bool HasPixelSandInHarvestCell(Point tile)
+        {
+            if (SandSystem == null || !WorldMap.InBounds(tile.X, tile.Y))
+                return false;
+
+            Rectangle harvestBounds = GetPixelSandHarvestBounds(tile);
+            return SandSystem.HasSandInRectangle(
+                harvestBounds.X,
+                harvestBounds.Y,
+                harvestBounds.Width,
+                harvestBounds.Height);
+        }
+
+        private Rectangle GetPixelSandHarvestBounds(Point tile)
+        {
+            Rectangle tileBounds = WorldMap.GetTileBounds(tile.X, tile.Y);
+            return new Rectangle(
+                tileBounds.X,
+                tileBounds.Y,
+                System.Math.Min(PixelSandHarvestSize, tileBounds.Width),
+                System.Math.Min(PixelSandHarvestSize, tileBounds.Height));
         }
 
         private int WrapPixelX(int pixelX)

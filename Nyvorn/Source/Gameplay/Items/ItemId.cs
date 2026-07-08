@@ -12,6 +12,7 @@ namespace Nyvorn.Source.Gameplay.Items
         WoodPickaxe = 8,
         StonePickaxe = 9,
         WoodDoor = 10,
-        WoodAxe = 11
+        WoodAxe = 11,
+        Sand = 12
     }
 }

@@ -33,8 +33,10 @@ namespace Nyvorn.Source.Game.States
         private const float CameraFocusLerpSpeed = 2.8f;
         private const float CameraReturnFocusLerpSpeed = 3.6f;
         private const float CameraReturnSnapDistance = 1.25f;
-        private static readonly Color SandPixelColor = new Color(214, 196, 150);
-        private static readonly Color SandTopEdgeColor = new Color(168, 145, 102);
+        private const int SandHighlightCellSize = 17;
+        private static readonly Color SandPixelColor = new Color(252, 222, 156);
+        private static readonly Color SandTopEdgeColor = new Color(207, 179, 120);
+        private static readonly Color SandHighlightPixelColor = new Color(255, 252, 232);
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
         private static readonly Vector4 WaterShaderColor = new Color(34, 128, 205, 199).ToVector4();
 
@@ -342,7 +344,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawMinimap(SpriteBatch spriteBatch, int screenWidth, int screenHeight, bool tissueMode)
         {
-            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, LiquidSystem, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
+            WorldMinimapRenderer.Draw(spriteBatch, WorldMap, LiquidSystem, SandSystem, TissueNetwork, Camera, Player.Position, screenWidth, screenHeight, tissueMode, ActivatedTissueHubKeys);
         }
 
         public void DrawInventory(SpriteBatch spriteBatch, Hotbar hotbar, Inventory inventory, int selectedHotbarIndex, int screenWidth, int screenHeight)
@@ -395,6 +397,7 @@ namespace Nyvorn.Source.Game.States
             int endPixelY = System.Math.Min(SandSystem.Height - 1, (int)System.MathF.Ceiling(Camera.Position.Y + viewHeight));
 
             DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandPixelColor, topEdgesOnly: false);
+            DrawWrappedSandHighlights(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY);
             DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, topEdgesOnly: true);
         }
 
@@ -439,6 +442,80 @@ namespace Nyvorn.Source.Game.States
                 }
 
                 currentRawStartX = currentRawEndX + 1;
+            }
+        }
+
+        private void DrawWrappedSandHighlights(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY)
+        {
+            int worldWidth = SandSystem.Width;
+            if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
+                return;
+
+            int currentRawStartX = rawStartX;
+            while (currentRawStartX <= rawEndX)
+            {
+                int wrappedStartX = WrapPixelX(currentRawStartX);
+                int segmentMaxLength = worldWidth - wrappedStartX;
+                int currentRawEndX = System.Math.Min(rawEndX, currentRawStartX + segmentMaxLength - 1);
+                int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
+                int drawOffsetX = currentRawStartX - wrappedStartX;
+
+                DrawSandHighlightRange(spriteBatch, wrappedStartX, wrappedEndX, startPixelY, endPixelY, drawOffsetX);
+
+                currentRawStartX = currentRawEndX + 1;
+            }
+        }
+
+        private void DrawSandHighlightRange(SpriteBatch spriteBatch, int minPixelX, int maxPixelX, int minPixelY, int maxPixelY, int drawOffsetX)
+        {
+            int minCellX = minPixelX / SandHighlightCellSize;
+            int maxCellX = maxPixelX / SandHighlightCellSize;
+            int minCellY = minPixelY / SandHighlightCellSize;
+            int maxCellY = maxPixelY / SandHighlightCellSize;
+
+            for (int cellY = minCellY; cellY <= maxCellY; cellY++)
+            {
+                for (int cellX = minCellX; cellX <= maxCellX; cellX++)
+                {
+                    int hash = GetSandHighlightHash(cellX, cellY);
+                    if ((hash & 3) != 0)
+                        continue;
+
+                    int pixelX = (cellX * SandHighlightCellSize) + (hash % SandHighlightCellSize);
+                    int pixelY = (cellY * SandHighlightCellSize) + ((hash >> 8) % SandHighlightCellSize);
+                    if (pixelX < minPixelX || pixelX > maxPixelX || pixelY < minPixelY || pixelY > maxPixelY)
+                        continue;
+
+                    if (!IsSandHighlightCandidate(pixelX, pixelY))
+                        continue;
+
+                    spriteBatch.Draw(DebugPixel, new Rectangle(pixelX + drawOffsetX, pixelY, 1, 1), SandHighlightPixelColor);
+                }
+            }
+        }
+
+        private bool IsSandHighlightCandidate(int pixelX, int pixelY)
+        {
+            if (pixelY <= 0 || pixelY >= SandSystem.Height - 1)
+                return false;
+
+            int leftX = WrapPixelX(pixelX - 1);
+            int rightX = WrapPixelX(pixelX + 1);
+            return SandSystem.HasSandAt(pixelX, pixelY) &&
+                   SandSystem.HasSandAt(pixelX, pixelY - 1) &&
+                   SandSystem.HasSandAt(pixelX, pixelY + 1) &&
+                   (SandSystem.HasSandAt(leftX, pixelY) || SandSystem.HasSandAt(rightX, pixelY));
+        }
+
+        private static int GetSandHighlightHash(int cellX, int cellY)
+        {
+            unchecked
+            {
+                uint hash = (uint)(cellX * 73856093) ^ (uint)(cellY * 19349663);
+                hash ^= hash >> 16;
+                hash *= 2246822519u;
+                hash ^= hash >> 13;
+                return (int)(hash & 0x7FFFFFFF);
             }
         }
 

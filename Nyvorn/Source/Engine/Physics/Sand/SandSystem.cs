@@ -9,6 +9,8 @@ namespace Nyvorn.Source.Engine.Physics.Sand
 {
     public class SandSystem
     {
+        private const int MaxActiveSandUpdatesPerTick = 8000;
+
         private readonly WorldMap worldMap;
         private readonly HashSet<long> occupiedSand = new();
         private readonly Dictionary<int, SortedSet<int>> occupiedSandRows = new();
@@ -65,6 +67,82 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                 AddActiveSand(pixelX, pixelY);
                 WakeNeighbors(pixelX, pixelY);
                 LiquidSystem?.WakeAreaAroundPixel(pixelX, pixelY);
+            }
+        }
+
+        public int AddSettledSandRectangle(int pixelX, int pixelY, int width, int height, bool wakeOpenEdges = false)
+        {
+            if (width <= 0 || height <= 0)
+                return 0;
+
+            int startY = Math.Max(0, pixelY);
+            int endY = Math.Min(Height - 1, pixelY + height - 1);
+            if (startY > endY)
+                return 0;
+
+            int added = 0;
+            for (int y = startY; y <= endY; y++)
+            {
+                for (int rawX = pixelX; rawX < pixelX + width; rawX++)
+                {
+                    int x = WrapPixelX(rawX);
+                    if (!CanPlaceGeneratedSandAt(x, y))
+                        continue;
+
+                    long key = CreatePixelKey(x, y);
+                    if (!occupiedSand.Add(key))
+                        continue;
+
+                    AddOccupiedPixel(x, y);
+                    added++;
+                }
+            }
+
+            if (wakeOpenEdges)
+                WakeGeneratedSandRectangle(pixelX, startY, width, endY - startY + 1);
+
+            return added;
+        }
+
+        private bool CanPlaceGeneratedSandAt(int pixelX, int pixelY)
+        {
+            if (!IsInBounds(pixelX, pixelY))
+                return false;
+
+            if (occupiedSand.Contains(CreatePixelKey(pixelX, pixelY)))
+                return false;
+
+            if (LiquidSystem?.HasLiquidAt(pixelX, pixelY) == true)
+                return false;
+
+            int tileX = pixelX / TileSize;
+            int tileY = pixelY / TileSize;
+            return !worldMap.IsSolidAt(tileX, tileY);
+        }
+
+        private void WakeGeneratedSandRectangle(int pixelX, int pixelY, int width, int height)
+        {
+            int startY = Math.Max(0, pixelY);
+            int endY = Math.Min(Height - 1, pixelY + height - 1);
+            if (startY > endY)
+                return;
+
+            for (int y = startY; y <= endY; y++)
+            {
+                for (int rawX = pixelX; rawX < pixelX + width; rawX++)
+                {
+                    int x = WrapPixelX(rawX);
+                    long key = CreatePixelKey(x, y);
+                    if (!occupiedSand.Contains(key))
+                        continue;
+
+                    if (CanMoveTo(x, y + 1) ||
+                        CanMoveTo(x - 1, y + 1) ||
+                        CanMoveTo(x + 1, y + 1))
+                    {
+                        AddActiveSand(x, y);
+                    }
+                }
             }
         }
 
@@ -127,7 +205,8 @@ namespace Nyvorn.Source.Engine.Physics.Sand
         }
         public void TickFast()
         {
-            for (int i = activeSand.Count - 1; i >= 0; i--)
+            int processed = 0;
+            for (int i = activeSand.Count - 1; i >= 0 && processed < MaxActiveSandUpdatesPerTick; i--, processed++)
             {
                 Point current = activeSand[i];
                 long currentKey = CreatePixelKey(current.X, current.Y);
@@ -273,50 +352,62 @@ namespace Nyvorn.Source.Engine.Physics.Sand
 
             int clampedMinY = Math.Max(0, minPixelY);
             int clampedMaxY = Math.Min(Height - 1, maxPixelY);
-            for (int y = clampedMinY; y <= clampedMaxY; y++)
+            int clampedMinX = Math.Max(0, minPixelX);
+            int clampedMaxX = Math.Min(Width - 1, maxPixelX);
+            if (clampedMinX > clampedMaxX || clampedMinY > clampedMaxY)
+                yield break;
+
+            int? runStart = null;
+            int runY = 0;
+            int previousX = int.MinValue;
+
+            for (int x = clampedMinX; x <= clampedMaxX; x++)
             {
-                if (!occupiedSandRows.TryGetValue(y, out SortedSet<int> row) || row.Count == 0)
-                    continue;
-
-                occupiedSandRows.TryGetValue(y - 1, out SortedSet<int> aboveRow);
-
-                int? runStart = null;
-                int previousX = int.MinValue;
-                foreach (int x in row.GetViewBetween(Math.Max(0, minPixelX), Math.Min(Width - 1, maxPixelX)))
+                if (!occupiedSandColumns.TryGetValue(x, out SortedSet<int> column) || column.Count == 0)
                 {
-                    bool isTopEdge = aboveRow == null || !aboveRow.Contains(x);
-                    if (!isTopEdge)
+                    if (runStart.HasValue)
                     {
-                        if (runStart.HasValue)
-                        {
-                            yield return new Rectangle(runStart.Value, y, previousX - runStart.Value + 1, 1);
-                            runStart = null;
-                        }
-
-                        continue;
+                        yield return new Rectangle(runStart.Value, runY, previousX - runStart.Value + 1, 1);
+                        runStart = null;
                     }
 
-                    if (!runStart.HasValue)
-                    {
-                        runStart = x;
-                        previousX = x;
-                        continue;
-                    }
-
-                    if (x == previousX + 1)
-                    {
-                        previousX = x;
-                        continue;
-                    }
-
-                    yield return new Rectangle(runStart.Value, y, previousX - runStart.Value + 1, 1);
-                    runStart = x;
-                    previousX = x;
+                    continue;
                 }
 
-                if (runStart.HasValue)
-                    yield return new Rectangle(runStart.Value, y, previousX - runStart.Value + 1, 1);
+                int y = column.Min;
+                if (y < clampedMinY || y > clampedMaxY)
+                {
+                    if (runStart.HasValue)
+                    {
+                        yield return new Rectangle(runStart.Value, runY, previousX - runStart.Value + 1, 1);
+                        runStart = null;
+                    }
+
+                    continue;
+                }
+
+                if (!runStart.HasValue)
+                {
+                    runStart = x;
+                    runY = y;
+                    previousX = x;
+                    continue;
+                }
+
+                if (y != runY || x != previousX + 1)
+                {
+                    yield return new Rectangle(runStart.Value, runY, previousX - runStart.Value + 1, 1);
+                    runStart = x;
+                    runY = y;
+                    previousX = x;
+                    continue;
+                }
+
+                previousX = x;
             }
+
+            if (runStart.HasValue)
+                yield return new Rectangle(runStart.Value, runY, previousX - runStart.Value + 1, 1);
         }
 
         public bool TryGetTopSandY(int pixelX, out int surfaceY)
@@ -456,6 +547,47 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             return false;
         }
 
+        public int RemoveSandInRectangle(int pixelX, int pixelY, int width, int height, int maxPixels = int.MaxValue)
+        {
+            if (width <= 0 || height <= 0 || maxPixels <= 0 || Width <= 0 || Height <= 0)
+                return 0;
+
+            int minY = Math.Max(0, pixelY);
+            int maxY = Math.Min(Height - 1, pixelY + height - 1);
+            if (minY > maxY)
+                return 0;
+
+            int rawMinX = pixelX;
+            int rawMaxX = pixelX + width - 1;
+            int removed = 0;
+            List<int> candidates = new(width);
+
+            for (int y = minY; y <= maxY && removed < maxPixels; y++)
+            {
+                if (!occupiedSandRows.TryGetValue(y, out SortedSet<int> row) || row.Count == 0)
+                    continue;
+
+                candidates.Clear();
+                CollectWrappedRange(row, rawMinX, rawMaxX, maxPixels - removed, candidates);
+
+                for (int i = 0; i < candidates.Count && removed < maxPixels; i++)
+                {
+                    int x = candidates[i];
+                    long key = CreatePixelKey(x, y);
+                    if (!occupiedSand.Remove(key))
+                        continue;
+
+                    RemoveOccupiedPixel(x, y);
+                    activeSandKeys.Remove(key);
+                    WakeNeighbors(x, y);
+                    LiquidSystem?.WakeAreaAroundPixel(x, y);
+                    removed++;
+                }
+            }
+
+            return removed;
+        }
+
         private void AddActiveSand(int pixelX, int pixelY)
         {
             if (!IsInBounds(pixelX, pixelY))
@@ -556,6 +688,27 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             }
 
             return false;
+        }
+
+        private void CollectWrappedRange(SortedSet<int> row, int rawMinX, int rawMaxX, int maxCount, List<int> targets)
+        {
+            int currentRawStartX = rawMinX;
+            while (currentRawStartX <= rawMaxX && targets.Count < maxCount)
+            {
+                int wrappedStartX = WrapPixelX(currentRawStartX);
+                int segmentMaxLength = Width - wrappedStartX;
+                int currentRawEndX = Math.Min(rawMaxX, currentRawStartX + segmentMaxLength - 1);
+                int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
+
+                foreach (int x in row.GetViewBetween(wrappedStartX, wrappedEndX))
+                {
+                    targets.Add(x);
+                    if (targets.Count >= maxCount)
+                        break;
+                }
+
+                currentRawStartX = currentRawEndX + 1;
+            }
         }
     }
 }

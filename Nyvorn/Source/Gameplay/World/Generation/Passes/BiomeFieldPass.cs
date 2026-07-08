@@ -11,14 +11,9 @@ namespace Nyvorn.Source.World.Generation.Passes
             context.ProgressReporter?.Begin(Name, "Distribuindo biomas");
 
             BiomeField field = new(context.WorldMap.Width);
-            OpenSimplexNoise biomeNoise = new(SeedHash.ToIntSeed(context.Seeds.BiomeSeed));
-            const float frequency = 0.0026f;
-
             for (int x = 0; x < context.WorldMap.Width; x++)
             {
-                float sample = context.SampleTerrain1D(biomeNoise, x, frequency, 7100f);
-                BiomeType biome = sample > 0.08f ? BiomeType.Desert : BiomeType.Forest;
-                field.SetBiome(x, biome);
+                field.SetBiome(x, BiomeType.Forest);
 
                 if ((x & 127) == 0 || x == context.WorldMap.Width - 1)
                     context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Distribuindo biomas");

@@ -275,6 +275,7 @@ namespace Nyvorn.Source.Game.States
             planetMetadata = planetMetadata.WithSeedMetadataDefaults();
             BuildContext build = new();
             build.ApplyGeneratedLiquidPlacements = saveData == null;
+            build.ApplyGeneratedSandPlacements = saveData == null;
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
             build.SavedSandSnapshot = saveData?.SandSnapshot;
             build.SavedLiquidSnapshot = saveData != null && saveData.Version >= 15
@@ -337,6 +338,10 @@ namespace Nyvorn.Source.Game.States
                 {
                     WorldGenPhaseDefinition generationPass = generationPasses[i];
                     if (saveData != null && generationPass.Name == "Hydrology")
+                        continue;
+                    if (saveData != null && generationPass.Name == "DesertPixelSand")
+                        continue;
+                    if (saveData != null && generationPass.Name == "DesertCave")
                         continue;
 
                     string generationPassName = generationPass.Name;
@@ -794,6 +799,8 @@ namespace Nyvorn.Source.Game.States
             session.InitializeSandSystem();
             if (build.SavedSandSnapshot != null && build.SavedSandSnapshot.Length > 0)
                 session.SandSystem.ImportSnapshot(build.SavedSandSnapshot);
+            else if (build.ApplyGeneratedSandPlacements)
+                ApplyGeneratedSandPlacements(session, build);
             if (build.SavedLiquidSnapshot != null && build.SavedLiquidSnapshot.Length > 0)
                 session.LiquidSystem.ImportSnapshot(build.SavedLiquidSnapshot);
             else if (build.ApplyGeneratedLiquidPlacements)
@@ -818,6 +825,24 @@ namespace Nyvorn.Source.Game.States
             }
 
             session.LiquidSystem.SettleAllLiquids();
+        }
+
+        private static void ApplyGeneratedSandPlacements(PlayingSession session, BuildContext build)
+        {
+            if (session?.SandSystem == null || build?.GenerationContext?.PixelSandPlacements == null)
+                return;
+
+            int tileSize = build.WorldMap.TileSize;
+            IReadOnlyList<WorldGenPixelSandPlacement> placements = build.GenerationContext.PixelSandPlacements;
+            for (int i = 0; i < placements.Count; i++)
+            {
+                WorldGenPixelSandPlacement placement = placements[i];
+                session.SandSystem.AddSettledSandRectangle(
+                    placement.TileX * tileSize,
+                    placement.TileY * tileSize,
+                    placement.WidthTiles * tileSize,
+                    placement.HeightTiles * tileSize);
+            }
         }
 
         private Texture2D CreateDebugPixelTexture()
@@ -1060,6 +1085,7 @@ namespace Nyvorn.Source.Game.States
             public TissueGenerationResult TissueGeneration { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
             public bool ApplyGeneratedLiquidPlacements { get; set; }
+            public bool ApplyGeneratedSandPlacements { get; set; }
             public byte[] SavedSandSnapshot { get; set; }
             public byte[] SavedLiquidSnapshot { get; set; }
             public byte[] SavedTissueFieldDeltaSnapshot { get; set; }

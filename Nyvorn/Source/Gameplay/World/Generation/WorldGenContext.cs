@@ -16,9 +16,11 @@ namespace Nyvorn.Source.World.Generation
         public int[] SurfaceHeights { get; set; } = Array.Empty<int>();
         public WorldLayerDefinition[] LayerDefinitions { get; set; } = Array.Empty<WorldLayerDefinition>();
         public BiomeField Biomes { get; set; }
+        public DesertRegionProfile DesertRegion { get; set; }
         public Point SpawnTile { get; set; }
         public Dictionary<string, string> DebugStats { get; } = new();
         public List<WorldGenLiquidPlacement> LiquidPlacements { get; } = new();
+        public List<WorldGenPixelSandPlacement> PixelSandPlacements { get; } = new();
         public TissueField TissueField { get; set; }
         public TissueGenerationResult TissueGeneration { get; set; }
         public WorldGenProgressReporter ProgressReporter { get; set; }

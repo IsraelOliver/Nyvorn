@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Physics.Liquids;
+using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Generation;
@@ -37,6 +38,7 @@ namespace Nyvorn.Source.Gameplay.UI
         private const float MinZoom = 1f;
         private const float MaxZoom = 18f;
         private const float ZoomStep = 1.2f;
+        private static readonly Color DynamicSandMinimapColor = new Color(255, 230, 171);
         private static readonly Color WaterMinimapColor = new Color(34, 128, 205) * 0.78f;
 
         public WorldMinimapRenderer(GraphicsDevice graphicsDevice)
@@ -95,7 +97,7 @@ namespace Nyvorn.Source.Gameplay.UI
             return new WorldMinimapInteractionResult(consumedMouse || isDragging, false, -1);
         }
 
-        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, LiquidSystem liquidSystem, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
+        public void Draw(SpriteBatch spriteBatch, WorldMap worldMap, LiquidSystem liquidSystem, SandSystem sandSystem, TissueNetwork tissueNetwork, Camera2D camera, Vector2 playerPosition, int screenWidth, int screenHeight, bool tissueMode, IReadOnlySet<int> activatedHubKeys)
         {
             EnsureMinimapTexture(worldMap);
 
@@ -112,6 +114,7 @@ namespace Nyvorn.Source.Gameplay.UI
             if (tissueMode)
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
+                DrawSandOverlay(spriteBatch, worldMap, sandSystem, panel, sourceRect);
                 DrawLiquidOverlay(spriteBatch, worldMap, liquidSystem, panel, sourceRect);
                 DrawRect(spriteBatch, panel, new Color(5, 8, 10, 120));
                 if (tissueNetwork != null && (tissueNetwork.Nodes.Count > 0 || tissueNetwork.Branches.Count > 0))
@@ -129,6 +132,7 @@ namespace Nyvorn.Source.Gameplay.UI
             else
             {
                 spriteBatch.Draw(minimapTexture, panel, sourceRect, Color.White);
+                DrawSandOverlay(spriteBatch, worldMap, sandSystem, panel, sourceRect);
                 DrawLiquidOverlay(spriteBatch, worldMap, liquidSystem, panel, sourceRect);
             }
 
@@ -141,6 +145,26 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawRect(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), new Color(8, 18, 24, 235));
             DrawRectOutline(spriteBatch, new Rectangle(backdrop.X, backdrop.Y - 26, 180, 22), 1, new Color(133, 179, 191));
             DrawModeButtons(spriteBatch, panel, tissueMode);
+        }
+
+        private void DrawSandOverlay(SpriteBatch spriteBatch, WorldMap worldMap, SandSystem sandSystem, Rectangle panel, Rectangle sourceRect)
+        {
+            if (sandSystem == null || sourceRect.Width <= 0 || sourceRect.Height <= 0)
+                return;
+
+            int minPixelX = sourceRect.Left * worldMap.TileSize;
+            int maxPixelX = (sourceRect.Right * worldMap.TileSize) - 1;
+            int minPixelY = sourceRect.Top * worldMap.TileSize;
+            int maxPixelY = (sourceRect.Bottom * worldMap.TileSize) - 1;
+
+            foreach (Rectangle sandSegment in sandSystem.GetVisibleSegments(minPixelX, maxPixelX, minPixelY, maxPixelY))
+            {
+                Rectangle drawBounds = MapWorldPixelRectToMinimap(worldMap, sandSegment, panel, sourceRect);
+                if (drawBounds.Width <= 0 || drawBounds.Height <= 0)
+                    continue;
+
+                DrawRect(spriteBatch, drawBounds, DynamicSandMinimapColor);
+            }
         }
 
         private void DrawLiquidOverlay(SpriteBatch spriteBatch, WorldMap worldMap, LiquidSystem liquidSystem, Rectangle panel, Rectangle sourceRect)
@@ -718,7 +742,7 @@ namespace Nyvorn.Source.Gameplay.UI
                 TileType.Empty => new Color(8, 14, 18),
                 TileType.Grass => new Color(46, 126, 74),
                 TileType.Stone => new Color(142, 146, 152),
-                TileType.Sand => new Color(192, 172, 108),
+                TileType.Sand => new Color(252, 222, 156),
                 _ => new Color(126, 92, 72)
             };
         }
