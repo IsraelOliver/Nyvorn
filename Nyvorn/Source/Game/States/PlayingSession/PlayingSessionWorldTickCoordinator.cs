@@ -68,6 +68,11 @@ namespace Nyvorn.Source.Game.States
         {
             WorldTickDispatch dispatch = WorldTickSystem.Advance(dt);
 
+            // Reset once per rendered frame, before any catch-up fast ticks run, so a lag spike
+            // that dispatches several ticks in one Advance() can't multiply the total sand work
+            // done this frame — see SandSystem.ResetFrameBudget.
+            SandSystem?.ResetFrameBudget();
+
             for (int i = 0; i < dispatch.FastTicks; i++)
                 OnFastTick();
 
@@ -82,6 +87,7 @@ namespace Nyvorn.Source.Game.States
         {
             LiquidSystem?.SetActiveSimulationChunks(ViewCoordinator.ActiveSimulationChunks);
             WakeOpenSandInActiveChunks();
+            SandSystem?.ProcessPendingSandWakes();
             SandSystem?.TickFast();
             TickLiquidSystem();
         }

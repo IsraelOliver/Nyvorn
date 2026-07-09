@@ -9,7 +9,15 @@ namespace Nyvorn.Source.Engine.Physics.Sand
 {
     public class SandSystem
     {
-        private const int MaxActiveSandUpdatesPerTick = 8000;
+        // Shared budget for one rendered frame, not one tick: without this, a lag spike that
+        // triggers several catch-up fast ticks in the same frame would let each tick spend the
+        // full amount, multiplying the worst-case cost instead of smoothing it out.
+        private const int MaxActiveSandUpdatesPerFrame = 8000;
+
+        // A newly-visible chunk can hold tens of thousands of dormant sand pixels; waking them
+        // all in one synchronous scan is what causes the freeze on approach. Draining a handful
+        // of rows per tick instead spreads that one-shot cost across roughly a quarter second.
+        private const int MaxWakeRowsPerTick = 16;
 
         private readonly WorldMap worldMap;
         private readonly HashSet<long> occupiedSand = new();
@@ -17,8 +25,10 @@ namespace Nyvorn.Source.Engine.Physics.Sand
         private readonly Dictionary<int, SortedSet<int>> occupiedSandColumns = new();
         private readonly HashSet<long> activeSandKeys = new();
         private readonly HashSet<long> awakenedOpenSandChunks = new();
+        private readonly Queue<PendingChunkWake> pendingChunkWakes = new();
 
         private readonly List<Point> activeSand = new();
+        private int remainingFrameUpdateBudget = MaxActiveSandUpdatesPerFrame;
 
         public int Width { get; }
         public int Height { get; }
@@ -105,6 +115,8 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             return added;
         }
 
+        // Queues the chunk for a gradual wake instead of scanning its full pixel area right
+        // away — see ProcessPendingSandWakes.
         public void WakeOpenSandInChunk(int chunkX, int chunkY)
         {
             if (worldMap.ChunkCountX <= 0 || worldMap.ChunkCountY <= 0)
@@ -123,11 +135,54 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             int tileWidth = Math.Min(worldMap.ChunkTileSize, worldMap.Width - startTileX);
             int tileHeight = Math.Min(worldMap.ChunkTileSize, worldMap.Height - startTileY);
 
-            WakeOpenSandInRectangle(
+            int startPixelY = startTileY * TileSize;
+            int pixelHeight = tileHeight * TileSize;
+
+            pendingChunkWakes.Enqueue(new PendingChunkWake(
                 startTileX * TileSize,
-                startTileY * TileSize,
                 tileWidth * TileSize,
-                tileHeight * TileSize);
+                startPixelY,
+                startPixelY + pixelHeight - 1));
+        }
+
+        // Drains a bounded number of rows from the pending chunk-wake queue each call, so a
+        // chunk full of dormant sand never scans its whole ~65k-pixel area synchronously in one
+        // frame. Multiple pending chunks are drained round-robin so none of them starves.
+        public void ProcessPendingSandWakes()
+        {
+            int rowsProcessed = 0;
+            while (rowsProcessed < MaxWakeRowsPerTick && pendingChunkWakes.Count > 0)
+            {
+                PendingChunkWake pending = pendingChunkWakes.Dequeue();
+                int rowsRemaining = pending.EndPixelY - pending.NextPixelY + 1;
+                int rowsToProcess = Math.Min(MaxWakeRowsPerTick - rowsProcessed, rowsRemaining);
+
+                WakeOpenSandInRectangle(pending.StartPixelX, pending.NextPixelY, pending.PixelWidth, rowsToProcess);
+                rowsProcessed += rowsToProcess;
+
+                int nextPixelY = pending.NextPixelY + rowsToProcess;
+                if (nextPixelY <= pending.EndPixelY)
+                    pendingChunkWakes.Enqueue(pending.WithNextPixelY(nextPixelY));
+            }
+        }
+
+        private readonly struct PendingChunkWake
+        {
+            public PendingChunkWake(int startPixelX, int pixelWidth, int nextPixelY, int endPixelY)
+            {
+                StartPixelX = startPixelX;
+                PixelWidth = pixelWidth;
+                NextPixelY = nextPixelY;
+                EndPixelY = endPixelY;
+            }
+
+            public int StartPixelX { get; }
+            public int PixelWidth { get; }
+            public int NextPixelY { get; }
+            public int EndPixelY { get; }
+
+            public PendingChunkWake WithNextPixelY(int nextPixelY) =>
+                new(StartPixelX, PixelWidth, nextPixelY, EndPixelY);
         }
 
         private bool CanPlaceGeneratedSandAt(int pixelX, int pixelY)
@@ -274,10 +329,19 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             // 5. Não conseguiu mover
             return new Point(x, y);
         }
+        // Resets the shared per-frame update budget. Call once per rendered frame, before any
+        // catch-up fast ticks run, so a lag spike that dispatches several ticks in one frame
+        // can't multiply the total sand work done in that frame.
+        public void ResetFrameBudget()
+        {
+            remainingFrameUpdateBudget = MaxActiveSandUpdatesPerFrame;
+        }
+
         public void TickFast()
         {
+            int budget = Math.Min(MaxActiveSandUpdatesPerFrame, Math.Max(0, remainingFrameUpdateBudget));
             int processed = 0;
-            for (int i = activeSand.Count - 1; i >= 0 && processed < MaxActiveSandUpdatesPerTick; i--, processed++)
+            for (int i = activeSand.Count - 1; i >= 0 && processed < budget; i--, processed++)
             {
                 Point current = activeSand[i];
                 long currentKey = CreatePixelKey(current.X, current.Y);
@@ -301,6 +365,8 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                 activeSandKeys.Add(newKey);
                 activeSand[i] = newPosition;
             }
+
+            remainingFrameUpdateBudget -= processed;
         }
 
         public byte[] ExportSnapshot()
@@ -331,6 +397,7 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             activeSand.Clear();
             activeSandKeys.Clear();
             awakenedOpenSandChunks.Clear();
+            pendingChunkWakes.Clear();
 
             if (snapshot == null || snapshot.Length == 0)
                 return;
