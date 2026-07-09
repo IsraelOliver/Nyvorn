@@ -5,7 +5,7 @@ namespace Nyvorn.Source.World.Generation.Passes
 {
     public sealed class DirtToStoneTransitionPass : IWorldGenPass
     {
-        private const float InversionDepthPercent = 0.35f;
+        private const float InversionDepthPercent = 0.20f;
         private const float SurfaceQuietPercent = 0.12f;
         private const float TopStoneThresholdNearSurface = 0.75f;
         private const float TopStoneThresholdEndOfSurfaceQuiet = 0.55f;

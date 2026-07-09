@@ -365,7 +365,7 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            SandSystem?.WakeAreaAboveTile(tile.X, tile.Y);
+            SandSystem?.WakeAreaAroundTile(tile.X, tile.Y);
             LiquidSystem?.WakeAreaAroundTile(tile.X, tile.Y);
             BlockParticleSystem?.SpawnFromTile(targetTile, tile, background: false);
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);

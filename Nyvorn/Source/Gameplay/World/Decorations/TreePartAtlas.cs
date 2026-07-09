@@ -21,26 +21,30 @@ namespace Nyvorn.Source.World.Decorations
         private static readonly Point SingleTile = new(1, 1);
         private static readonly Point NoDrawOffset = Point.Zero;
 
+        // Trunk-column sprites are 10px wide but tiles are 8px (TileSize), so they must be
+        // shifted 1px left to bleed evenly onto both sides instead of only overflowing right.
+        private static readonly Point TrunkColumnDrawOffset = new(-1, 0);
+
         public TreePartAtlas()
         {
-            Add(TreePartType.TrunkStraight, 1, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
+            Add(TreePartType.TrunkStraight, 1, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, drawOffsetPixels: TrunkColumnDrawOffset);
 
             // SocketRight/Left describe the side of the trunk socket. RootLeft/Right describe placement around the trunk.
-            Add(TreePartType.TrunkBaseRightRootSocket, 1, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootRight);
-            Add(TreePartType.TrunkBaseLeftRootSocket, 4, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootLeft);
+            Add(TreePartType.TrunkBaseRightRootSocket, 1, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootRight, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.TrunkBaseLeftRootSocket, 4, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootLeft, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.RootLeft, 3, 3, isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.TrunkBaseLeftRootSocket);
             Add(TreePartType.RootRight, 2, 3, isBase: false, isRoot: true, isBranch: false, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.TrunkBaseRightRootSocket);
-            Add(TreePartType.RootBothSocket, 5, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
-            Add(TreePartType.BranchSocketRight, 5, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, complementaryPartType: TreePartType.BranchRight);
-            Add(TreePartType.BranchSocketLeft, 5, 2, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, complementaryPartType: TreePartType.BranchLeft);
+            Add(TreePartType.RootBothSocket, 5, 3, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.BranchSocketRight, 5, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, complementaryPartType: TreePartType.BranchRight, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.BranchSocketLeft, 5, 2, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: true, canContinueVertically: true, complementaryPartType: TreePartType.BranchLeft, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.BranchRight, 6, 1, isBase: false, isRoot: false, isBranch: true, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.BranchSocketRight);
             Add(TreePartType.BranchLeft, 6, 2, isBase: false, isRoot: false, isBranch: true, canReceiveBranch: false, canContinueVertically: false, complementaryPartType: TreePartType.BranchSocketLeft);
-            Add(TreePartType.TrunkCutSupport, 4, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
-            Add(TreePartType.TrunkContinuation, 6, 3, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
-            Add(TreePartType.TrunkBaseCut, 4, 1, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: false);
-            Add(TreePartType.TrunkUpperCut, 6, 3, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: false);
-            Add(TreePartType.TrunkBareBase, 1, 1, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true);
-            Add(TreePartType.TrunkBaseRightRootCutSocket, 1, 4, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootRight);
+            Add(TreePartType.TrunkCutSupport, 4, 1, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.TrunkContinuation, 6, 3, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.TrunkBaseCut, 4, 1, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: false, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.TrunkUpperCut, 6, 3, isBase: false, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: false, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.TrunkBareBase, 1, 1, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.TrunkBaseRightRootCutSocket, 1, 4, isBase: true, isRoot: false, isBranch: false, canReceiveBranch: false, canContinueVertically: true, complementaryPartType: TreePartType.RootRight, drawOffsetPixels: TrunkColumnDrawOffset);
 
             parts[TreePartType.Canopy] = new TreePartDefinition(
                 TreePartType.Canopy,

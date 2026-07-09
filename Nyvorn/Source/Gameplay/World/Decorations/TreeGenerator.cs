@@ -24,13 +24,22 @@ namespace Nyvorn.Source.World.Decorations
             WorldMap worldMap = context.WorldMap;
             Random random = context.CreateRandom(context.Seeds.DecorationSeed);
 
+            OpenSimplexNoise densityNoise = new(SeedHash.ToIntSeed(SeedHash.Derive(context.Seeds.DecorationSeed, "tree-cluster-density")));
+            OpenSimplexNoise heightNoise = new(SeedHash.ToIntSeed(SeedHash.Derive(context.Seeds.DecorationSeed, "tree-cluster-height")));
+
             int minX = Math.Max(context.Config.BorderThickness + 2, 2);
             int maxX = worldMap.Width - Math.Max(context.Config.BorderThickness + 3, 3);
 
             for (int x = minX; x <= maxX; x++)
             {
+                // Low-frequency fields turn what would be a uniform scatter into loose
+                // forest clusters: some stretches grow dense and tall, others sparse and short.
+                float densityT = (context.SampleTerrain1D(densityNoise, x, settings.ClusterDensityNoiseFrequency, 0f) + 1f) * 0.5f;
+                float densityFactor = MathHelper.Lerp(settings.SparseClusterSpawnMultiplier, settings.DenseClusterSpawnMultiplier, densityT);
+                int clusterSpacing = Math.Max(1, (int)MathF.Round(MathHelper.Lerp(settings.SparseClusterSpacingTiles, settings.DenseClusterSpacingTiles, densityT)));
+
                 BiomeDefinition biome = context.SampleBiome(x).PrimaryDefinition;
-                float spawnChance = settings.TreeSpawnChance * biome.TreeSpawnMultiplier;
+                float spawnChance = settings.TreeSpawnChance * biome.TreeSpawnMultiplier * densityFactor;
                 if (spawnChance <= 0f || random.NextDouble() > spawnChance)
                     continue;
 
@@ -40,13 +49,20 @@ namespace Nyvorn.Source.World.Decorations
 
                 // The logical base is the air tile above the supporting grass tile.
                 int baseY = groundY - 1;
-                int height = random.Next(settings.MinTreeHeight, settings.MaxTreeHeight + 1);
+
+                float heightT = (context.SampleTerrain1D(heightNoise, x, settings.ClusterHeightNoiseFrequency, 500f) + 1f) * 0.5f;
+                int clusterHeight = (int)MathF.Round(MathHelper.Lerp(settings.MinTreeHeight, settings.MaxTreeHeight, heightT));
+                int height = Math.Clamp(
+                    clusterHeight + random.Next(-settings.ClusterHeightJitter, settings.ClusterHeightJitter + 1),
+                    settings.MinTreeHeight,
+                    settings.MaxTreeHeight);
+
                 TreeVariant variant = PickVariant(random);
                 int rootStyleRow = random.Next(0, 2) == 0 ? 3 : 4;
                 int branchDirection = random.Next(0, 2) == 0 ? -1 : 1;
                 int branchHeight = variant == TreeVariant.Branch ? random.Next(1, Math.Max(2, height - 1)) : -1;
 
-                if (!CanPlaceTree(worldMap, x, groundY, baseY, height, variant, branchDirection, branchHeight, trees))
+                if (!CanPlaceTree(worldMap, x, groundY, baseY, height, variant, branchDirection, branchHeight, clusterSpacing, trees))
                     continue;
 
                 trees.Add(CreateTree(x, baseY, height, variant, rootStyleRow, branchDirection, branchHeight, random.Next()));
@@ -64,6 +80,7 @@ namespace Nyvorn.Source.World.Decorations
             TreeVariant variant,
             int branchDirection,
             int branchHeight,
+            int clusterSpacing,
             IReadOnlyList<TreeInstance> existingTrees)
         {
             if (worldMap.GetTile(baseX, groundY) != TileType.Grass)
@@ -75,7 +92,7 @@ namespace Nyvorn.Source.World.Decorations
             if (baseY <= height + settings.CanopyClearanceTiles)
                 return false;
 
-            if (IsTooClose(baseX, existingTrees))
+            if (IsTooClose(baseX, clusterSpacing, existingTrees))
                 return false;
 
             int minClearX = baseX - 2;
@@ -120,12 +137,12 @@ namespace Nyvorn.Source.World.Decorations
                 && !worldMap.IsSolidAt(rootX, groundY - 1);
         }
 
-        private bool IsTooClose(int baseX, IReadOnlyList<TreeInstance> existingTrees)
+        private static bool IsTooClose(int baseX, int clusterSpacing, IReadOnlyList<TreeInstance> existingTrees)
         {
             for (int i = 0; i < existingTrees.Count; i++)
             {
                 int distance = Math.Abs(baseX - existingTrees[i].BaseTile.X);
-                if (distance < settings.MinTreeSpacingTiles)
+                if (distance < clusterSpacing)
                     return true;
             }
 

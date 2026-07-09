@@ -139,7 +139,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
                     foreach (int cellX in row.GetViewBetween(wrappedStartX, wrappedEndX))
                     {
-                        Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY);
+                        Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY, bleedEdges: false);
                         if (liquidBounds.Height <= 0)
                             continue;
 
@@ -519,7 +519,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             WakeChunkForCell(cellX, cellY);
         }
 
-        public IEnumerable<Rectangle> GetVisibleSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY)
+        public IEnumerable<Rectangle> GetVisibleSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY, bool bleedEdges = false)
         {
             if (minPixelX > maxPixelX || minPixelY > maxPixelY)
                 yield break;
@@ -539,7 +539,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
                 foreach (int cellX in row.GetViewBetween(minCellX, maxCellX))
                 {
-                    Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY);
+                    Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY, bleedEdges);
                     if (liquidBounds.Height <= 0)
                         continue;
 
@@ -550,7 +550,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             }
         }
 
-        public IEnumerable<Rectangle> GetVisibleSurfaceSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY)
+        public IEnumerable<Rectangle> GetVisibleSurfaceSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY, bool bleedEdges = false)
         {
             if (minPixelX > maxPixelX || minPixelY > maxPixelY)
                 yield break;
@@ -573,7 +573,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
                     if (GetLiquidAmountAtTile(cellX, cellY - 1) > 0)
                         continue;
 
-                    Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY);
+                    Rectangle liquidBounds = CreateLiquidRectangle(cellX, cellY, bleedEdges);
                     if (liquidBounds.Height <= 0)
                         continue;
 
@@ -1193,14 +1193,39 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
                 occupiedRows.Remove(cellY);
         }
 
-        private Rectangle CreateLiquidRectangle(int cellX, int cellY)
+        private Rectangle CreateLiquidRectangle(int cellX, int cellY, bool bleedEdges)
         {
+            int wrappedX = WrapCellX(cellX);
             int liquidHeight = AmountToPixelHeight(GetLiquidAmountAtTile(cellX, cellY));
-            return new Rectangle(
-                WrapCellX(cellX) * TileSize,
-                ((cellY + 1) * TileSize) - liquidHeight,
-                TileSize,
-                liquidHeight);
+
+            int left = wrappedX * TileSize;
+            int right = left + TileSize;
+            int bottom = (cellY + 1) * TileSize;
+            int top = bottom - liquidHeight;
+
+            // Pressure equalization can leave a cell a pixel or two short even where it is
+            // pressed against solid ground, and the stone's own tile art can have undrawn
+            // pixels right at its edge. Bleed 1px into any adjacent solid tile on every side
+            // so settling jitter or a seam in the tile art never exposes a gap, without ever
+            // painting water into a cell that is genuinely empty. Only worth the extra solid
+            // checks for the close-up camera view: the minimap and gameplay queries (coverage,
+            // submersion) render/measure far below single-pixel scale.
+            if (bleedEdges && liquidHeight > 0)
+            {
+                if (worldMap.IsSolidAt(wrappedX, cellY - 1))
+                    top = cellY * TileSize;
+
+                if (worldMap.IsSolidAt(wrappedX, cellY + 1))
+                    bottom += 1;
+
+                if (worldMap.IsSolidAt(WrapCellX(wrappedX - 1), cellY))
+                    left -= 1;
+
+                if (worldMap.IsSolidAt(WrapCellX(wrappedX + 1), cellY))
+                    right += 1;
+            }
+
+            return new Rectangle(left, top, right - left, bottom - top);
         }
 
         private int AmountToPixelHeight(int amount)

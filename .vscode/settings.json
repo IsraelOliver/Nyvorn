@@ -1,3 +1,4 @@
 {
-    "dotnet.defaultSolution": "Nyvorn.sln"
+    "dotnet.defaultSolution": "Nyvorn.sln",
+    "claudeCodeChat.permissions.yoloMode": false
 }

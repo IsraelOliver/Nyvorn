@@ -177,8 +177,14 @@ namespace Nyvorn.Source.Game.States
         public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
-            WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
+
+            // Sand draws first so tiles composite on top of it: any undrawn/transparent pixel
+            // in a tile's own art shows the loose sand behind it (correct, since that pixel is
+            // genuinely open), while every opaque tile pixel still fully occludes the sand as
+            // expected. Drawing sand after tiles instead would let its edge bleed visibly paint
+            // over legitimate opaque tile pixels (e.g. onto grass at a dune's edge).
             DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
         public Effect PrepareWaterEffect(float timeSeconds, GraphicsDevice graphicsDevice, Matrix transformMatrix)
@@ -433,7 +439,7 @@ namespace Nyvorn.Source.Game.States
 
                 IEnumerable<Rectangle> segments = topEdgesOnly
                     ? SandSystem.GetVisibleTopEdgeSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY)
-                    : SandSystem.GetVisibleSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY);
+                    : SandSystem.GetVisibleSegmentsWithEdgeBleed(wrappedStartX, wrappedEndX, startPixelY, endPixelY);
 
                 foreach (Rectangle segment in segments)
                 {
@@ -535,8 +541,8 @@ namespace Nyvorn.Source.Game.States
                 int drawOffsetX = currentRawStartX - wrappedStartX;
 
                 IEnumerable<Rectangle> segments = surfaceOnly
-                    ? LiquidSystem.GetVisibleSurfaceSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY)
-                    : LiquidSystem.GetVisibleSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY);
+                    ? LiquidSystem.GetVisibleSurfaceSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY, bleedEdges: true)
+                    : LiquidSystem.GetVisibleSegments(wrappedStartX, wrappedEndX, startPixelY, endPixelY, bleedEdges: true);
 
                 foreach (Rectangle segment in segments)
                 {

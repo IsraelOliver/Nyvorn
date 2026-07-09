@@ -275,17 +275,19 @@ namespace Nyvorn.Source.Game.States
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                Effect waterEffect = session.PrepareWaterEffect((float)gameTime.TotalGameTime.TotalSeconds, graphicsDevice, transform);
+                // Water draws before the terrain pass so tiles composite on top of it, the same
+                // way sand is layered behind tiles in DrawTerrainBase: any undrawn pixel in a
+                // tile's own art reveals the water behind it instead of a gap, while opaque tile
+                // pixels still fully occlude the water as expected.
                 spriteBatch.Begin(
                     samplerState: SamplerState.PointClamp,
                     blendState: BlendState.AlphaBlend,
-                    effect: waterEffect,
                     transformMatrix: transform);
                 session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);

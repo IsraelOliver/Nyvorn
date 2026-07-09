@@ -378,6 +378,23 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             }
         }
 
+        // Breaking a tile can open a path for sand resting to its side (not just above) to
+        // slump in; wake the full 3x3 tile neighborhood so it reacts immediately instead of
+        // sitting frozen until something else happens to wake it.
+        public void WakeAreaAroundTile(int tileX, int tileY)
+        {
+            int minPixelX = (tileX - 1) * TileSize;
+            int maxPixelX = ((tileX + 2) * TileSize) - 1;
+            int minPixelY = (tileY - 1) * TileSize;
+            int maxPixelY = ((tileY + 2) * TileSize) - 1;
+
+            for (int pixelY = minPixelY; pixelY <= maxPixelY; pixelY++)
+            {
+                for (int rawPixelX = minPixelX; rawPixelX <= maxPixelX; rawPixelX++)
+                    AddActiveSand(WrapPixelX(rawPixelX), pixelY);
+            }
+        }
+
         public IEnumerable<Rectangle> GetVisibleSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY)
         {
             if (minPixelX > maxPixelX || minPixelY > maxPixelY)
@@ -415,6 +432,112 @@ namespace Nyvorn.Source.Engine.Physics.Sand
                 if (runStart.HasValue)
                     yield return new Rectangle(runStart.Value, y, previousX - runStart.Value + 1, 1);
             }
+        }
+
+        // Same as GetVisibleSegments, but bleeds each run 1px into any adjacent solid tile so
+        // settling drift or undrawn pixels in the tile art never expose a gap. Only worth the
+        // extra solid-tile checks for the close-up camera view — the minimap renders far below
+        // single-pixel scale, so it uses the plain GetVisibleSegments above instead.
+        public IEnumerable<Rectangle> GetVisibleSegmentsWithEdgeBleed(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY)
+        {
+            if (minPixelX > maxPixelX || minPixelY > maxPixelY)
+                yield break;
+
+            int clampedMinY = Math.Max(0, minPixelY);
+            int clampedMaxY = Math.Min(Height - 1, maxPixelY);
+            for (int y = clampedMinY; y <= clampedMaxY; y++)
+            {
+                if (!occupiedSandRows.TryGetValue(y, out SortedSet<int> row) || row.Count == 0)
+                    continue;
+
+                int? runStart = null;
+                int previousX = int.MinValue;
+                foreach (int x in row.GetViewBetween(Math.Max(0, minPixelX), Math.Min(Width - 1, maxPixelX)))
+                {
+                    if (!runStart.HasValue)
+                    {
+                        runStart = x;
+                        previousX = x;
+                        continue;
+                    }
+
+                    if (x == previousX + 1)
+                    {
+                        previousX = x;
+                        continue;
+                    }
+
+                    foreach (Rectangle segment in CreateSandRunRectangles(runStart.Value, previousX, y))
+                        yield return segment;
+                    runStart = x;
+                    previousX = x;
+                }
+
+                if (runStart.HasValue)
+                {
+                    foreach (Rectangle segment in CreateSandRunRectangles(runStart.Value, previousX, y))
+                        yield return segment;
+                }
+            }
+        }
+
+        private IEnumerable<Rectangle> CreateSandRunRectangles(int runStart, int runEnd, int y)
+        {
+            // Sand that has settled away from a static wall can leave a hairline gap, and the
+            // tile art underneath can itself have undrawn pixels near its edges; bleed the run
+            // 1px into any adjacent solid tile (sides, and directly above/below) so neither
+            // shows through.
+            if (IsOpenAgainstSolidTile(runStart - 1, y))
+                runStart -= 1;
+
+            if (IsOpenAgainstSolidTile(runEnd + 1, y))
+                runEnd += 1;
+
+            yield return new Rectangle(runStart, y, runEnd - runStart + 1, 1);
+
+            foreach (Rectangle segment in GetVerticalBleedSegments(runStart, runEnd, y - 1))
+                yield return segment;
+
+            foreach (Rectangle segment in GetVerticalBleedSegments(runStart, runEnd, y + 1))
+                yield return segment;
+        }
+
+        // Solidity only changes at tile boundaries, so this steps tile-by-tile (not
+        // pixel-by-pixel) — the same result for 1/TileSize the checks. Overdrawing sand color
+        // onto already-occupied pixels within a solid tile's span is harmless (same color), so
+        // this skips the per-pixel occupancy check entirely.
+        private IEnumerable<Rectangle> GetVerticalBleedSegments(int runStart, int runEnd, int bleedY)
+        {
+            if (bleedY < 0 || bleedY >= Height)
+                yield break;
+
+            int bleedTileY = bleedY / TileSize;
+            int firstTileX = runStart / TileSize;
+            int lastTileX = runEnd / TileSize;
+
+            for (int tileX = firstTileX; tileX <= lastTileX; tileX++)
+            {
+                if (!worldMap.IsSolidAt(tileX, bleedTileY))
+                    continue;
+
+                int segmentStart = Math.Max(runStart, tileX * TileSize);
+                int segmentEnd = Math.Min(runEnd, (tileX * TileSize) + TileSize - 1);
+                if (segmentStart > segmentEnd)
+                    continue;
+
+                yield return new Rectangle(segmentStart, bleedY, segmentEnd - segmentStart + 1, 1);
+            }
+        }
+
+        private bool IsOpenAgainstSolidTile(int pixelX, int pixelY)
+        {
+            if (!IsInBounds(pixelX, pixelY))
+                return false;
+
+            if (occupiedSand.Contains(CreatePixelKey(pixelX, pixelY)))
+                return false;
+
+            return worldMap.IsSolidAt(pixelX / TileSize, pixelY / TileSize);
         }
 
         public IEnumerable<Rectangle> GetVisibleTopEdgeSegments(int minPixelX, int maxPixelX, int minPixelY, int maxPixelY)
