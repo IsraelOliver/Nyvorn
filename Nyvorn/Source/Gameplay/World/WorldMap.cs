@@ -1355,7 +1355,7 @@ namespace Nyvorn.Source.World
 
             if (down)
                 return GetAutoTileSheetCell(0 + variationOffset, 5);
-            if (left)
+            if (right)
                 return GetAutoTileSheetCell(1 + variationOffset, 5);
             if (up)
                 return GetAutoTileSheetCell(0 + variationOffset, 6);
@@ -1403,7 +1403,381 @@ namespace Nyvorn.Source.World
 
         private Rectangle GetStoneAutoTileSourceRectangle(int x, int y)
         {
-            return GetDirtAutoTileSourceRectangle(x, y);
+            bool up = IsSolidAt(x, y - 1);
+            bool right = IsSolidAt(x + 1, y);
+            bool down = IsSolidAt(x, y + 1);
+            bool left = IsSolidAt(x - 1, y);
+
+            int connectedCount = 0;
+            if (up) connectedCount++;
+            if (right) connectedCount++;
+            if (down) connectedCount++;
+            if (left) connectedCount++;
+
+            switch (connectedCount)
+            {
+                case 0:
+                    return GetAutoTileSheetCell(9 + PickTileVariation(x, y, 3), 3);
+
+                case 1:
+                    return GetStoneEndSourceRectangle(x, y, up, right, down, left);
+
+                case 2:
+                    return GetStoneTwoConnectionSourceRectangle(x, y, up, right, down, left);
+
+                case 3:
+                    return GetStoneThreeConnectionSourceRectangle(x, y, up, right, down, left);
+
+                default:
+                    if (TryGetStoneSingleSideDirtSourceRectangle(x, y, out Rectangle singleSideDirt))
+                        return singleSideDirt;
+
+                    if (TryGetStoneSingleSideStoneSourceRectangle(x, y, out Rectangle singleSideStone))
+                        return singleSideStone;
+
+                    if (TryGetStoneOppositeSideDirtSourceRectangle(x, y, out Rectangle oppositeSideDirt))
+                        return oppositeSideDirt;
+
+                    if (TryGetStoneOrthogonalSplitSourceRectangle(x, y, out Rectangle orthogonalSplit))
+                        return orthogonalSplit;
+
+                    if (TryGetStoneDiagonalDirtSourceRectangle(x, y, out Rectangle diagonalDirt))
+                        return diagonalDirt;
+
+                    if (TryGetStoneInnerCornerSourceRectangle(x, y, out Rectangle innerCorner))
+                        return innerCorner;
+
+                    return GetAutoTileSheetCell(1 + PickTileVariation(x, y, 3), 1);
+            }
+        }
+
+        private bool TryGetStoneSingleSideDirtSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            sourceRectangle = Rectangle.Empty;
+
+            TileType upTile = GetTile(x, y - 1);
+            TileType rightTile = GetTile(x + 1, y);
+            TileType downTile = GetTile(x, y + 1);
+            TileType leftTile = GetTile(x - 1, y);
+
+            int variation = PickTileVariation(x, y, 3);
+
+            if (downTile == TileType.Dirt && upTile == TileType.Stone && leftTile == TileType.Stone && rightTile == TileType.Stone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(8 + variation, 5);
+                return true;
+            }
+
+            if (upTile == TileType.Dirt && downTile == TileType.Stone && leftTile == TileType.Stone && rightTile == TileType.Stone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(8 + variation, 6);
+                return true;
+            }
+
+            if (rightTile == TileType.Dirt && upTile == TileType.Stone && downTile == TileType.Stone && leftTile == TileType.Stone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(8, 7 + variation);
+                return true;
+            }
+
+            if (leftTile == TileType.Dirt && upTile == TileType.Stone && downTile == TileType.Stone && rightTile == TileType.Stone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(9, 7 + variation);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetStoneSingleSideStoneSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            sourceRectangle = Rectangle.Empty;
+
+            TileType upTile = GetTile(x, y - 1);
+            TileType rightTile = GetTile(x + 1, y);
+            TileType downTile = GetTile(x, y + 1);
+            TileType leftTile = GetTile(x - 1, y);
+
+            int variation = PickTileVariation(x, y, 3);
+
+            if (downTile == TileType.Stone && upTile == TileType.Dirt && leftTile == TileType.Dirt && rightTile == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(11, 5 + variation);
+                return true;
+            }
+
+            if (upTile == TileType.Stone && downTile == TileType.Dirt && leftTile == TileType.Dirt && rightTile == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(11, 8 + variation);
+                return true;
+            }
+
+            if (rightTile == TileType.Stone && upTile == TileType.Dirt && downTile == TileType.Dirt && leftTile == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(12, 5 + variation);
+                return true;
+            }
+
+            if (leftTile == TileType.Stone && upTile == TileType.Dirt && downTile == TileType.Dirt && rightTile == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(12, 8 + variation);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetStoneOppositeSideDirtSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            sourceRectangle = Rectangle.Empty;
+
+            TileType upTile = GetTile(x, y - 1);
+            TileType rightTile = GetTile(x + 1, y);
+            TileType downTile = GetTile(x, y + 1);
+            TileType leftTile = GetTile(x - 1, y);
+
+            int variation = PickTileVariation(x, y, 3);
+
+            if (leftTile == TileType.Dirt && rightTile == TileType.Dirt && upTile == TileType.Stone && downTile == TileType.Stone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(10, 7 + variation);
+                return true;
+            }
+
+            if (upTile == TileType.Dirt && downTile == TileType.Dirt && leftTile == TileType.Stone && rightTile == TileType.Stone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(8 + variation, 10);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetStoneOrthogonalSplitSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            sourceRectangle = Rectangle.Empty;
+
+            bool upDirt = GetTile(x, y - 1) == TileType.Dirt;
+            bool rightDirt = GetTile(x + 1, y) == TileType.Dirt;
+            bool downDirt = GetTile(x, y + 1) == TileType.Dirt;
+            bool leftDirt = GetTile(x - 1, y) == TileType.Dirt;
+
+            bool upStone = GetTile(x, y - 1) == TileType.Stone;
+            bool rightStone = GetTile(x + 1, y) == TileType.Stone;
+            bool downStone = GetTile(x, y + 1) == TileType.Stone;
+            bool leftStone = GetTile(x - 1, y) == TileType.Stone;
+
+            int baseRow = 5 + PickTileVariation(x, y, 3) * 2;
+
+            if (leftDirt && upDirt && rightStone && downStone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(2, baseRow);
+                return true;
+            }
+
+            if (leftDirt && downDirt && rightStone && upStone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(2, baseRow + 1);
+                return true;
+            }
+
+            if (rightDirt && upDirt && leftStone && downStone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(3, baseRow);
+                return true;
+            }
+
+            if (rightDirt && downDirt && leftStone && upStone)
+            {
+                sourceRectangle = GetAutoTileSheetCell(3, baseRow + 1);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetStoneDiagonalDirtSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            sourceRectangle = Rectangle.Empty;
+
+            bool surroundedByStone =
+                GetTile(x, y - 1) == TileType.Stone &&
+                GetTile(x + 1, y) == TileType.Stone &&
+                GetTile(x, y + 1) == TileType.Stone &&
+                GetTile(x - 1, y) == TileType.Stone;
+
+            if (!surroundedByStone)
+                return false;
+
+            int bottomRow = 5 + PickTileVariation(x, y, 3) * 2;
+            int topRow = bottomRow + 1;
+
+            if (GetTile(x + 1, y + 1) == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(0, bottomRow);
+                return true;
+            }
+
+            if (GetTile(x - 1, y + 1) == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(1, bottomRow);
+                return true;
+            }
+
+            if (GetTile(x + 1, y - 1) == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(0, topRow);
+                return true;
+            }
+
+            if (GetTile(x - 1, y - 1) == TileType.Dirt)
+            {
+                sourceRectangle = GetAutoTileSheetCell(1, topRow);
+                return true;
+            }
+
+            return false;
+        }
+
+        private Rectangle GetStoneEndSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)
+        {
+            int variation = PickTileVariation(x, y, 3);
+
+            if (down)
+            {
+                if (GetTile(x, y + 1) == TileType.Dirt)
+                    return GetAutoTileSheetCell(6, 5 + variation);
+
+                return GetAutoTileSheetCell(6 + variation, 0);
+            }
+            if (right)
+                return GetAutoTileSheetCell(9, variation);
+            if (up)
+            {
+                if (GetTile(x, y - 1) == TileType.Dirt)
+                    return GetAutoTileSheetCell(6, 8 + variation);
+
+                return GetAutoTileSheetCell(6 + variation, 3);
+            }
+
+            return GetAutoTileSheetCell(12, variation);
+        }
+
+        private Rectangle GetStoneTwoConnectionSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)
+        {
+            if (up && down)
+            {
+                int variation = PickTileVariation(x, y, 3);
+                TileType upTile = GetTile(x, y - 1);
+                TileType downTile = GetTile(x, y + 1);
+
+                if (upTile == TileType.Stone && downTile == TileType.Dirt)
+                    return GetAutoTileSheetCell(7, 5 + variation);
+
+                if (downTile == TileType.Stone && upTile == TileType.Dirt)
+                    return GetAutoTileSheetCell(7, 8 + variation);
+
+                return GetAutoTileSheetCell(5, variation);
+            }
+            if (left && right)
+                return GetAutoTileSheetCell(6 + PickTileVariation(x, y, 3), 4);
+
+            int variationOffset = PickTileVariation(x, y, 3) * 2;
+
+            if (right && down)
+                return GetAutoTileSheetCell(0 + variationOffset, 3);
+            if (left && down)
+                return GetAutoTileSheetCell(1 + variationOffset, 3);
+            if (right && up)
+                return GetAutoTileSheetCell(0 + variationOffset, 4);
+
+            return GetAutoTileSheetCell(1 + variationOffset, 4);
+        }
+
+        private Rectangle GetStoneThreeConnectionSourceRectangle(int x, int y, bool up, bool right, bool down, bool left)
+        {
+            int variation = PickTileVariation(x, y, 3);
+
+            TileType upTile = GetTile(x, y - 1);
+            TileType rightTile = GetTile(x + 1, y);
+            TileType downTile = GetTile(x, y + 1);
+            TileType leftTile = GetTile(x - 1, y);
+
+            if (!left)
+            {
+                if (upTile == TileType.Stone && downTile == TileType.Stone && rightTile == TileType.Dirt)
+                    return GetAutoTileSheetCell(13 + variation, 2);
+
+                if (downTile == TileType.Dirt && upTile == TileType.Stone && rightTile == TileType.Stone)
+                    return GetAutoTileSheetCell(4, 5 + variation);
+
+                if (upTile == TileType.Dirt && downTile == TileType.Stone && rightTile == TileType.Stone)
+                    return GetAutoTileSheetCell(4, 8 + variation);
+
+                return GetAutoTileSheetCell(0, variation);
+            }
+            if (!up)
+            {
+                if (leftTile == TileType.Stone && rightTile == TileType.Stone && downTile == TileType.Dirt)
+                    return GetAutoTileSheetCell(13 + variation, 0);
+
+                return GetAutoTileSheetCell(1 + variation, 0);
+            }
+            if (!down)
+            {
+                if (leftTile == TileType.Stone && rightTile == TileType.Stone && upTile == TileType.Dirt)
+                    return GetAutoTileSheetCell(13 + variation, 1);
+
+                return GetAutoTileSheetCell(1 + variation, 2);
+            }
+
+            if (upTile == TileType.Stone && downTile == TileType.Stone && leftTile == TileType.Dirt)
+                return GetAutoTileSheetCell(13 + variation, 3);
+
+            if (downTile == TileType.Dirt && upTile == TileType.Stone && leftTile == TileType.Stone)
+                return GetAutoTileSheetCell(5, 5 + variation);
+
+            if (upTile == TileType.Dirt && downTile == TileType.Stone && leftTile == TileType.Stone)
+                return GetAutoTileSheetCell(5, 8 + variation);
+
+            return GetAutoTileSheetCell(4, variation);
+        }
+
+        private bool TryGetStoneInnerCornerSourceRectangle(int x, int y, out Rectangle sourceRectangle)
+        {
+            bool upLeftAir = !IsSolidAt(x - 1, y - 1);
+            bool upRightAir = !IsSolidAt(x + 1, y - 1);
+            bool downLeftAir = !IsSolidAt(x - 1, y + 1);
+            bool downRightAir = !IsSolidAt(x + 1, y + 1);
+
+            int variation = PickTileVariation(x, y, 3);
+
+            if (upLeftAir && downLeftAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(10, variation);
+                return true;
+            }
+
+            if (upRightAir && downRightAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(11, variation);
+                return true;
+            }
+
+            if (upLeftAir && upRightAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(6 + variation, 1);
+                return true;
+            }
+
+            if (downLeftAir && downRightAir)
+            {
+                sourceRectangle = GetAutoTileSheetCell(6 + variation, 2);
+                return true;
+            }
+
+            sourceRectangle = Rectangle.Empty;
+            return false;
         }
 
         private bool IsAutoTileConnectedAt(int x, int y, bool background)
