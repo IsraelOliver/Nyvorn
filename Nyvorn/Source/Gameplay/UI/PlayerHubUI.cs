@@ -177,6 +177,7 @@ namespace Nyvorn.Source.Gameplay.UI
                 Rectangle iconRect = recipe.ResultItemId switch
                 {
                     ItemId.Workbench => new Rectangle(bounds.X + 8, bounds.Y + 12, 24, 16),
+                    ItemId.Furnace => new Rectangle(bounds.X + 8, bounds.Y + 12, 24, 16),
                     ItemId.WoodDoor => new Rectangle(bounds.X + 15, bounds.Y + 5, 10, 30),
                     _ => new Rectangle(bounds.X + 4, bounds.Y + 4, 32, 32)
                 };
@@ -213,7 +214,7 @@ namespace Nyvorn.Source.Gameplay.UI
 
         private bool CanCraftRecipe(RecipeDefinition recipe, CraftTier craftTier)
         {
-            if (recipe.RequiredTier > craftTier)
+            if (!craftTier.Satisfies(recipe.RequiredTier))
                 return false;
 
             for (int i = 0; i < recipe.Ingredients.Count; i++)

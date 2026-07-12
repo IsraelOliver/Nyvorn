@@ -79,7 +79,7 @@
   {
     "id": "DirtBlock",
     "name": "Dirt Block",
-    "texturePath": "blocks/dirt_spritesheet",
+    "texturePath": "blocks/dirt",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -91,7 +91,7 @@
   {
     "id": "StoneBlock",
     "name": "Stone Block",
-    "texturePath": "blocks/stone_spritesheet",
+    "texturePath": "blocks/stone",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -99,6 +99,30 @@
     "worldPivot": [4, 8],
     "spriteSheetCell": [0, 0],
     "worldCollisionRect": [0, 0, 8, 8]
+  },
+  {
+    "id": "IronOreBlock",
+    "name": "Iron Ore Block",
+    "texturePath": "blocks/iron_ore",
+    "stackable": true,
+    "maxStack": 999,
+    "gravityScale": 1.0,
+    "worldSize": [12, 11],
+    "worldPivot": [6, 11],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [1, 8, 10, 3]
+  },
+  {
+    "id": "IronBar",
+    "name": "Iron Bar",
+    "texturePath": "blocks/iron_bar",
+    "stackable": true,
+    "maxStack": 999,
+    "gravityScale": 1.0,
+    "worldSize": [16, 14],
+    "worldPivot": [8, 14],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [1, 10, 14, 3]
   },
   {
     "id": "SandBlock",
@@ -140,6 +164,18 @@
     "id": "Workbench",
     "name": "Workbench",
     "texturePath": "blocks/worktable-sheet",
+    "stackable": true,
+    "maxStack": 99,
+    "gravityScale": 1.0,
+    "worldSize": [24, 16],
+    "worldPivot": [12, 16],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [2, 10, 20, 6]
+  },
+  {
+    "id": "Furnace",
+    "name": "Furnace",
+    "texturePath": "blocks/furnace-Sheet",
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,

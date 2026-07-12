@@ -49,6 +49,7 @@ namespace Nyvorn.Source.Game.States
         public required WorldEnvironmentSystem EnvironmentSystem { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
         public required WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
+        public required FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
@@ -56,6 +57,7 @@ namespace Nyvorn.Source.Game.States
         public required List<string> ConsoleCommandHistory { get; init; }
         public int SelectedHotbarIndex => InputRouter.SelectedHotbarIndex;
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => ViewCoordinator.ActiveSimulationChunks;
+        public TileWetnessField WetnessField => WorldTickCoordinator.WetnessField;
         public int LastRandomTileSampleCount => WorldTickCoordinator.LastRandomTileSampleCount;
         public int LastGrassGrowthCount => WorldTickCoordinator.LastGrassGrowthCount;
         public float WorldTickTimeScale => WorldTickCoordinator.WorldTickTimeScale;
@@ -69,6 +71,7 @@ namespace Nyvorn.Source.Game.States
                                               EnvironmentSystem.HasUnsavedChanges ||
                                               LiquidSystem?.HasUnsavedChanges == true ||
                                               WorkbenchRuntimeSystem.HasUnsavedChanges ||
+                                              FurnaceRuntimeSystem.HasUnsavedChanges ||
                                               DoorRuntimeSystem.HasUnsavedChanges ||
                                               consoleCommandHistoryRevision != persistedConsoleCommandHistoryRevision;
         public Player Player => RuntimeContext.Player;
@@ -387,6 +390,7 @@ namespace Nyvorn.Source.Game.States
         {
             BlockInteractionSystem.Update(dt);
             WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
+            FurnaceRuntimeSystem.UpdateHover(mouseWorld);
             InputState worldInput = InputRouter.RouteFrameInput(input);
 
             CombatCoordinator.SyncEquippedWeapon(SelectedHotbarIndex);
@@ -401,6 +405,7 @@ namespace Nyvorn.Source.Game.States
 
             bool objectPlacementHandled =
                 WorkbenchRuntimeSystem.TryPlaceSelectedWorkbench(worldInput, SelectedHotbarIndex, mouseWorld) ||
+                FurnaceRuntimeSystem.TryPlaceSelectedFurnace(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 DoorRuntimeSystem.TryPlaceSelectedDoor(worldInput, SelectedHotbarIndex, mouseWorld);
             if (objectPlacementHandled)
             {
@@ -414,7 +419,7 @@ namespace Nyvorn.Source.Game.States
             if (animateConstructionPickaxe && !worldInput.AttackPressed)
                 Player.TryStartToolUseAnimation(mouseWorld);
 
-            Player.Update(dt, WorldMap, SandSystem, LiquidSystem, worldInput, mouseWorld);
+            Player.Update(dt, WorldMap, SandSystem, LiquidSystem, worldInput, mouseWorld, WetnessField);
             mouseWorld = WorldWrapSystem.NormalizePlayerAndMouse(mouseWorld);
             InteriorFocusSystem.Update(dt, IsConstructionMode);
             TissueSystem.SetCorrectionPulseBoost(EnvironmentSystem.TissueCycleState.PulseBoost);
@@ -540,7 +545,24 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            ViewCoordinator.DrawNightOverlay(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState.NightOverlayTint);
+            Color tint = EnvironmentSystem.SkyState.NightOverlayTint;
+
+            // Soften the darkening while it's raining and the player has a roof over them -
+            // WorldMap stays player-agnostic (IsWeatherAudioMuffled/HasOpenSkyAbove take any
+            // tile), the player-awareness lives here at the draw call site instead.
+            if (EnvironmentSystem.SkyState.RainIntensity > 0.05f)
+            {
+                Point playerTile = WorldMap.WorldToTile(Player.Position);
+                if (WorldMap.IsWeatherAudioMuffled(playerTile.X, playerTile.Y))
+                    tint *= 0.6f;
+            }
+
+            ViewCoordinator.DrawNightOverlay(spriteBatch, screenWidth, screenHeight, tint);
+        }
+
+        public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.DrawRainFront(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
         }
 
 

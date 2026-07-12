@@ -48,6 +48,7 @@ namespace Nyvorn.Source.Game.States
 
             return selectedSlot.ItemId == ItemId.SandBlock ||
                    selectedSlot.ItemId == ItemId.Workbench ||
+                   selectedSlot.ItemId == ItemId.Furnace ||
                    selectedSlot.ItemId == ItemId.WoodDoor ||
                    TileItemMapper.TryGetTileType(selectedSlot.ItemId, out _);
         }

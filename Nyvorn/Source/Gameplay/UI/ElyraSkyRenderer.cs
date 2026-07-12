@@ -9,7 +9,21 @@ namespace Nyvorn.Source.Gameplay.UI
     {
         private const int GradientBandHeight = 4;
         private const int StarCount = 130;
-        private const int RainDropCount = 220;
+        private const float MaxRainWindAngleRadians = 0.55f; // ~31 degrees at full wind
+
+        // 3 parallax bands: distant (drawn behind terrain, in the pre-terrain sky pass) and
+        // mid/near (drawn after terrain/entities, so drops pass in front of trees/rooftops).
+        // Distant is faint/blue-ish (reads as far away); near is sharper/brighter/faster.
+        private static readonly RainLayer[] BackRainLayers =
+        {
+            new(dropCount: 90, fallSpeed: 220f, width: 1, height: 10, alphaScale: 0.30f, tint: new Color(150, 175, 205), salt: 300)
+        };
+
+        private static readonly RainLayer[] FrontRainLayers =
+        {
+            new(dropCount: 140, fallSpeed: 340f, width: 2, height: 14, alphaScale: 0.55f, tint: new Color(176, 205, 225), salt: 400),
+            new(dropCount: 60, fallSpeed: 430f, width: 2, height: 17, alphaScale: 0.75f, tint: new Color(210, 225, 235), salt: 500)
+        };
 
         private readonly Texture2D pixel;
         private readonly Texture2D sunTexture;
@@ -53,7 +67,17 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawMoon(spriteBatch, screenWidth, screenHeight, skyState);
             DrawSun(spriteBatch, screenWidth, screenHeight, skyState);
             DrawFog(spriteBatch, screenWidth, screenHeight, skyState);
-            DrawRain(spriteBatch, screenWidth, screenHeight, skyState);
+            DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, BackRainLayers);
+        }
+
+        // Called separately, after terrain/entities are drawn, so the near rain layers pass in
+        // front of trees/rooftops instead of the whole rain effect sitting strictly behind everything.
+        public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, FrontRainLayers);
         }
 
         private void DrawGradient(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color top, Color horizon)
@@ -164,22 +188,75 @@ namespace Nyvorn.Source.Gameplay.UI
             spriteBatch.Draw(pixel, new Rectangle(0, y, screenWidth, fogHeight), skyState.FogColor * skyState.FogOpacity * 0.22f);
         }
 
-        private void DrawRain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        private void DrawRainLayers(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, RainLayer[] layers)
         {
             if (skyState.RainIntensity <= 0.01f)
                 return;
 
-            int drops = (int)(RainDropCount * MathHelper.Clamp(skyState.RainIntensity, 0f, 1f));
-            Color rainColor = new Color(176, 205, 225) * MathHelper.Clamp(0.25f + skyState.RainIntensity * 0.35f, 0f, 0.75f);
-            float fall = skyState.VisualTimeSeconds * (340f + (skyState.Wetness * 120f));
+            // Wind (0..1, ~0.05 calm to ~0.75 storm-active) steers the fall angle continuously
+            // instead of drops always falling straight down.
+            float windAngleRadians = (skyState.Wind - 0.4f) * MaxRainWindAngleRadians;
+            float sinAngle = MathF.Sin(windAngleRadians);
+            float cosAngle = MathF.Cos(windAngleRadians);
+
+            for (int layerIndex = 0; layerIndex < layers.Length; layerIndex++)
+                DrawRainLayer(spriteBatch, screenWidth, screenHeight, skyState, layers[layerIndex], sinAngle, cosAngle);
+        }
+
+        private void DrawRainLayer(
+            SpriteBatch spriteBatch,
+            int screenWidth,
+            int screenHeight,
+            SkyState skyState,
+            RainLayer layer,
+            float sinAngle,
+            float cosAngle)
+        {
+            int drops = (int)(layer.DropCount * MathHelper.Clamp(skyState.RainIntensity, 0f, 1f));
+            Color rainColor = layer.Tint * MathHelper.Clamp(layer.AlphaScale * (0.55f + skyState.RainIntensity * 0.6f), 0f, 1f);
+            float fall = skyState.VisualTimeSeconds * (layer.FallSpeed + (skyState.Wetness * 80f));
+
             for (int i = 0; i < drops; i++)
             {
-                int x = (int)(Hash01(i, 211) * (screenWidth + 80)) - 40;
-                int baseY = (int)(Hash01(i, 233) * screenHeight);
-                int y = (int)((baseY + fall + (i * 13)) % (screenHeight + 40)) - 20;
-                spriteBatch.Draw(pixel, new Rectangle(x, y, 2, 14), rainColor);
-                spriteBatch.Draw(pixel, new Rectangle(x - 2, y + 10, 2, 8), rainColor * 0.55f);
+                int baseX = (int)(Hash01(i, layer.Salt) * (screenWidth + 160)) - 80;
+                int baseY = (int)(Hash01(i, layer.Salt + 1) * screenHeight);
+                float fallDistance = (baseY + fall + (i * 13)) % (screenHeight + 40);
+                int y = (int)fallDistance - 20;
+                int x = baseX + (int)(sinAngle * fallDistance);
+
+                // Short diagonal streak leaning with the wind, instead of a fixed vertical rect.
+                int segments = 3;
+                for (int s = 0; s < segments; s++)
+                {
+                    float t = s / (float)(segments - 1);
+                    int segX = x + (int)(sinAngle * layer.Height * t);
+                    int segY = y + (int)(cosAngle * layer.Height * t);
+                    Color segColor = s == 0 ? rainColor : rainColor * 0.6f;
+                    spriteBatch.Draw(pixel, new Rectangle(segX, segY, layer.Width, System.Math.Max(2, layer.Height / segments)), segColor);
+                }
             }
+        }
+
+        private readonly struct RainLayer
+        {
+            public RainLayer(int dropCount, float fallSpeed, int width, int height, float alphaScale, Color tint, int salt)
+            {
+                DropCount = dropCount;
+                FallSpeed = fallSpeed;
+                Width = width;
+                Height = height;
+                AlphaScale = alphaScale;
+                Tint = tint;
+                Salt = salt;
+            }
+
+            public int DropCount { get; }
+            public float FallSpeed { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public float AlphaScale { get; }
+            public Color Tint { get; }
+            public int Salt { get; }
         }
 
         private static Vector2 GetArcPosition(int screenWidth, int screenHeight, float progress)

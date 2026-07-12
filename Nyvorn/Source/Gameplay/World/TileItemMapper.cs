@@ -13,6 +13,7 @@ namespace Nyvorn.Source.World
                 TileType.Stone => ItemId.StoneBlock,
                 TileType.Sand => ItemId.SandBlock,
                 TileType.Wood => ItemId.RawWood,
+                TileType.IronOre => ItemId.IronOreBlock,
                 _ => ItemId.None
             };
 

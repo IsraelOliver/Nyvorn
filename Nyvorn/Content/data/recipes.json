@@ -54,5 +54,40 @@
     "ingredients": [
       { "item": "RawWood", "quantity": 12 }
     ]
+  },
+  {
+    "id": "furnace",
+    "result": "Furnace",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Furnace",
+    "displayCost": "15 Stone + 5 Raw Wood",
+    "ingredients": [
+      { "item": "StoneBlock", "quantity": 15 },
+      { "item": "RawWood", "quantity": 5 }
+    ]
+  },
+  {
+    "id": "iron_pickaxe",
+    "result": "IronPickaxe",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Iron Pickaxe",
+    "displayCost": "6 Iron Bar + 2 Raw Wood",
+    "ingredients": [
+      { "item": "IronBar", "quantity": 6 },
+      { "item": "RawWood", "quantity": 2 }
+    ]
+  },
+  {
+    "id": "iron_bar",
+    "result": "IronBar",
+    "resultQuantity": 1,
+    "requiredTier": "Furnace",
+    "displayName": "Iron Bar",
+    "displayCost": "2 Iron Ore",
+    "ingredients": [
+      { "item": "IronOreBlock", "quantity": 2 }
+    ]
   }
 ]

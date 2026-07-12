@@ -742,6 +742,7 @@ namespace Nyvorn.Source.Gameplay.UI
                 TileType.Empty => new Color(8, 14, 18),
                 TileType.Grass => new Color(46, 126, 74),
                 TileType.Stone => new Color(142, 146, 152),
+                TileType.IronOre => new Color(196, 110, 60),
                 TileType.Sand => new Color(252, 222, 156),
                 _ => new Color(126, 92, 72)
             };

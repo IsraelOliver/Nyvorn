@@ -11,6 +11,7 @@ namespace Nyvorn.Source.World.Generation
         public bool EnableHydrologyPass { get; init; } = true;
         public bool EnableDesertPixelSandPass { get; init; } = true;
         public bool EnableDesertCavePass { get; init; } = true;
+        public bool EnableIronOreVeinPass { get; init; } = true;
         public bool EnableTreeGenerationPass { get; init; } = true;
         public bool EnableWorldBoundsPass { get; init; } = true;
 
@@ -27,6 +28,7 @@ namespace Nyvorn.Source.World.Generation
                 "Hydrology" => EnableHydrologyPass,
                 "DesertPixelSand" => EnableDesertPixelSandPass,
                 "DesertCave" => EnableDesertCavePass,
+                "IronOreVein" => EnableIronOreVeinPass,
                 "TreeGeneration" => EnableTreeGenerationPass,
                 "WorldBounds" => EnableWorldBoundsPass,
                 _ => true

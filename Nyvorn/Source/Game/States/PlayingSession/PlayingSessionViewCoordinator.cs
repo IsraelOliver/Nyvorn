@@ -68,6 +68,7 @@ namespace Nyvorn.Source.Game.States
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
         public WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
+        public FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
         public DoorRuntimeSystem DoorRuntimeSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
@@ -312,6 +313,7 @@ namespace Nyvorn.Source.Game.States
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
             WorkbenchRuntimeSystem?.Draw(spriteBatch);
+            FurnaceRuntimeSystem?.Draw(spriteBatch);
             DoorRuntimeSystem?.Draw(spriteBatch);
         }
 
@@ -323,6 +325,11 @@ namespace Nyvorn.Source.Game.States
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
         {
             ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyState);
+        }
+
+        public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        {
+            ElyraSkyRenderer.DrawRainFront(spriteBatch, screenWidth, screenHeight, skyState);
         }
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color tint)

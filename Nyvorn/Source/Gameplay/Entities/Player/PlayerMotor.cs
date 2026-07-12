@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
@@ -64,7 +65,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             PlayerWaterState waterState = PlayerWaterState.Dry,
             float waterSubmergedRatio = 0f,
             Vector2 waterMoveInput = default,
-            bool waterSurfaceJumpRequested = false)
+            bool waterSurfaceJumpRequested = false,
+            TileWetnessField wetnessField = null)
         {
             LastLandingImpactVelocity = 0f;
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
@@ -80,8 +82,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             if (usesAquaticMovement)
                 ApplyWaterHorizontalMovement(dt, waterMoveInput.X, waterState, waterSubmergedRatio);
+            else if (usesShallowMovement)
+                velocity.X = desiredVelocityX * config.ShallowMoveMultiplier;
             else
-                velocity.X = usesShallowMovement ? desiredVelocityX * config.ShallowMoveMultiplier : desiredVelocityX;
+            {
+                float traction = GetGroundTraction(worldMap, wetnessField);
+                velocity.X = MoveTowards(velocity.X, desiredVelocityX, config.GroundAcceleration * traction * dt);
+            }
 
             float totalVelocityX = velocity.X + knockbackVelocityX;
             float yBeforeHorizontalResolution = position.Y;
@@ -225,6 +232,21 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             float partialRange = System.MathF.Max(0.01f, config.WaterDeepThreshold - config.WaterPartialThreshold);
             float partial01 = MathHelper.Clamp((submergedRatio - config.WaterPartialThreshold) / partialRange, 0f, 1f);
             return MathHelper.Lerp(0.65f, 1f, partial01);
+        }
+
+        private float GetGroundTraction(WorldMap worldMap, TileWetnessField wetnessField)
+        {
+            if (wetnessField == null || worldMap == null)
+                return 1f;
+
+            Point groundTile = worldMap.WorldToTile(new Vector2(position.X, HitBottom + 1f));
+            int wrappedX = worldMap.WrapTileX(groundTile.X);
+            TileType groundTileType = worldMap.GetTile(wrappedX, groundTile.Y);
+            if (groundTileType != TileType.Dirt && groundTileType != TileType.Grass)
+                return 1f;
+
+            float wetness01 = wetnessField.GetWetness01(wrappedX, groundTile.Y);
+            return MathHelper.Lerp(1f, config.WetTractionMultiplier, wetness01);
         }
 
         private static float MoveTowards(float current, float target, float maxDelta)

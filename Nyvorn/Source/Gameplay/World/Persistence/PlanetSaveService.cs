@@ -128,6 +128,13 @@ namespace Nyvorn.Source.World.Persistence
                         PositionY = workbench.Position.Y
                     })
                     .ToList(),
+                Furnaces = session.FurnaceRuntimeSystem.Furnaces
+                    .Select(furnace => new FurnaceSaveData
+                    {
+                        PositionX = furnace.Position.X,
+                        PositionY = furnace.Position.Y
+                    })
+                    .ToList(),
                 Doors = session.DoorRuntimeSystem.Doors
                     .Select(door => new DoorSaveData
                     {
@@ -156,6 +163,7 @@ namespace Nyvorn.Source.World.Persistence
             session.MarkWorldEnvironmentPersisted();
             session.MarkLiquidSystemPersisted();
             session.WorkbenchRuntimeSystem.MarkPersisted();
+            session.FurnaceRuntimeSystem.MarkPersisted();
             session.DoorRuntimeSystem.MarkPersisted();
         }
 
@@ -214,6 +222,7 @@ namespace Nyvorn.Source.World.Persistence
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
+                Furnaces = saveData.Furnaces ?? new List<FurnaceSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
@@ -240,6 +249,7 @@ namespace Nyvorn.Source.World.Persistence
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
                 Workbenches = saveData.Workbenches ?? new List<WorkbenchSaveData>(),
+                Furnaces = saveData.Furnaces ?? new List<FurnaceSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),

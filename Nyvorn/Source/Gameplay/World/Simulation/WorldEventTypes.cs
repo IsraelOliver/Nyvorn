@@ -38,6 +38,11 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         public float StageDurationSeconds { get; set; }
         public int StartedCycleIndex { get; set; }
         public bool IsForced { get; set; }
+        // Rises while Active (weather-channel events only); a future escalation (e.g. Rain -> Storm,
+        // Phase 2) crosses a threshold and promotes Kind in place via PromoteEventKind, without
+        // resetting Stage/StageElapsedSeconds the way SetEventStage does. Unused by Rain today -
+        // added now so Phase 2 doesn't need a save-schema change to introduce it.
+        public float Instability { get; set; }
     }
 
     public sealed class WorldEnvironmentSaveData
@@ -91,5 +96,6 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         float EclipseIntensity,
         float TissueCorrectionStrength,
         float Wetness,
+        float Wind,
         float VisualTimeSeconds);
 }

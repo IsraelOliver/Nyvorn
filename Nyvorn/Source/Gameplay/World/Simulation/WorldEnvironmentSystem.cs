@@ -5,12 +5,6 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 {
     public sealed class WorldEnvironmentSystem
     {
-        private const float RainOmenSeconds = 25f;
-        private const float RainTransitionSeconds = 30f;
-        private const float RainActiveSeconds = 160f;
-        private const float RainDissipatingSeconds = 40f;
-        private const float RainResidueSeconds = 120f;
-
         private const float EclipseTransitionSeconds = 30f;
         private const float EclipseActiveSeconds = 220f;
         private const float EclipseDissipatingSeconds = 45f;
@@ -18,6 +12,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         private const int RainChanceMorningSalt = 101;
         private const int RainChanceAfternoonSalt = 102;
+        private const int RainActiveDurationSalt = 103;
         private const int EclipseChanceSalt = 201;
 
         private static readonly SkyKeyframe[] SkyKeyframes =
@@ -34,7 +29,9 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         };
 
         private readonly int seed;
-        private readonly WorldEventRuntimeSaveData rain;
+        // Named generically (not "rain") because its Kind can become Storm/Hail/Snow/Sandstorm later;
+        // the WorldEventDefinition it's evaluated against is looked up by Kind, not hardcoded here.
+        private readonly WorldEventRuntimeSaveData weatherEvent;
         private readonly WorldEventRuntimeSaveData eclipse;
 
         private WorldTimeSnapshot previousTime;
@@ -53,7 +50,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         {
             this.seed = seed;
             saveData ??= new WorldEnvironmentSaveData { CycleIndex = initialTime.CycleIndex };
-            rain = CloneEvent(saveData.Rain);
+            weatherEvent = CloneEvent(saveData.Rain);
             eclipse = CloneEvent(saveData.Eclipse);
             rainCooldownCycles = Math.Max(0, saveData.RainCooldownCycles);
             eclipseCooldownCycles = Math.Max(0, saveData.EclipseCooldownCycles);
@@ -95,7 +92,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             {
                 visualTimeSeconds += scaledDt;
                 HandleAutomaticTriggers(previousTime, time);
-                AdvanceEvent(rain, scaledDt, GetRainDuration);
+                AdvanceEvent(weatherEvent, scaledDt, GetWeatherStageDuration);
                 AdvanceEvent(eclipse, scaledDt, GetEclipseDuration);
                 UpdateWeatherMeters(scaledDt);
             }
@@ -109,7 +106,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             return new WorldEnvironmentSaveData
             {
                 CycleIndex = cycleIndex,
-                Rain = CloneEvent(rain),
+                Rain = CloneEvent(weatherEvent),
                 Eclipse = CloneEvent(eclipse),
                 RainCooldownCycles = rainCooldownCycles,
                 EclipseCooldownCycles = eclipseCooldownCycles,
@@ -127,17 +124,17 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         public void ForceRain()
         {
-            SetEventStage(rain, WorldEventKind.Rain, WorldEventChannel.Weather, WorldEventStage.Omen, 8f, true, previousTime.CycleIndex);
+            SetEventStage(weatherEvent, WorldEventKind.Rain, WorldEventChannel.Weather, WorldEventStage.Omen, 8f, true, previousTime.CycleIndex);
             rainCooldownCycles = 1;
             revision++;
         }
 
         public void StopRain()
         {
-            if (!IsRunning(rain))
+            if (!IsRunning(weatherEvent))
                 return;
 
-            SetEventStage(rain, WorldEventKind.Rain, WorldEventChannel.Weather, WorldEventStage.Dissipating, 12f, rain.IsForced, rain.StartedCycleIndex);
+            SetEventStage(weatherEvent, WorldEventKind.Rain, WorldEventChannel.Weather, WorldEventStage.Dissipating, 12f, weatherEvent.IsForced, weatherEvent.StartedCycleIndex);
             revision++;
         }
 
@@ -159,7 +156,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         public void ClearEvents()
         {
-            ClearEvent(rain);
+            ClearEvent(weatherEvent);
             ClearEvent(eclipse);
             rainCooldownCycles = 0;
             eclipseCooldownCycles = 0;
@@ -171,7 +168,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         public string GetStatusText()
         {
-            return $"Rain:{FormatEvent(rain)} Eclipse:{FormatEvent(eclipse)} " +
+            return $"Rain:{FormatEvent(weatherEvent)} Eclipse:{FormatEvent(eclipse)} " +
                    $"cloud:{cloudCover:0.00} wind:{wind:0.00} wet:{wetness:0.00} " +
                    $"cd R/E:{rainCooldownCycles}/{eclipseCooldownCycles}";
         }
@@ -208,14 +205,14 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         private void TryStartRain(WorldTimeSnapshot time, int salt)
         {
-            if (IsRunning(rain) || rainCooldownCycles > 0 || IsEclipseThreatening())
+            if (IsRunning(weatherEvent) || rainCooldownCycles > 0 || IsEclipseThreatening())
                 return;
 
             float chance = 0.18f + (humidity * 0.18f) + (cloudCover * 0.10f) - (wetness * 0.14f);
             if (Deterministic01(time.CycleIndex, salt) > MathHelper.Clamp(chance, 0.05f, 0.42f))
                 return;
 
-            SetEventStage(rain, WorldEventKind.Rain, WorldEventChannel.Weather, WorldEventStage.Omen, RainOmenSeconds, false, time.CycleIndex);
+            SetEventStage(weatherEvent, WorldEventKind.Rain, WorldEventChannel.Weather, WorldEventStage.Omen, WorldEventDefinition.Rain.OmenSeconds, false, time.CycleIndex);
             rainCooldownCycles = 1;
             revision++;
         }
@@ -229,6 +226,12 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 return;
 
             data.StageElapsedSeconds += dt;
+            if (data.Stage == WorldEventStage.Active && data.Channel == WorldEventChannel.Weather)
+            {
+                float instabilityRate = WorldEventDefinition.Get(data.Kind).InstabilityGainRate;
+                data.Instability = MathHelper.Clamp(data.Instability + (dt * instabilityRate), 0f, 1f);
+            }
+
             if (data.StageDurationSeconds > 9000f)
             {
                 revision++;
@@ -263,26 +266,27 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         private void UpdateWeatherMeters(float dt)
         {
-            float rainIntensity = GetRainIntensity();
+            float rainIntensity = GetWeatherIntensity();
             float eclipseIntensity = GetEclipseIntensity();
-            float targetCloud = rain.Stage switch
+            WorldEventDefinition def = WorldEventDefinition.Get(weatherEvent.Kind);
+            float targetCloud = weatherEvent.Stage switch
             {
-                WorldEventStage.Omen => 0.35f,
-                WorldEventStage.Transition => 0.65f,
-                WorldEventStage.Active => 0.95f,
-                WorldEventStage.Dissipating => 0.55f,
-                WorldEventStage.Residue => 0.20f,
+                WorldEventStage.Omen => def.CloudOmen,
+                WorldEventStage.Transition => def.CloudTransition,
+                WorldEventStage.Active => def.CloudActive,
+                WorldEventStage.Dissipating => def.CloudDissipating,
+                WorldEventStage.Residue => def.CloudResidue,
                 _ => 0f
             };
             targetCloud = MathF.Max(targetCloud, eclipseIntensity * 0.28f);
 
-            float targetWind = rain.Stage switch
+            float targetWind = weatherEvent.Stage switch
             {
-                WorldEventStage.Omen => 0.30f,
-                WorldEventStage.Transition => 0.55f,
-                WorldEventStage.Active => 0.75f,
-                WorldEventStage.Dissipating => 0.35f,
-                _ => 0.05f
+                WorldEventStage.Omen => def.WindOmen,
+                WorldEventStage.Transition => def.WindTransition,
+                WorldEventStage.Active => def.WindActive,
+                WorldEventStage.Dissipating => def.WindDissipating,
+                _ => def.WindResidue
             };
 
             cloudCover = Approach(cloudCover, targetCloud, dt * 0.22f);
@@ -290,18 +294,18 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             humidity = Approach(humidity, rainIntensity > 0f ? 0.85f : 0.35f, dt * 0.025f);
 
             if (rainIntensity > 0.05f)
-                wetness = MathHelper.Clamp(wetness + (dt * rainIntensity * 0.035f), 0f, 1f);
+                wetness = MathHelper.Clamp(wetness + (dt * rainIntensity * def.WetnessGainRate), 0f, 1f);
             else
                 wetness = Approach(wetness, 0f, dt * 0.010f);
         }
 
         private void RefreshSnapshot(WorldTimeSnapshot time)
         {
-            float rainIntensity = GetRainIntensity();
+            float rainIntensity = GetWeatherIntensity();
             float eclipseIntensity = GetEclipseIntensity();
             TissueCycleState = CreateTissueCycleState(time);
             WeatherState = new WeatherState(humidity, cloudCover, wind, wetness, rainIntensity);
-            EventState = new WorldEventState(CloneEvent(rain), CloneEvent(eclipse), rainCooldownCycles, eclipseCooldownCycles);
+            EventState = new WorldEventState(CloneEvent(weatherEvent), CloneEvent(eclipse), rainCooldownCycles, eclipseCooldownCycles);
             EnemyRespawnDelayMultiplier = MathHelper.Clamp(
                 MathHelper.Lerp(1f, 0.48f, MathF.Max(eclipseIntensity * 0.85f, TissueCycleState.CorrectionStrength * 0.45f)),
                 0.35f,
@@ -386,6 +390,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 eclipseIntensity,
                 tissueState.CorrectionStrength,
                 wetness,
+                wind,
                 visualTimeSeconds);
         }
 
@@ -452,15 +457,16 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             return SkyKeyframes[0];
         }
 
-        private float GetRainIntensity()
+        private float GetWeatherIntensity()
         {
-            return rain.Stage switch
+            WorldEventDefinition def = WorldEventDefinition.Get(weatherEvent.Kind);
+            return weatherEvent.Stage switch
             {
                 WorldEventStage.Omen => 0f,
-                WorldEventStage.Transition => MathHelper.SmoothStep(0f, 0.42f, StageProgress(rain)),
-                WorldEventStage.Active => 0.85f,
-                WorldEventStage.Dissipating => MathHelper.Lerp(0.65f, 0.18f, StageProgress(rain)),
-                WorldEventStage.Residue => MathHelper.Lerp(0.16f, 0f, StageProgress(rain)),
+                WorldEventStage.Transition => MathHelper.SmoothStep(0f, def.IntensityTransitionPeak, StageProgress(weatherEvent)),
+                WorldEventStage.Active => def.IntensityActive,
+                WorldEventStage.Dissipating => MathHelper.Lerp(def.IntensityDissipatingStart, def.IntensityDissipatingEnd, StageProgress(weatherEvent)),
+                WorldEventStage.Residue => MathHelper.Lerp(def.IntensityResidueStart, 0f, StageProgress(weatherEvent)),
                 _ => 0f
             };
         }
@@ -478,16 +484,20 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             };
         }
 
-        private static float GetRainDuration(WorldEventStage stage, bool forced)
+        private float GetWeatherStageDuration(WorldEventStage stage, bool forced)
         {
-            float scale = forced ? 0.50f : 1f;
+            WorldEventDefinition def = WorldEventDefinition.Get(weatherEvent.Kind);
+            float scale = forced ? def.ForcedDurationScale : 1f;
             return stage switch
             {
-                WorldEventStage.Omen => RainOmenSeconds * scale,
-                WorldEventStage.Transition => RainTransitionSeconds * scale,
-                WorldEventStage.Active => RainActiveSeconds * scale,
-                WorldEventStage.Dissipating => RainDissipatingSeconds * scale,
-                WorldEventStage.Residue => RainResidueSeconds * scale,
+                WorldEventStage.Omen => def.OmenSeconds * scale,
+                WorldEventStage.Transition => def.TransitionSeconds * scale,
+                WorldEventStage.Active => MathHelper.Lerp(
+                    def.ActiveSecondsMin,
+                    def.ActiveSecondsMax,
+                    Deterministic01(weatherEvent.StartedCycleIndex, RainActiveDurationSalt)) * scale,
+                WorldEventStage.Dissipating => def.DissipatingSeconds * scale,
+                WorldEventStage.Residue => def.ResidueSeconds * scale,
                 _ => 0f
             };
         }
@@ -522,6 +532,17 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             data.StageDurationSeconds = MathF.Max(0f, duration);
             data.StartedCycleIndex = Math.Max(0, cycleIndex);
             data.IsForced = forced;
+            data.Instability = 0f;
+        }
+
+        // Escalates an already-running weather event to a new Kind (e.g. Rain -> Storm, Phase 2)
+        // in place - deliberately does NOT reset Stage/StageElapsedSeconds/StageDurationSeconds the
+        // way SetEventStage does, so a storm doesn't snap back to Omen when the rain that grew into
+        // it was already Active. Not called yet: no Kind besides Rain exists for the Weather channel.
+        private static void PromoteEventKind(WorldEventRuntimeSaveData data, WorldEventKind newKind)
+        {
+            data.Kind = newKind;
+            data.Instability = 0f;
         }
 
         private static void ClearEvent(WorldEventRuntimeSaveData data)
@@ -532,6 +553,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             data.StageDurationSeconds = 0f;
             data.StartedCycleIndex = 0;
             data.IsForced = false;
+            data.Instability = 0f;
         }
 
         private static WorldEventRuntimeSaveData CloneEvent(WorldEventRuntimeSaveData source)
@@ -547,7 +569,8 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 StageElapsedSeconds = source.StageElapsedSeconds,
                 StageDurationSeconds = source.StageDurationSeconds,
                 StartedCycleIndex = source.StartedCycleIndex,
-                IsForced = source.IsForced
+                IsForced = source.IsForced,
+                Instability = source.Instability
             };
         }
 

@@ -178,8 +178,9 @@ namespace Nyvorn.Source.Game.States
 
             Vector2 mouseWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
             session.WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
+            session.FurnaceRuntimeSystem.UpdateHover(mouseWorld);
 
-            CraftTier craftTier = session.WorkbenchRuntimeSystem.GetNearbyCraftTier();
+            CraftTier craftTier = session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier();
             playerHubUI.Update(input, craftTier);
             if (playerHubUI.IsOpen && playerHubUI.ContainsMouse(input.MouseScreenPosition.ToPoint(), craftTier))
                 input = input.ConsumeWorldMouseInput();
@@ -192,7 +193,14 @@ namespace Nyvorn.Source.Game.States
                     interactionResult.OpenPlayerHub)
                 {
                     playerHubUI.Open();
-                    craftTier = interactionResult.CraftTier;
+                    craftTier |= interactionResult.CraftTier;
+                }
+                else if (!interactedWithDoor &&
+                    session.FurnaceRuntimeSystem.TryInteract(session.Player, out InteractionResult furnaceInteractionResult) &&
+                    furnaceInteractionResult.OpenPlayerHub)
+                {
+                    playerHubUI.Open();
+                    craftTier |= furnaceInteractionResult.CraftTier;
                 }
             }
 
@@ -338,6 +346,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            session.DrawRainFront(spriteBatch, screenW, screenH);
             session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
@@ -345,7 +354,7 @@ namespace Nyvorn.Source.Game.States
             session.DrawHud(spriteBatch, screenW, screenH);
             if (minimapVisible)
                 session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
-            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier());
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
             if (consoleOpen)
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();

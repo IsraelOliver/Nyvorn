@@ -13,7 +13,8 @@ namespace Nyvorn.Source.World.Generation.Biomes
         float ShallowStoneThresholdOffset,
         float DeepDirtThresholdOffset,
         float CaveThresholdOffset,
-        float TreeSpawnMultiplier)
+        float TreeSpawnMultiplier,
+        float SurfaceHeightBias = 0f)
     {
         public static readonly BiomeDefinition Forest = new(
             BiomeType.Forest,
@@ -26,7 +27,8 @@ namespace Nyvorn.Source.World.Generation.Biomes
             0f,
             0f,
             0f,
-            1f);
+            1f,
+            0f);
 
         public static readonly BiomeDefinition Desert = new(
             BiomeType.Desert,
@@ -39,7 +41,8 @@ namespace Nyvorn.Source.World.Generation.Biomes
             0.12f,
             -0.05f,
             -0.03f,
-            0.05f);
+            0.05f,
+            14f);
 
         public static BiomeDefinition Get(BiomeType type)
         {

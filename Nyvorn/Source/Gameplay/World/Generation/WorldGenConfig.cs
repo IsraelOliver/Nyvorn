@@ -28,7 +28,7 @@ namespace Nyvorn.Source.World.Generation
         public int BorderThickness { get; init; } = 1;
         public bool GenerateUndergroundWater { get; init; } = true;
         public int HydrologySpawnProtectionRadiusTiles { get; init; } = 96;
-        public int UndergroundWaterDensityArea { get; init; } = 40000;
+        public int UndergroundWaterDensityArea { get; init; } = 14000;
 
         public static WorldGenConfig CreatePreset(WorldSizePreset sizePreset, int seed = DefaultSeed)
         {

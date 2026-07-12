@@ -22,7 +22,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
             for (int i = 0; i < recipes.Count; i++)
             {
                 RecipeDefinition recipe = recipes[i];
-                if (recipe.RequiredTier <= craftTier)
+                if (craftTier.Satisfies(recipe.RequiredTier))
                     result.Add(recipe);
             }
 

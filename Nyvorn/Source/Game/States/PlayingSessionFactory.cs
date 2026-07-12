@@ -312,6 +312,9 @@ namespace Nyvorn.Source.Game.States
             build.SavedWorkbenches = saveData != null && saveData.Version >= 8 && saveData.Workbenches != null
                 ? new List<WorkbenchSaveData>(saveData.Workbenches)
                 : null;
+            build.SavedFurnaces = saveData != null && saveData.Version >= 17 && saveData.Furnaces != null
+                ? new List<FurnaceSaveData>(saveData.Furnaces)
+                : null;
             build.SavedDoors = saveData != null && saveData.Version >= 9 && saveData.Doors != null
                 ? new List<DoorSaveData>(saveData.Doors)
                 : null;
@@ -412,11 +415,12 @@ namespace Nyvorn.Source.Game.States
             build.SandTexture = content.Load<Texture2D>("blocks/sand_spritesheet");
             build.StoneTexture = content.Load<Texture2D>("blocks/stone_spritesheet");
             build.WoodTexture = content.Load<Texture2D>("blocks/wood_spritesheet");
+            build.IronOreTexture = content.Load<Texture2D>("blocks/iron-ore_spritesheet");
             build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
 
             build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.CreateSeedSet());
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
-            build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture, build.WoodTexture);
+            build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture, build.WoodTexture, build.IronOreTexture);
             build.WorldMap.SetTreeTexture(build.TreeTexture);
             build.WorldGenerator = new WorldGenerator();
             build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
@@ -509,6 +513,7 @@ namespace Nyvorn.Source.Game.States
             build.PlayerPickaxeMovesetTexture = content.Load<Texture2D>(
                 "entities/player/movesets/player_moveset_pickaxe-Sheet");
             build.WorkbenchTexture = content.Load<Texture2D>("blocks/worktable-sheet");
+            build.FurnaceTexture = content.Load<Texture2D>("blocks/furnace-Sheet");
             build.DoorTexture = content.Load<Texture2D>("blocks/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
@@ -689,6 +694,14 @@ namespace Nyvorn.Source.Game.States
                 Texture = build.WorkbenchTexture
             };
             workbenchRuntimeSystem.Restore(build.SavedWorkbenches);
+            FurnaceRuntimeSystem furnaceRuntimeSystem = new FurnaceRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.FurnaceTexture
+            };
+            furnaceRuntimeSystem.Restore(build.SavedFurnaces);
             DoorRuntimeSystem doorRuntimeSystem = new DoorRuntimeSystem
             {
                 WorldMap = build.WorldMap,
@@ -699,6 +712,7 @@ namespace Nyvorn.Source.Game.States
             doorRuntimeSystem.Restore(build.SavedDoors);
             WorldObjectRegistry worldObjectRegistry = new();
             worldObjectRegistry.Register(workbenchRuntimeSystem);
+            worldObjectRegistry.Register(furnaceRuntimeSystem);
             worldObjectRegistry.Register(doorRuntimeSystem);
             blockInteractionSystem.WorldObjectRegistry = worldObjectRegistry;
             build.WorldMap.SetObjectCollisionQueries(
@@ -745,6 +759,7 @@ namespace Nyvorn.Source.Game.States
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                FurnaceRuntimeSystem = furnaceRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem
             };
             WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
@@ -758,8 +773,11 @@ namespace Nyvorn.Source.Game.States
                 WorldMap = build.WorldMap,
                 ViewCoordinator = viewCoordinator,
                 WorldTickSystem = new WorldTickSystem(),
-                EnvironmentSystem = environmentSystem
+                EnvironmentSystem = environmentSystem,
+                DayNightCycle = dayNightCycle,
+                WetnessField = new TileWetnessField(build.WorldMap)
             };
+            build.WorldMap.SetWetnessField(worldTickCoordinator.WetnessField);
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
                 RuntimeContext = runtimeContext,
@@ -787,6 +805,7 @@ namespace Nyvorn.Source.Game.States
                 EnvironmentSystem = environmentSystem,
                 CombatCoordinator = combatCoordinator,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
+                FurnaceRuntimeSystem = furnaceRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
@@ -1167,11 +1186,13 @@ namespace Nyvorn.Source.Game.States
             public Texture2D SandTexture { get; set; }
             public Texture2D StoneTexture { get; set; }
             public Texture2D WoodTexture { get; set; }
+            public Texture2D IronOreTexture { get; set; }
             public Texture2D TreeTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
             public Texture2D PlayerPickaxeMovesetTexture { get; set; }
             public Texture2D WorkbenchTexture { get; set; }
+            public Texture2D FurnaceTexture { get; set; }
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
@@ -1200,6 +1221,7 @@ namespace Nyvorn.Source.Game.States
             public byte[] SavedBackgroundTileSnapshot { get; set; }
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public List<WorkbenchSaveData> SavedWorkbenches { get; set; }
+            public List<FurnaceSaveData> SavedFurnaces { get; set; }
             public List<DoorSaveData> SavedDoors { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }

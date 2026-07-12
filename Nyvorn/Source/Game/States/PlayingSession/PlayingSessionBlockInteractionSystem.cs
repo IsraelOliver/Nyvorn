@@ -74,7 +74,7 @@ namespace Nyvorn.Source.Game.States
             HoveredTileState = WorldTilePreviewState.Hidden;
 
             InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (!constructionMode && !selectedSlot.IsEmpty && (selectedSlot.ItemId == ItemId.Sand || selectedSlot.ItemId == ItemId.Workbench || selectedSlot.ItemId == ItemId.WoodDoor))
+            if (!constructionMode && !selectedSlot.IsEmpty && (selectedSlot.ItemId == ItemId.Sand || selectedSlot.ItemId == ItemId.Workbench || selectedSlot.ItemId == ItemId.Furnace || selectedSlot.ItemId == ItemId.WoodDoor))
                 return;
 
             Point tile = WorldMap.WorldToTile(mouseWorld);
@@ -517,7 +517,7 @@ namespace Nyvorn.Source.Game.States
             if (slot.IsEmpty)
                 return true;
 
-            if (slot.ItemId == ItemId.Sand || slot.ItemId == ItemId.Workbench || slot.ItemId == ItemId.WoodDoor)
+            if (slot.ItemId == ItemId.Sand || slot.ItemId == ItemId.Workbench || slot.ItemId == ItemId.Furnace || slot.ItemId == ItemId.WoodDoor)
                 return false;
 
             return !TileItemMapper.TryGetTileType(slot.ItemId, out _);

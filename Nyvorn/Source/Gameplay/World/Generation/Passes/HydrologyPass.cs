@@ -15,6 +15,8 @@ namespace Nyvorn.Source.World.Generation.Passes
         private const int MaxBottomPoolCells = 320;
         private const int MaxPartialPoolCells = 900;
         private const int MaxFullCaveCells = 520;
+        private const int MaxBigLakeCells = 3000;
+        private const float BigLakeChance = 0.35f;
 
         public string Name => "Hydrology";
 
@@ -43,6 +45,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             context.DebugStats["Hydrology.UndergroundBottomPools"] = undergroundStats.BottomPools.ToString();
             context.DebugStats["Hydrology.UndergroundPartialCaves"] = undergroundStats.PartialCaves.ToString();
             context.DebugStats["Hydrology.UndergroundFullCaves"] = undergroundStats.FullCaves.ToString();
+            context.DebugStats["Hydrology.UndergroundBigLakes"] = undergroundStats.BigLakes.ToString();
             context.DebugStats["Hydrology.UndergroundAquifers"] = "0";
             context.DebugStats["Hydrology.UndergroundWaterCells"] = undergroundWaterCells.ToString();
             context.DebugStats["Hydrology.TotalWaterCells"] = context.LiquidPlacements.Count.ToString();
@@ -63,9 +66,9 @@ namespace Nyvorn.Source.World.Generation.Passes
             Shuffle(regions, random);
             int area = Math.Max(1, context.WorldMap.Width * context.WorldMap.Height);
             int density = Math.Max(1, context.Config.UndergroundWaterDensityArea);
-            int targetFeatureCount = Math.Clamp(area / density, 28, 130);
-            int targetFullCaves = Math.Clamp(targetFeatureCount / 8, 2, 12);
-            int waterCellBudget = Math.Clamp(area / 360, 7000, 26000);
+            int targetFeatureCount = Math.Clamp(area / density, 28, 700);
+            int targetFullCaves = Math.Clamp(targetFeatureCount / 8, 2, 90);
+            int waterCellBudget = Math.Clamp(area / 150, 7000, 90000);
             int waterCells = 0;
 
             for (int i = 0; i < regions.Count && stats.TotalPools < targetFeatureCount && waterCells < waterCellBudget; i++)
@@ -210,7 +213,10 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             plan = null;
             CaveRegion region = sourceRegion;
-            if (sourceRegion.IsLarge || sourceRegion.ProcessedCellCount > MaxWholeCavePoolCells)
+            bool isBigCandidate = sourceRegion.IsLarge || sourceRegion.ProcessedCellCount > MaxWholeCavePoolCells;
+            bool useBigLake = isBigCandidate && random.NextDouble() < BigLakeChance;
+
+            if (isBigCandidate && !useBigLake)
             {
                 if (!TryCreateLocalCaveBay(context, random, sourceRegion, out region))
                     return false;
@@ -224,12 +230,16 @@ namespace Nyvorn.Source.World.Generation.Passes
             if (width < 8 || height < 4)
                 return false;
 
-            CaveFillMode mode = PickCaveFillMode(random, region, preferFull);
+            // Big, wide caverns keep their full shape here (instead of being shrunk to a small local
+            // bay) and get flooded roughly halfway up, so some of the large deep caves end up as
+            // sizeable lakes instead of every cavern only getting a small puddle.
+            CaveFillMode mode = useBigLake ? CaveFillMode.BigLake : PickCaveFillMode(random, region, preferFull);
             int fillY = CalculateCaveFillY(random, region, mode);
             int maxCells = mode switch
             {
                 CaveFillMode.Full => MaxFullCaveCells,
                 CaveFillMode.Partial => MaxPartialPoolCells,
+                CaveFillMode.BigLake => MaxBigLakeCells,
                 _ => MaxBottomPoolCells
             };
 
@@ -395,6 +405,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             return mode switch
             {
                 CaveFillMode.Full => region.MinY,
+                CaveFillMode.BigLake => region.MaxY - Math.Max(2, (int)MathF.Round(height * (0.45f + (float)random.NextDouble() * 0.15f))) + 1,
                 CaveFillMode.Partial => region.MaxY - Math.Max(2, (int)MathF.Round(height * (0.40f + (float)random.NextDouble() * 0.30f))) + 1,
                 _ => region.MaxY - random.Next(2, Math.Min(7, height) + 1) + 1
             };
@@ -573,7 +584,8 @@ namespace Nyvorn.Source.World.Generation.Passes
             public int BottomPools { get; private set; }
             public int PartialCaves { get; private set; }
             public int FullCaves { get; private set; }
-            public int TotalPools => BottomPools + PartialCaves + FullCaves;
+            public int BigLakes { get; private set; }
+            public int TotalPools => BottomPools + PartialCaves + FullCaves + BigLakes;
 
             public void Record(CaveFillMode mode)
             {
@@ -584,6 +596,9 @@ namespace Nyvorn.Source.World.Generation.Passes
                         break;
                     case CaveFillMode.Partial:
                         PartialCaves++;
+                        break;
+                    case CaveFillMode.BigLake:
+                        BigLakes++;
                         break;
                     default:
                         BottomPools++;
@@ -596,7 +611,8 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             Bottom,
             Partial,
-            Full
+            Full,
+            BigLake
         }
 
         private readonly struct CaveCell

@@ -26,6 +26,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float IdleSinkAcceleration { get; init; } = 120f;
         public float WaterSurfaceJumpBoost { get; init; } = 170f;
         public float ShallowMoveMultiplier { get; init; } = 0.82f;
+        // Ground horizontal acceleration - high enough that dry ground still snaps to full
+        // speed within a frame or two (feels the same as the old instant-assignment). Wet
+        // dirt/grass multiplies this down for a mushy, mud-like accel/decel.
+        public float GroundAcceleration { get; init; } = 4500f;
+        public float WetTractionMultiplier { get; init; } = 0.30f;
         public float ShallowJumpMultiplier { get; init; } = 0.85f;
         public float KnockbackRecovery { get; init; } = 12f;
         public float DodgeSpeed { get; init; } = 230f;

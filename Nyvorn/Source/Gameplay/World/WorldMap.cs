@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World.Decorations;
 using Nyvorn.Source.World.Tissue;
 using Nyvorn.Source.World.Generation;
@@ -35,11 +36,13 @@ namespace Nyvorn.Source.World
 
         internal event Action<TissueChangedEvent> TissueChanged;
 
+        private TileWetnessField _wetnessField;
         private Texture2D _dirt;
         private Texture2D _grass;
         private Texture2D _sand;
         private Texture2D _stone;
         private Texture2D _wood;
+        private Texture2D _ironOre;
         private Texture2D _treeTexture;
         private TissueField _tissueField;
         private TissueAnalysisResult _tissueAnalysis;
@@ -489,10 +492,30 @@ namespace Nyvorn.Source.World
                 || tileType == TileType.Grass
                 || tileType == TileType.Stone
                 || tileType == TileType.Sand
-                || tileType == TileType.Wood;
+                || tileType == TileType.Wood
+                || tileType == TileType.IronOre;
         }
 
         public bool IsSolidAt(int x, int y) => IsSolid(GetTile(x, y));
+
+        // True when nothing solid sits between this tile and the top of the map — used to gate
+        // rain wetting/accumulation and weather shelter (audio muffling, hail fairness) to tiles
+        // actually exposed to the sky, rather than the whole loaded area.
+        public bool HasOpenSkyAbove(int x, int y)
+        {
+            int wrappedX = WrapTileX(x);
+            for (int scanY = y - 1; scanY >= 0; scanY--)
+            {
+                if (IsSolidAt(wrappedX, scanY))
+                    return false;
+            }
+
+            return true;
+        }
+
+        // Pure query seam for a future audio system: multiply rain SFX volume down when this
+        // returns true (player is sheltered), full volume otherwise. No audio wired up yet.
+        public bool IsWeatherAudioMuffled(int x, int y) => !HasOpenSkyAbove(x, y);
 
         public void SetObjectCollisionQueries(
             Func<int, int, bool> objectOccupancyQuery,
@@ -757,6 +780,11 @@ namespace Nyvorn.Source.World
                 BeginTileChangeTracking();
         }
 
+        public void SetWetnessField(TileWetnessField wetnessField)
+        {
+            _wetnessField = wetnessField;
+        }
+
         public void SetTextures(Texture2D dirt, Texture2D sand, Texture2D stone)
         {
             SetTextures(dirt, dirt, sand, stone, null);
@@ -769,11 +797,17 @@ namespace Nyvorn.Source.World
 
         public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone, Texture2D wood)
         {
+            SetTextures(dirt, grass, sand, stone, wood, null);
+        }
+
+        public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone, Texture2D wood, Texture2D ironOre)
+        {
             _dirt = dirt;
             _grass = grass;
             _sand = sand;
             _stone = stone;
             _wood = wood;
+            _ironOre = ironOre;
             RebuildAutoTileVariants();
             MarkAllChunkCachesDirty();
         }
@@ -1106,11 +1140,12 @@ namespace Nyvorn.Source.World
 
                     Rectangle? sourceRectangle = tile switch
                     {
-                        TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y),
+                        TileType.Dirt => GetDirtMixAutoTileSourceRectangle(x, y),
                         TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
                         TileType.Stone => GetStoneAutoTileSourceRectangle(x, y),
                         TileType.Sand => GetAutoTileSourceRectangle(x, y),
                         TileType.Wood => GetDirtAutoTileSourceRectangle(x, y),
+                        TileType.IronOre => GetIronOreAutoTileSourceRectangle(x, y),
                         _ => null
                     };
 
@@ -1119,9 +1154,22 @@ namespace Nyvorn.Source.World
                         (y * TileSize) - pixelOffsetY,
                         TileSize,
                         TileSize);
-                    spriteBatch.Draw(texture, destination, sourceRectangle, Color.White);
+                    Color tint = GetWetnessTint(tile, x, y);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, tint);
                 }
             }
+        }
+
+        private Color GetWetnessTint(TileType tile, int x, int y)
+        {
+            if (_wetnessField == null || (tile != TileType.Dirt && tile != TileType.Grass))
+                return Color.White;
+
+            float wetness01 = _wetnessField.GetWetness01(x, y);
+            if (wetness01 <= 0f)
+                return Color.White;
+
+            return Color.Lerp(Color.White, new Color(120, 112, 96), wetness01 * 0.35f);
         }
 
         private void DrawBackgroundTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY)
@@ -1145,6 +1193,7 @@ namespace Nyvorn.Source.World
                         TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Sand => GetBackgroundAutoTileSourceRectangle(x, y),
                         TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background: true),
+                        TileType.IronOre => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         _ => null
                     };
 
@@ -1163,6 +1212,7 @@ namespace Nyvorn.Source.World
                 TileType.Sand => _sand,
                 TileType.Stone => _stone,
                 TileType.Wood => _wood,
+                TileType.IronOre => _ironOre,
                 _ => null
             };
         }
@@ -1403,7 +1453,19 @@ namespace Nyvorn.Source.World
 
         private Rectangle GetStoneAutoTileSourceRectangle(int x, int y)
         {
-            return EvaluateAutoTileMixRules(TileType.Stone, x, y, BaseAutoTileMixRules);
+            return EvaluateAutoTileMixRules(TileType.Stone, TileType.Dirt, x, y, BaseAutoTileMixRules);
+        }
+
+        private Rectangle GetIronOreAutoTileSourceRectangle(int x, int y)
+        {
+            return EvaluateAutoTileMixRules(TileType.IronOre, TileType.Stone, x, y, BaseAutoTileMixRules);
+        }
+
+        private Rectangle GetDirtMixAutoTileSourceRectangle(int x, int y)
+        {
+            // Dirt's mix partner will be a dirt variant tile added later; until that tile exists,
+            // every solid neighbor renders as a normal connected edge (no mix cells triggered).
+            return EvaluateAutoTileMixRules(TileType.Dirt, null, x, y, BaseAutoTileMixRules);
         }
 
         private enum NeighborState
@@ -1475,15 +1537,21 @@ namespace Nyvorn.Source.World
             // 1 connection - ponta
             new AutoTileMixRule(N.E, N.E, N.O, N.E, 6, 5, 3, false), // ponta-baixo, vizinho=Terra
             new AutoTileMixRule(N.E, N.E, N.S, N.E, 6, 0, 3, true),  // ponta-baixo
+            new AutoTileMixRule(N.E, N.O, N.E, N.E, 3, 13, 3, true), // ponta-dir, vizinho=Terra
             new AutoTileMixRule(N.E, N.X, N.E, N.E, 9, 0, 3, false), // ponta-dir
             new AutoTileMixRule(N.O, N.E, N.E, N.E, 6, 8, 3, false), // ponta-cima, vizinho=Terra
             new AutoTileMixRule(N.S, N.E, N.E, N.E, 6, 3, 3, true),  // ponta-cima
+            new AutoTileMixRule(N.E, N.E, N.E, N.O, 0, 13, 3, true), // ponta-esq, vizinho=Terra
             new AutoTileMixRule(N.E, N.E, N.E, N.X, 12, 0, 3, false), // ponta-esq
 
             // 2 connections
             new AutoTileMixRule(N.S, N.E, N.O, N.E, 7, 5, 3, false), // cima=pedra, baixo=terra
             new AutoTileMixRule(N.O, N.E, N.S, N.E, 7, 8, 3, false), // baixo=pedra, cima=terra
+            new AutoTileMixRule(N.O, N.E, N.O, N.E, 6, 12, 3, false), // 2conn cima+baixo, ambos terra
             new AutoTileMixRule(N.X, N.E, N.X, N.E, 5, 0, 3, false), // 2conn cima+baixo
+            new AutoTileMixRule(N.E, N.O, N.E, N.O, 9, 11, 3, true), // 2conn esq+dir, ambos terra
+            new AutoTileMixRule(N.E, N.S, N.E, N.O, 0, 14, 3, true), // dir=pedra, esq=terra
+            new AutoTileMixRule(N.E, N.O, N.E, N.S, 3, 14, 3, true), // esq=pedra, dir=terra
             new AutoTileMixRule(N.E, N.X, N.E, N.X, 6, 4, 3, true),  // 2conn esq+dir
             new AutoTileMixRule(N.E, N.X, N.X, N.E, 0, 3, 3, true, 2), // 2conn dir+baixo
             new AutoTileMixRule(N.E, N.E, N.X, N.X, 1, 3, 3, true, 2), // 2conn esq+baixo
@@ -1497,9 +1565,13 @@ namespace Nyvorn.Source.World
             new AutoTileMixRule(N.X, N.X, N.X, N.E, 0, 0, 3, false), // falta-esq
 
             new AutoTileMixRule(N.E, N.S, N.O, N.S, 13, 0, 3, true), // falta-cima, baixo=terra (ter-baixo)
+            new AutoTileMixRule(N.E, N.S, N.S, N.O, 0, 11, 3, true), // falta-cima, esq=terra
+            new AutoTileMixRule(N.E, N.O, N.S, N.S, 3, 11, 3, true), // falta-cima, dir=terra
             new AutoTileMixRule(N.E, N.X, N.X, N.X, 1, 0, 3, true),  // falta-cima
 
             new AutoTileMixRule(N.O, N.S, N.E, N.S, 13, 1, 3, true), // falta-baixo, cima=terra (ter-cima)
+            new AutoTileMixRule(N.S, N.S, N.E, N.O, 0, 12, 3, true), // falta-baixo, esq=terra
+            new AutoTileMixRule(N.S, N.O, N.E, N.S, 3, 12, 3, true), // falta-baixo, dir=terra
             new AutoTileMixRule(N.X, N.X, N.E, N.X, 1, 2, 3, true),  // falta-baixo
 
             new AutoTileMixRule(N.S, N.E, N.S, N.O, 13, 3, 3, true), // falta-dir, esq=terra (ter-esq)
@@ -1531,6 +1603,8 @@ namespace Nyvorn.Source.World
             new AutoTileMixRule(N.S, N.S, N.S, N.S, 0, 6, 3, false, 2, upRight: N.O),   // diagonal cima-dir=terra
             new AutoTileMixRule(N.S, N.S, N.S, N.S, 1, 6, 3, false, 2, upLeft: N.O),    // diagonal cima-esq=terra
 
+            new AutoTileMixRule(N.O, N.O, N.O, N.O, 6, 11, 3, true), // 4 lados = terra
+
             new AutoTileMixRule(N.A, N.A, N.A, N.A, 10, 0, 3, false, upLeft: N.E, downLeft: N.E),  // canto interno esq
             new AutoTileMixRule(N.A, N.A, N.A, N.A, 11, 0, 3, false, upRight: N.E, downRight: N.E), // canto interno dir
             new AutoTileMixRule(N.A, N.A, N.A, N.A, 6, 1, 3, true, upLeft: N.E, upRight: N.E),      // canto interno cima
@@ -1539,16 +1613,16 @@ namespace Nyvorn.Source.World
             new AutoTileMixRule(N.A, N.A, N.A, N.A, 1, 1, 3, true), // bloco cheio (fallback)
         };
 
-        private Rectangle EvaluateAutoTileMixRules(TileType self, int x, int y, AutoTileMixRule[] rules)
+        private Rectangle EvaluateAutoTileMixRules(TileType self, TileType? mixPartner, int x, int y, AutoTileMixRule[] rules)
         {
-            NeighborState up = ClassifyAutoTileNeighbor(self, x, y - 1);
-            NeighborState right = ClassifyAutoTileNeighbor(self, x + 1, y);
-            NeighborState down = ClassifyAutoTileNeighbor(self, x, y + 1);
-            NeighborState left = ClassifyAutoTileNeighbor(self, x - 1, y);
-            NeighborState upLeft = ClassifyAutoTileNeighbor(self, x - 1, y - 1);
-            NeighborState upRight = ClassifyAutoTileNeighbor(self, x + 1, y - 1);
-            NeighborState downLeft = ClassifyAutoTileNeighbor(self, x - 1, y + 1);
-            NeighborState downRight = ClassifyAutoTileNeighbor(self, x + 1, y + 1);
+            NeighborState up = ClassifyAutoTileNeighbor(self, mixPartner, x, y - 1);
+            NeighborState right = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y);
+            NeighborState down = ClassifyAutoTileNeighbor(self, mixPartner, x, y + 1);
+            NeighborState left = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y);
+            NeighborState upLeft = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y - 1);
+            NeighborState upRight = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y - 1);
+            NeighborState downLeft = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y + 1);
+            NeighborState downRight = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y + 1);
 
             for (int i = 0; i < rules.Length; i++)
             {
@@ -1573,13 +1647,21 @@ namespace Nyvorn.Source.World
             return GetAutoTileSheetCell(1, 1);
         }
 
-        private NeighborState ClassifyAutoTileNeighbor(TileType self, int x, int y)
+        private NeighborState ClassifyAutoTileNeighbor(TileType self, TileType? mixPartner, int x, int y)
         {
             TileType tile = GetTile(x, y);
             if (!IsSolid(tile))
                 return NeighborState.Empty;
 
-            return tile == self ? NeighborState.Self : NeighborState.Other;
+            if (tile == self)
+                return NeighborState.Self;
+
+            if (mixPartner.HasValue && tile == mixPartner.Value)
+                return NeighborState.Other;
+
+            // Solid neighbor we don't have mix art for (no declared mix partner, or a third
+            // material entirely): render as a normal connected edge instead of guessing.
+            return NeighborState.Self;
         }
 
         private static bool MatchesNeighborState(NeighborState expected, NeighborState actual)

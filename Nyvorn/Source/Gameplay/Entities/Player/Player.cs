@@ -5,6 +5,7 @@ using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Gameplay.Combat.Interfaces;
 using Nyvorn.Source.Gameplay.Combat.Weapons;
+using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
@@ -69,7 +70,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             playerAnimator = new PlayerAnimator();
         }
 
-        public void Update(float dt, WorldMap worldMap, SandSystem sandSystem, LiquidSystem liquidSystem, InputState input, Vector2 mouseWorld)
+        public void Update(
+            float dt,
+            WorldMap worldMap,
+            SandSystem sandSystem,
+            LiquidSystem liquidSystem,
+            InputState input,
+            Vector2 mouseWorld,
+            TileWetnessField wetnessField = null)
         {
             combat.Tick(dt);
 
@@ -99,7 +107,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     WaterState,
                     WaterSubmergedRatio,
                     waterMoveInput,
-                    waterSurfaceJumpRequested);
+                    waterSurfaceJumpRequested,
+                    wetnessField);
 
                 if (!IsInWater)
                     ApplyFallDamage(motor.LastLandingImpactVelocity);

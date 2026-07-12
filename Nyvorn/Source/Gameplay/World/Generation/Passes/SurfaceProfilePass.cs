@@ -30,6 +30,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                 float amplitudeScale = BlendBiomeValue(biome, definition => definition.TerrainAmplitudeScale);
                 float detailScale = BlendBiomeValue(biome, definition => definition.TerrainDetailScale);
                 float smoothness = BlendBiomeValue(biome, definition => definition.TerrainSmoothness);
+                float heightBias = BlendBiomeValue(biome, definition => definition.SurfaceHeightBias);
 
                 float softenedTerrainOffset = Lerp(terrainOffset * 0.18f, terrainOffset, 1f - centerMask) * amplitudeScale;
                 float softenedDetail = Lerp(detail * 0.10f, detail, 1f - centerMask) * detailScale;
@@ -38,7 +39,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                 softenedTerrainOffset = Lerp(softenedTerrainOffset, softenedTerrainOffset * 0.45f, smoothness);
                 softenedDetail = Lerp(softenedDetail, softenedDetail * 0.20f, smoothness);
 
-                int surfaceY = flatY + (int)MathF.Round(softenedMacroShape + softenedTerrainOffset + softenedDetail);
+                int surfaceY = flatY + (int)MathF.Round(softenedMacroShape + softenedTerrainOffset + softenedDetail - heightBias);
                 surfaceY = Math.Clamp(surfaceY, 8, context.WorldMap.Height - 10);
 
                 heights[x] = surfaceY;

@@ -10,6 +10,13 @@ namespace Nyvorn.Source.World.Generation
         private const float DeepDirtPocketWarpFrequency = 0.035f;
         private const float DeepDirtPocketWarpStrength = 8f;
 
+        private const float IronOreVeinFrequency = 0.13f;
+        private const float IronOreWarpFrequency = 0.05f;
+        private const float IronOreWarpStrength = 10f;
+        private const float IronOreRegionFrequency = 0.012f;
+        private const float IronOreRegionGateLow = -0.10f;
+        private const float IronOreRegionGateHigh = 0.35f;
+
         private sealed class NoiseSet
         {
             public NoiseSet(int seed)
@@ -17,11 +24,15 @@ namespace Nyvorn.Source.World.Generation
                 CaveNoise = new OpenSimplexNoise(seed + 1000);
                 WarpNoise = new OpenSimplexNoise(seed + 2000);
                 DeepNoise = new OpenSimplexNoise(seed + 3000);
+                VeinNoise = new OpenSimplexNoise(seed + 4000);
+                VeinMaskNoise = new OpenSimplexNoise(seed + 5000);
             }
 
             public OpenSimplexNoise CaveNoise { get; }
             public OpenSimplexNoise WarpNoise { get; }
             public OpenSimplexNoise DeepNoise { get; }
+            public OpenSimplexNoise VeinNoise { get; }
+            public OpenSimplexNoise VeinMaskNoise { get; }
         }
 
         private static readonly Dictionary<int, NoiseSet> CachedNoiseSets = new();
@@ -88,6 +99,25 @@ namespace Nyvorn.Source.World.Generation
             return (pocketBase * 0.55f) +
                    (broadPocket * 0.30f) +
                    (verticalPocket * 0.15f);
+        }
+
+        public static float SampleIronOreVeinField(WorldGenContext context, int x, int y)
+        {
+            NoiseSet noiseSet = GetNoiseSet(SeedHash.ToIntSeed(context.Seeds.MaterialSeed));
+
+            float warpX = Fractal(context, noiseSet.WarpNoise, x, y, IronOreWarpFrequency, IronOreWarpFrequency, 5200f, 900f) * IronOreWarpStrength;
+            float warpY = Fractal(context, noiseSet.WarpNoise, x, y, IronOreWarpFrequency, IronOreWarpFrequency, 6200f, 2600f) * IronOreWarpStrength;
+
+            // Ridged noise: veins trace the zero-crossings of the underlying field, giving thin filaments
+            // instead of blobs. Multiplying by a low-frequency region mask clusters those filaments into
+            // separate pockets scattered across the map instead of one continuous seam.
+            float veinRaw = SampleSeamedNoise(context, noiseSet.VeinNoise, x, y, IronOreVeinFrequency, IronOreVeinFrequency, warpX, warpY);
+            float veinRidge = System.Math.Max(0f, 1f - (System.MathF.Abs(veinRaw) * 2f));
+
+            float regionMask = Fractal(context, noiseSet.VeinMaskNoise, x, y, IronOreRegionFrequency, IronOreRegionFrequency, 7200f, 3300f);
+            float regionGate = SmoothStep01(InverseLerp(IronOreRegionGateLow, IronOreRegionGateHigh, regionMask));
+
+            return veinRidge * regionGate;
         }
 
         public static bool UsesDeepThreshold(WorldGenContext context, int x, int y)
@@ -256,6 +286,14 @@ namespace Nyvorn.Source.World.Generation
         private static float Lerp(float a, float b, float t)
         {
             return a + ((b - a) * t);
+        }
+
+        private static float InverseLerp(float a, float b, float value)
+        {
+            if (System.MathF.Abs(b - a) < 0.0001f)
+                return 0f;
+
+            return System.Math.Clamp((value - a) / (b - a), 0f, 1f);
         }
 
         private static float SmoothStep01(float t)

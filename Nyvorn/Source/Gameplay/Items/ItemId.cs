@@ -13,6 +13,9 @@ namespace Nyvorn.Source.Gameplay.Items
         StonePickaxe = 9,
         WoodDoor = 10,
         WoodAxe = 11,
-        Sand = 12
+        Sand = 12,
+        IronOreBlock = 13,
+        Furnace = 14,
+        IronBar = 15
     }
 }
