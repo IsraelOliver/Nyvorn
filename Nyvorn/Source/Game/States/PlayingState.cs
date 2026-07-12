@@ -298,6 +298,13 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
+                spriteBatch.Begin(
+                    samplerState: SamplerState.PointClamp,
+                    blendState: BlendState.AlphaBlend,
+                    transformMatrix: transform);
+                session.DrawSkylightShadows(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTerrainOverlay(spriteBatch);
                 spriteBatch.End();
