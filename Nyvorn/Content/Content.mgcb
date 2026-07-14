@@ -13,7 +13,7 @@
 
 #---------------------------------- Content ---------------------------------#
 
-#begin blocks/dirt_spritesheet.png
+#begin tiles/dirt_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -23,9 +23,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/dirt_spritesheet.png
+/build:tiles/dirt_spritesheet.png
 
-#begin blocks/grass_spritesheet.png
+#begin tiles/grass_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -35,9 +35,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/grass_spritesheet.png
+/build:tiles/grass_spritesheet.png
 
-#begin blocks/sand_spritesheet.png
+#begin tiles/sand_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -47,7 +47,7 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/sand_spritesheet.png
+/build:tiles/sand_spritesheet.png
 
 #begin items/sand.png
 /importer:TextureImporter
@@ -61,7 +61,7 @@
 /processorParam:TextureFormat=Color
 /build:items/sand.png
 
-#begin blocks/stone_spritesheet.png
+#begin tiles/stone_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -71,9 +71,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/stone_spritesheet.png
+/build:tiles/stone_spritesheet.png
 
-#begin blocks/dirt.png
+#begin items/dirt.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -83,9 +83,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/dirt.png
+/build:items/dirt.png
 
-#begin blocks/stone.png
+#begin items/stone.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -95,9 +95,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/stone.png
+/build:items/stone.png
 
-#begin blocks/iron_ore.png
+#begin items/iron_ore.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -107,9 +107,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/iron_ore.png
+/build:items/iron_ore.png
 
-#begin blocks/iron_bar.png
+#begin items/iron_bar.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -119,9 +119,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/iron_bar.png
+/build:items/iron_bar.png
 
-#begin blocks/iron-ore_spritesheet.png
+#begin tiles/iron-ore_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -131,9 +131,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/iron-ore_spritesheet.png
+/build:tiles/iron-ore_spritesheet.png
 
-#begin blocks/raw_wood.png
+#begin items/raw_wood.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -143,9 +143,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/raw_wood.png
+/build:items/raw_wood.png
 
-#begin blocks/wood_spritesheet.png
+#begin tiles/wood_spritesheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -155,9 +155,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/wood_spritesheet.png
+/build:tiles/wood_spritesheet.png
 
-#begin blocks/wood_door.png
+#begin objects/wood_door.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -167,9 +167,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/wood_door.png
+/build:objects/wood_door.png
 
-#begin blocks/worktable-sheet.png
+#begin objects/worktable-sheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -179,9 +179,9 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/worktable-sheet.png
+/build:objects/worktable-sheet.png
 
-#begin blocks/furnace-Sheet.png
+#begin objects/furnace-Sheet.png
 /importer:TextureImporter
 /processor:TextureProcessor
 /processorParam:ColorKeyColor=255,0,255,255
@@ -191,7 +191,7 @@
 /processorParam:ResizeToPowerOfTwo=False
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
-/build:blocks/furnace-Sheet.png
+/build:objects/furnace-Sheet.png
 
 #begin trees/tree_modular_spritesheet.png
 /importer:TextureImporter

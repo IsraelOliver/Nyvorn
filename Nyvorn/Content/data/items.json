@@ -79,7 +79,7 @@
   {
     "id": "DirtBlock",
     "name": "Dirt Block",
-    "texturePath": "blocks/dirt",
+    "texturePath": "items/dirt",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -91,7 +91,7 @@
   {
     "id": "StoneBlock",
     "name": "Stone Block",
-    "texturePath": "blocks/stone",
+    "texturePath": "items/stone",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -103,7 +103,7 @@
   {
     "id": "IronOreBlock",
     "name": "Iron Ore Block",
-    "texturePath": "blocks/iron_ore",
+    "texturePath": "items/iron_ore",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -115,7 +115,7 @@
   {
     "id": "IronBar",
     "name": "Iron Bar",
-    "texturePath": "blocks/iron_bar",
+    "texturePath": "items/iron_bar",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -127,7 +127,7 @@
   {
     "id": "SandBlock",
     "name": "Sand Block",
-    "texturePath": "blocks/sand_spritesheet",
+    "texturePath": "tiles/sand_spritesheet",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -151,7 +151,7 @@
   {
     "id": "RawWood",
     "name": "Raw Wood",
-    "texturePath": "blocks/raw_wood",
+    "texturePath": "items/raw_wood",
     "stackable": true,
     "maxStack": 999,
     "gravityScale": 1.0,
@@ -163,7 +163,7 @@
   {
     "id": "Workbench",
     "name": "Workbench",
-    "texturePath": "blocks/worktable-sheet",
+    "texturePath": "objects/worktable-sheet",
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,
@@ -175,7 +175,7 @@
   {
     "id": "Furnace",
     "name": "Furnace",
-    "texturePath": "blocks/furnace-Sheet",
+    "texturePath": "objects/furnace-Sheet",
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,
@@ -187,7 +187,7 @@
   {
     "id": "WoodDoor",
     "name": "Wood Door",
-    "texturePath": "blocks/wood_door",
+    "texturePath": "objects/wood_door",
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,

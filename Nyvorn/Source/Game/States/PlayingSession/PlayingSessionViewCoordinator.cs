@@ -40,11 +40,21 @@ namespace Nyvorn.Source.Game.States
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
         private static readonly Vector4 WaterShaderColor = new Color(34, 128, 205, 199).ToVector4();
         private const float OpenAirLightDecayPerTile = 0.045f;
-        private const float SolidLightDecayPerTile = 0.34f;
-        private const int SkylightPropagationPasses = 3;
+        private const float SolidLightDecayPerTile = 0.09f;
+        private const int SkylightPropagationPasses = 16;
         private const int SkylightBufferPadding = 10;
+        private const float MaxSkylightShadowAlpha = 1f;
+        // The flood-fill recompute below (16 passes x 4 sweeps over the whole buffer, plus a
+        // per-column surface scan) is expensive enough to cost real FPS if it reruns every single
+        // frame. Shadows don't need 60Hz freshness - recomputing a few times a second instead is
+        // visually indistinguishable and cuts that cost by ~SkylightRecomputeEveryNFrames. Drawing
+        // (below) still happens every frame, just reusing whichever buffer was last computed.
+        private const int SkylightRecomputeEveryNFrames = 6;
         private static readonly Color SkylightShadowColor = new Color(4, 5, 10);
         private float[,] skylightBuffer;
+        private int skylightBufferStartX;
+        private int skylightBufferStartY;
+        private int skylightRecomputeCounter;
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -214,6 +224,15 @@ namespace Nyvorn.Source.Game.States
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
         }
 
+        // Recomputed every frame (see WorldMap.DrawWetnessOverlay) instead of baked into the chunk
+        // cache, so it always matches current wetness rather than the stale value from whenever the
+        // chunk was last re-baked by an unrelated tile edit.
+        public void DrawWetnessOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+            WorldMap.DrawWetnessOverlay(spriteBatch, startTileX, endTileX, startTileY, endTileY);
+        }
+
         // Terraria/Starbound-style skylight: light starts at full strength on every open-air tile
         // that has a clear straight line to the true sky, then floods outward through the visible
         // area, fading a little per tile through open air and a lot per tile through solid rock.
@@ -225,6 +244,52 @@ namespace Nyvorn.Source.Game.States
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
 
+            RecomputeSkylightBufferIfDue(startTileX, endTileX, startTileY, endTileY);
+            if (skylightBuffer == null)
+                return;
+
+            int bufferWidth = skylightBuffer.GetLength(0);
+            int bufferHeight = skylightBuffer.GetLength(1);
+
+            for (int tileX = startTileX; tileX <= endTileX; tileX++)
+            {
+                int localX = tileX - skylightBufferStartX;
+                // The cached buffer's window can lag a few frames behind the camera (see
+                // RecomputeSkylightBufferIfDue) - a tile that's drifted outside it just skips the
+                // shadow this frame rather than throwing, and picks it back up once recomputed.
+                if (localX < 0 || localX >= bufferWidth)
+                    continue;
+
+                for (int tileY = System.Math.Max(0, startTileY); tileY <= System.Math.Min(WorldMap.Height - 1, endTileY); tileY++)
+                {
+                    int localY = tileY - skylightBufferStartY;
+                    if (localY < 0 || localY >= bufferHeight)
+                        continue;
+
+                    if (!WorldMap.IsSolidAt(tileX, tileY))
+                        continue;
+
+                    float alpha = MathHelper.Clamp(1f - skylightBuffer[localX, localY], 0f, MaxSkylightShadowAlpha);
+                    if (alpha <= 0.02f)
+                        continue;
+
+                    // Drawn with the tile's own sprite/source-rectangle instead of a flat square over
+                    // its bounds - autotile edges have transparent corners/notches, and a plain tinted
+                    // square would paint over those gaps instead of following the tile's real shape.
+                    if (!WorldMap.TryGetTileSprite(tileX, tileY, out Texture2D tileTexture, out Rectangle? tileSourceRectangle))
+                        continue;
+
+                    spriteBatch.Draw(tileTexture, WorldMap.GetTileBounds(tileX, tileY), tileSourceRectangle, SkylightShadowColor * alpha);
+                }
+            }
+        }
+
+        private void RecomputeSkylightBufferIfDue(int startTileX, int endTileX, int startTileY, int endTileY)
+        {
+            skylightRecomputeCounter++;
+            if (skylightBuffer != null && skylightRecomputeCounter % SkylightRecomputeEveryNFrames != 0)
+                return;
+
             int bufferStartX = startTileX - SkylightBufferPadding;
             int bufferEndX = endTileX + SkylightBufferPadding;
             int bufferStartY = System.Math.Max(0, startTileY - SkylightBufferPadding);
@@ -234,6 +299,9 @@ namespace Nyvorn.Source.Game.States
             int height = bufferEndY - bufferStartY + 1;
             if (width <= 0 || height <= 0)
                 return;
+
+            skylightBufferStartX = bufferStartX;
+            skylightBufferStartY = bufferStartY;
 
             if (skylightBuffer == null || skylightBuffer.GetLength(0) != width || skylightBuffer.GetLength(1) != height)
                 skylightBuffer = new float[width, height];
@@ -272,23 +340,6 @@ namespace Nyvorn.Source.Game.States
                         SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX, localY - 1);
                     for (int localY = height - 2; localY >= 0; localY--)
                         SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX, localY + 1);
-                }
-            }
-
-            for (int tileX = startTileX; tileX <= endTileX; tileX++)
-            {
-                int localX = tileX - bufferStartX;
-
-                for (int tileY = System.Math.Max(0, startTileY); tileY <= System.Math.Min(WorldMap.Height - 1, endTileY); tileY++)
-                {
-                    if (!WorldMap.IsSolidAt(tileX, tileY))
-                        continue;
-
-                    float alpha = MathHelper.Clamp(1f - skylightBuffer[localX, tileY - bufferStartY], 0f, 1f);
-                    if (alpha <= 0.02f)
-                        continue;
-
-                    spriteBatch.Draw(DebugPixel, WorldMap.GetTileBounds(tileX, tileY), SkylightShadowColor * alpha);
                 }
             }
         }

@@ -24,6 +24,17 @@ namespace Nyvorn.Source.Game.States
         public bool DrawBelow => false;
         public bool BlockInputBelow => true;
 
+        // Darkens whatever's already drawn (destination *= source) instead of alpha-compositing
+        // over it, so the wetness overlay tints the tile actually on screen rather than needing to
+        // duplicate/replace its draw.
+        private static readonly BlendState MultiplyBlend = new()
+        {
+            ColorSourceBlend = Blend.DestinationColor,
+            ColorDestinationBlend = Blend.Zero,
+            AlphaSourceBlend = Blend.DestinationAlpha,
+            AlphaDestinationBlend = Blend.Zero
+        };
+
         private readonly GraphicsDevice graphicsDevice;
         private readonly StateMachine stateMachine;
         private readonly ContentManager content;
@@ -51,6 +62,10 @@ namespace Nyvorn.Source.Game.States
         private const float AutoSaveInterval = 60f;
         private const int MaxConsoleInputLength = 96;
         private const int MaxConsoleHistoryLines = 40;
+        private const int HelpCommandsPerPage = 10;
+        private bool showFps;
+        private float fpsSmoothed;
+        private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -86,6 +101,7 @@ namespace Nyvorn.Source.Game.States
         public void Update(GameTime gameTime)
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
             if (consoleOpen)
                 consoleCursorBlinkTimer += dt;
 
@@ -238,6 +254,17 @@ namespace Nyvorn.Source.Game.States
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
+            // Real wall-clock time between Draw calls, not GameTime - MonoGame's default fixed
+            // timestep can report a near-constant ElapsedGameTime from both Update and Draw
+            // regardless of actual rendering performance, which would mask real slowdowns.
+            float drawDt = (float)fpsStopwatch.Elapsed.TotalSeconds;
+            fpsStopwatch.Restart();
+            if (drawDt > 0f)
+            {
+                float instantFps = 1f / drawDt;
+                fpsSmoothed = fpsSmoothed <= 0f ? instantFps : MathHelper.Lerp(fpsSmoothed, instantFps, 0.1f);
+            }
+
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
             float worldWidthPixels = session.WorldMap.PixelWidth;
@@ -308,6 +335,12 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
+                // Recomputed every frame instead of baked into the terrain, so it always reflects
+                // current wetness - see WorldMap.DrawWetnessOverlay.
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
                 spriteBatch.Begin(
                     samplerState: SamplerState.PointClamp,
                     blendState: BlendState.AlphaBlend,
@@ -372,9 +405,19 @@ namespace Nyvorn.Source.Game.States
             if (minimapVisible)
                 session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
             playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
+            if (showFps)
+                DrawFpsCounter(spriteBatch);
             if (consoleOpen)
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
+        }
+
+        private void DrawFpsCounter(SpriteBatch spriteBatch)
+        {
+            string text = $"FPS: {fpsSmoothed:0}";
+            Vector2 position = new Vector2(8f, 8f);
+            spriteBatch.DrawString(consoleFont, text, position + Vector2.One, Color.Black);
+            spriteBatch.DrawString(consoleFont, text, position, Color.White);
         }
 
         private void HandleConsoleInput(KeyboardState keyboard)
@@ -675,9 +718,14 @@ namespace Nyvorn.Source.Game.States
             session.AddConsoleCommand(command);
             string commandBody = command[1..].Trim();
             string normalized = commandBody.ToLowerInvariant();
-            if (normalized == "help")
+            if (normalized == "help" || normalized.StartsWith("help ", System.StringComparison.Ordinal))
             {
-                ShowConsoleHelp();
+                int page = 1;
+                string[] helpParts = commandBody.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+                if (helpParts.Length > 1 && int.TryParse(helpParts[1], out int parsedPage))
+                    page = parsedPage;
+
+                ShowConsoleHelp(page);
                 return;
             }
 
@@ -749,6 +797,52 @@ namespace Nyvorn.Source.Game.States
             if (normalized == "tissuefield")
             {
                 SetConsoleMessage("Uso: /tissuefield on ou /tissuefield off");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "skylight on")
+            {
+                session.SetSkylightShadowsEnabled(true);
+                SetConsoleMessage("Sombras de skylight ativadas");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "skylight off")
+            {
+                session.SetSkylightShadowsEnabled(false);
+                SetConsoleMessage("Sombras de skylight desativadas");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "skylight")
+            {
+                SetConsoleMessage("Uso: /skylight on ou /skylight off");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "fps on")
+            {
+                showFps = true;
+                SetConsoleMessage("Contador de FPS ativado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "fps off")
+            {
+                showFps = false;
+                SetConsoleMessage("Contador de FPS desativado");
+                consoleInput = string.Empty;
+                return;
+            }
+
+            if (normalized == "fps")
+            {
+                SetConsoleMessage("Uso: /fps on ou /fps off");
                 consoleInput = string.Empty;
                 return;
             }
@@ -840,64 +934,76 @@ namespace Nyvorn.Source.Game.States
                 consoleHistory.RemoveAt(0);
         }
 
-        private void ShowConsoleHelp()
+        private static readonly string[] ConsoleCommands =
+        {
+            "/help [pagina]",
+            "/debugfly [on|off]",
+            "/tissuevisual on|off",
+            "/tissuefield on|off",
+            "/skylight on|off",
+            "/fps on|off",
+            "/tissuepulse",
+            "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
+            "/tissuepulse reset",
+            "/tissuedamage <valor> [raio]",
+            "/tissueheal <valor> [raio]",
+            "/tissuecorrupt <valor> [raio]",
+            "/tissuememory <valor> [raio]",
+            "/tissueflow <valor> [raio]",
+            "/tissueremove [raio]",
+            "/tissuereset [raio]",
+            "/get <item> [quantidade]",
+            "/get list",
+            "/spawn <entidade> (reservado)",
+            "/tick status",
+            "/tick",
+            "/tick speed <1..16>",
+            "/tick pause",
+            "/tick resume",
+            "/tick reset",
+            "/tick step [1..600]",
+            "/time",
+            "/time status",
+            "/time day",
+            "/time night",
+            "/time dawn",
+            "/time sunrise",
+            "/time noon",
+            "/time sunset",
+            "/time midnight",
+            "/event status",
+            "/event rain start|stop",
+            "/event eclipse start|stop",
+            "/event clear",
+            "/water status",
+            "/water tune",
+            "/water tune slow|balanced|fast",
+            "/water tune <tps|fall|side|search|cells> <valor>",
+            "/water place [raio]",
+            "/water drain [raio]",
+            "/water clear",
+            "/grass grow [1..10000]",
+            "/debug ticks",
+            "/world save"
+        };
+
+        private void ShowConsoleHelp(int page)
         {
             consoleHistory.Clear();
-            consoleMessage = "Comandos disponiveis";
-            string[] commands =
-            {
-                "Comandos disponiveis:",
-                "/help",
-                "/debugfly [on|off]",
-                "/tissuevisual on|off",
-                "/tissuefield on|off",
-                "/tissuepulse",
-                "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
-                "/tissuepulse reset",
-                "/tissuedamage <valor> [raio]",
-                "/tissueheal <valor> [raio]",
-                "/tissuecorrupt <valor> [raio]",
-                "/tissuememory <valor> [raio]",
-                "/tissueflow <valor> [raio]",
-                "/tissueremove [raio]",
-                "/tissuereset [raio]",
-                "/get <item> [quantidade]",
-                "/get list",
-                "/spawn <entidade> (reservado)",
-                "/tick status",
-                "/tick",
-                "/tick speed <1..16>",
-                "/tick pause",
-                "/tick resume",
-                "/tick reset",
-                "/tick step [1..600]",
-                "/time",
-                "/time status",
-                "/time day",
-                "/time night",
-                "/time dawn",
-                "/time sunrise",
-                "/time noon",
-                "/time sunset",
-                "/time midnight",
-                "/event status",
-                "/event rain start|stop",
-                "/event eclipse start|stop",
-                "/event clear",
-                "/water status",
-                "/water tune",
-                "/water tune slow|balanced|fast",
-                "/water tune <tps|fall|side|search|cells> <valor>",
-                "/water place [raio]",
-                "/water drain [raio]",
-                "/water clear",
-                "/grass grow [1..10000]",
-                "/debug ticks",
-                "/world save"
-            };
 
-            for (int i = 0; i < commands.Length; i++)
-                AddConsoleHistory(commands[i]);
+            int totalPages = System.Math.Max(1, (int)System.Math.Ceiling(ConsoleCommands.Length / (float)HelpCommandsPerPage));
+            page = System.Math.Clamp(page, 1, totalPages);
+
+            consoleMessage = $"Comandos disponiveis (pagina {page}/{totalPages})";
+            AddConsoleHistory($"Comandos disponiveis (pagina {page}/{totalPages}):");
+
+            int startIndex = (page - 1) * HelpCommandsPerPage;
+            int endIndex = System.Math.Min(startIndex + HelpCommandsPerPage, ConsoleCommands.Length);
+            for (int i = startIndex; i < endIndex; i++)
+                AddConsoleHistory(ConsoleCommands[i]);
+
+            if (page < totalPages)
+                AddConsoleHistory($"/help {page + 1} para mais comandos");
         }
 
         private bool TryExecuteTickCommand(string command)

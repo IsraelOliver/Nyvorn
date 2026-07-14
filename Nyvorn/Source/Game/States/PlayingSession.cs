@@ -91,6 +91,7 @@ namespace Nyvorn.Source.Game.States
         public bool IsConstructionMode { get; private set; }
         public bool TissueVisualEnabled { get; private set; }
         public bool TissueFieldVisualEnabled { get; private set; }
+        public bool SkylightShadowsEnabled { get; private set; } = true;
         public bool DebugFlyEnabled => Player.DebugFlyEnabled;
         public float TimeOfDay01 => DayNightCycle.TimeOfDay01;
         public float WorldTimeCyclePercent => DayNightCycle.CyclePercent;
@@ -348,6 +349,11 @@ namespace Nyvorn.Source.Game.States
             TissueFieldVisualEnabled = enabled;
         }
 
+        public void SetSkylightShadowsEnabled(bool enabled)
+        {
+            SkylightShadowsEnabled = enabled;
+        }
+
         public void SetDebugFly(bool enabled)
         {
             Player.SetDebugFly(enabled);
@@ -483,7 +489,13 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawSkylightShadows(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            ViewCoordinator.DrawSkylightShadows(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            if (SkylightShadowsEnabled)
+                ViewCoordinator.DrawSkylightShadows(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
+        public void DrawWetnessOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawWetnessOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)

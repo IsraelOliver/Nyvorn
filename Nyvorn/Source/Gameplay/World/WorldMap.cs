@@ -1165,38 +1165,84 @@ namespace Nyvorn.Source.World
             {
                 for (int x = minTileX; x <= maxTileX; x++)
                 {
-                    TileType tile = GetTile(x, y);
-                    if (tile == TileType.Empty)
+                    if (!TryGetTileSprite(x, y, out Texture2D texture, out Rectangle? sourceRectangle))
                         continue;
-
-                    Texture2D texture = GetTextureForTile(tile);
-
-                    if (texture == null)
-                        continue;
-
-                    Rectangle? sourceRectangle = tile switch
-                    {
-                        TileType.Dirt => GetDirtMixAutoTileSourceRectangle(x, y),
-                        TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
-                        TileType.Stone => GetStoneAutoTileSourceRectangle(x, y),
-                        TileType.Sand => GetAutoTileSourceRectangle(x, y),
-                        TileType.Wood => GetDirtAutoTileSourceRectangle(x, y),
-                        TileType.IronOre => GetIronOreAutoTileSourceRectangle(x, y),
-                        _ => null
-                    };
 
                     Rectangle destination = new Rectangle(
                         (x * TileSize) - pixelOffsetX,
                         (y * TileSize) - pixelOffsetY,
                         TileSize,
                         TileSize);
-                    Color tint = GetWetnessTint(tile, x, y);
+                    // Wetness is NOT applied here - see DrawWetnessOverlay. This draw gets baked into
+                    // a chunk's cached RenderTarget and only re-runs when the chunk is marked dirty
+                    // (a tile edit), but wetness dries out continuously on its own; baking it here
+                    // made tiles show a stale wetness tint until some unrelated edit forced a re-bake.
+                    Color tint = Color.White;
                     if (_ambientLight != Color.White && HasOpenSkyAbove(x, y))
-                        tint = MultiplyColors(tint, _ambientLight);
+                        tint = _ambientLight;
 
                     spriteBatch.Draw(texture, destination, sourceRectangle, tint);
                 }
             }
+        }
+
+        // Drawn fresh every frame (never baked into the chunk cache) so it always reflects current
+        // wetness instead of going stale - see the comment in DrawTiles. Uses a multiply blend so it
+        // darkens whatever's already on screen rather than needing to duplicate the base tile draw.
+        public void DrawWetnessOverlay(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY)
+        {
+            if (_wetnessField == null)
+                return;
+
+            for (int y = minTileY; y <= maxTileY; y++)
+            {
+                for (int x = minTileX; x <= maxTileX; x++)
+                {
+                    Color tint = GetWetnessTint(GetTile(x, y), x, y);
+                    if (tint == Color.White)
+                        continue;
+
+                    if (!TryGetTileSprite(x, y, out Texture2D texture, out Rectangle? sourceRectangle))
+                        continue;
+
+                    Rectangle destination = new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, tint);
+                }
+            }
+        }
+
+        // Exposed so overlays (e.g. the skylight shadow pass in PlayingSessionViewCoordinator) can
+        // tint a tile using its own sprite shape - autotile edges have transparent corners/notches,
+        // so a flat tinted square over the tile's bounds would paint over those gaps instead of
+        // conforming to the tile's actual silhouette.
+        public bool TryGetTileSprite(int x, int y, out Texture2D texture, out Rectangle? sourceRectangle)
+        {
+            TileType tile = GetTile(x, y);
+            if (tile == TileType.Empty)
+            {
+                texture = null;
+                sourceRectangle = null;
+                return false;
+            }
+
+            texture = GetTextureForTile(tile);
+            if (texture == null)
+            {
+                sourceRectangle = null;
+                return false;
+            }
+
+            sourceRectangle = tile switch
+            {
+                TileType.Dirt => GetDirtMixAutoTileSourceRectangle(x, y),
+                TileType.Grass => GetGrassAutoTileSourceRectangle(x, y),
+                TileType.Stone => GetStoneAutoTileSourceRectangle(x, y),
+                TileType.Sand => GetAutoTileSourceRectangle(x, y),
+                TileType.Wood => GetDirtAutoTileSourceRectangle(x, y),
+                TileType.IronOre => GetIronOreAutoTileSourceRectangle(x, y),
+                _ => null
+            };
+            return true;
         }
 
         private static Color MultiplyColors(Color a, Color b)

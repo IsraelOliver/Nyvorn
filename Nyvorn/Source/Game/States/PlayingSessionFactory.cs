@@ -410,12 +410,12 @@ namespace Nyvorn.Source.Game.States
 
         private void LoadWorldAssets(BuildContext build, PlanetWorldMetadata planetMetadata)
         {
-            build.DirtTexture = content.Load<Texture2D>("blocks/dirt_spritesheet");
-            build.GrassTexture = content.Load<Texture2D>("blocks/grass_spritesheet");
-            build.SandTexture = content.Load<Texture2D>("blocks/sand_spritesheet");
-            build.StoneTexture = content.Load<Texture2D>("blocks/stone_spritesheet");
-            build.WoodTexture = content.Load<Texture2D>("blocks/wood_spritesheet");
-            build.IronOreTexture = content.Load<Texture2D>("blocks/iron-ore_spritesheet");
+            build.DirtTexture = content.Load<Texture2D>("tiles/dirt_spritesheet");
+            build.GrassTexture = content.Load<Texture2D>("tiles/grass_spritesheet");
+            build.SandTexture = content.Load<Texture2D>("tiles/sand_spritesheet");
+            build.StoneTexture = content.Load<Texture2D>("tiles/stone_spritesheet");
+            build.WoodTexture = content.Load<Texture2D>("tiles/wood_spritesheet");
+            build.IronOreTexture = content.Load<Texture2D>("tiles/iron-ore_spritesheet");
             build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
 
             build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.CreateSeedSet());
@@ -512,9 +512,9 @@ namespace Nyvorn.Source.Game.States
             build.PlayerUpTexture = content.Load<Texture2D>("entities/player/playerUp_sheet");
             build.PlayerPickaxeMovesetTexture = content.Load<Texture2D>(
                 "entities/player/movesets/player_moveset_pickaxe-Sheet");
-            build.WorkbenchTexture = content.Load<Texture2D>("blocks/worktable-sheet");
-            build.FurnaceTexture = content.Load<Texture2D>("blocks/furnace-Sheet");
-            build.DoorTexture = content.Load<Texture2D>("blocks/wood_door");
+            build.WorkbenchTexture = content.Load<Texture2D>("objects/worktable-sheet");
+            build.FurnaceTexture = content.Load<Texture2D>("objects/furnace-Sheet");
+            build.DoorTexture = content.Load<Texture2D>("objects/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
