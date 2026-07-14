@@ -45,8 +45,6 @@ namespace Nyvorn.Source.Gameplay.UI
         private readonly Effect sunRaysEffect;
         private readonly Effect moonPhaseEffect;
 
-        private static readonly Color DefaultSkyColor = new(102, 190, 255);
-
         public ElyraSkyRenderer(GraphicsDevice graphicsDevice, Effect sunRaysEffect = null, Effect moonPhaseEffect = null)
         {
             pixel = new Texture2D(graphicsDevice, 1, 1);
@@ -54,19 +52,6 @@ namespace Nyvorn.Source.Gameplay.UI
             eclipseOccluderTexture = CreateDiscTexture(graphicsDevice, 20, Color.White);
             this.sunRaysEffect = sunRaysEffect;
             this.moonPhaseEffect = moonPhaseEffect;
-        }
-
-        public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
-        {
-            Draw(spriteBatch, screenWidth, screenHeight, DefaultSkyColor);
-        }
-
-        public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color skyColor)
-        {
-            if (screenWidth <= 0 || screenHeight <= 0)
-                return;
-
-            spriteBatch.Draw(pixel, new Rectangle(0, 0, screenWidth, screenHeight), skyColor);
         }
 
         public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f)

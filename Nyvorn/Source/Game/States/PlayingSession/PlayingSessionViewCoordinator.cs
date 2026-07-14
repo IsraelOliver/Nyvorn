@@ -470,11 +470,6 @@ namespace Nyvorn.Source.Game.States
             DoorRuntimeSystem?.Draw(spriteBatch);
         }
 
-        public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color skyColor)
-        {
-            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyColor);
-        }
-
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
         {
             ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom);
