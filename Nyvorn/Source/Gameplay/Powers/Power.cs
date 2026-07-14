@@ -6,18 +6,16 @@ namespace Nyvorn.Source.Gameplay.Powers
     {
         private float cooldownRemaining;
 
-        protected Power(string name, Texture2D icon, float cooldown, float energyCost)
+        protected Power(string name, Texture2D icon, float cooldown)
         {
             Name = name;
             Icon = icon;
             Cooldown = cooldown;
-            EnergyCost = energyCost;
         }
 
         public string Name { get; }
         public Texture2D Icon { get; }
         public float Cooldown { get; }
-        public float EnergyCost { get; }
         public float CooldownRemaining => cooldownRemaining;
         public float CooldownProgress => Cooldown <= 0f ? 0f : cooldownRemaining / Cooldown;
         public bool IsReady => cooldownRemaining <= 0f;

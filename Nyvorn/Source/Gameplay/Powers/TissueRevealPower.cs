@@ -8,7 +8,7 @@ namespace Nyvorn.Source.Gameplay.Powers
         private readonly PlayingSessionTissueSystem tissueSystem;
 
         public TissueRevealPower(PlayingSessionTissueSystem tissueSystem, Texture2D icon = null)
-            : base("Tissue Reveal", icon, cooldown: 1.1f, energyCost: 0f)
+            : base("Tissue Reveal", icon, cooldown: 1.1f)
         {
             this.tissueSystem = tissueSystem;
         }
