@@ -39,6 +39,12 @@ namespace Nyvorn.Source.Game.States
         private static readonly Color SandHighlightPixelColor = new Color(255, 252, 232);
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
         private static readonly Vector4 WaterShaderColor = new Color(34, 128, 205, 199).ToVector4();
+        private const float OpenAirLightDecayPerTile = 0.045f;
+        private const float SolidLightDecayPerTile = 0.34f;
+        private const int SkylightPropagationPasses = 3;
+        private const int SkylightBufferPadding = 10;
+        private static readonly Color SkylightShadowColor = new Color(4, 5, 10);
+        private float[,] skylightBuffer;
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -206,6 +212,109 @@ namespace Nyvorn.Source.Game.States
         public void DrawTerrainOverlay(SpriteBatch spriteBatch, Rectangle hoveredTileBounds, WorldTilePreviewState hoveredTileState)
         {
             TilePreviewRenderer.Draw(spriteBatch, hoveredTileBounds, hoveredTileState);
+        }
+
+        // Terraria/Starbound-style skylight: light starts at full strength on every open-air tile
+        // that has a clear straight line to the true sky, then floods outward through the visible
+        // area, fading a little per tile through open air and a lot per tile through solid rock.
+        // Because light can bend around corners this way (crawl sideways through a tunnel, then
+        // back up into a pocket), a floating platform blocks only the direct column beneath it, not
+        // every tile below it on the map -- unlike a naive per-column depth count. Solid tiles are
+        // then tinted dark in inverse proportion to how much light reached them.
+        public void DrawSkylightShadows(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+
+            int bufferStartX = startTileX - SkylightBufferPadding;
+            int bufferEndX = endTileX + SkylightBufferPadding;
+            int bufferStartY = System.Math.Max(0, startTileY - SkylightBufferPadding);
+            int bufferEndY = System.Math.Min(WorldMap.Height - 1, endTileY + SkylightBufferPadding);
+
+            int width = bufferEndX - bufferStartX + 1;
+            int height = bufferEndY - bufferStartY + 1;
+            if (width <= 0 || height <= 0)
+                return;
+
+            if (skylightBuffer == null || skylightBuffer.GetLength(0) != width || skylightBuffer.GetLength(1) != height)
+                skylightBuffer = new float[width, height];
+            else
+                System.Array.Clear(skylightBuffer, 0, skylightBuffer.Length);
+
+            for (int localX = 0; localX < width; localX++)
+            {
+                int tileX = bufferStartX + localX;
+                int surfaceY = FindColumnSurfaceY(tileX, bufferEndY);
+
+                for (int localY = 0; localY < height; localY++)
+                {
+                    int tileY = bufferStartY + localY;
+                    // Includes the sky-facing surface tile itself (not just the open air above it),
+                    // so the very top layer of ground reads as fully lit and decay only kicks in one
+                    // tile deeper -- matching how a real sun-facing surface looks in direct light.
+                    if (tileY <= surfaceY)
+                        skylightBuffer[localX, localY] = 1f;
+                }
+            }
+
+            for (int pass = 0; pass < SkylightPropagationPasses; pass++)
+            {
+                for (int localY = 0; localY < height; localY++)
+                {
+                    for (int localX = 1; localX < width; localX++)
+                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX - 1, localY);
+                    for (int localX = width - 2; localX >= 0; localX--)
+                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX + 1, localY);
+                }
+
+                for (int localX = 0; localX < width; localX++)
+                {
+                    for (int localY = 1; localY < height; localY++)
+                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX, localY - 1);
+                    for (int localY = height - 2; localY >= 0; localY--)
+                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX, localY + 1);
+                }
+            }
+
+            for (int tileX = startTileX; tileX <= endTileX; tileX++)
+            {
+                int localX = tileX - bufferStartX;
+
+                for (int tileY = System.Math.Max(0, startTileY); tileY <= System.Math.Min(WorldMap.Height - 1, endTileY); tileY++)
+                {
+                    if (!WorldMap.IsSolidAt(tileX, tileY))
+                        continue;
+
+                    float alpha = MathHelper.Clamp(1f - skylightBuffer[localX, tileY - bufferStartY], 0f, 1f);
+                    if (alpha <= 0.02f)
+                        continue;
+
+                    spriteBatch.Draw(DebugPixel, WorldMap.GetTileBounds(tileX, tileY), SkylightShadowColor * alpha);
+                }
+            }
+        }
+
+        private void SpreadSkylight(int bufferStartX, int bufferStartY, int targetLocalX, int targetLocalY, int sourceLocalX, int sourceLocalY)
+        {
+            int targetTileX = bufferStartX + targetLocalX;
+            int targetTileY = bufferStartY + targetLocalY;
+            float decay = WorldMap.IsSolidAt(targetTileX, targetTileY) ? SolidLightDecayPerTile : OpenAirLightDecayPerTile;
+            float candidate = skylightBuffer[sourceLocalX, sourceLocalY] - decay;
+            if (candidate > skylightBuffer[targetLocalX, targetLocalY])
+                skylightBuffer[targetLocalX, targetLocalY] = candidate;
+        }
+
+        // Topmost solid tile in this column, scanning from the true world top (row 0) so a column
+        // whose visible portion is entirely underground still resolves the same surface depth that
+        // WorldMap.HasOpenSkyAbove would find.
+        private int FindColumnSurfaceY(int tileX, int maxY)
+        {
+            for (int y = 0; y <= maxY; y++)
+            {
+                if (WorldMap.IsSolidAt(tileX, y))
+                    return y;
+            }
+
+            return maxY + 1;
         }
 
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)

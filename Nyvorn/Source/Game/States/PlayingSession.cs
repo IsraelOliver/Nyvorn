@@ -481,6 +481,11 @@ namespace Nyvorn.Source.Game.States
                 BlockInteractionSystem.HoveredTileState);
         }
 
+        public void DrawSkylightShadows(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawSkylightShadows(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
         {
             ViewCoordinator.DrawTreeDecorations(spriteBatch, screenWidth, screenHeight, worldOffsetX, layer);
