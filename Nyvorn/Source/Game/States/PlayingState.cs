@@ -243,6 +243,11 @@ namespace Nyvorn.Source.Game.States
             float worldWidthPixels = session.WorldMap.PixelWidth;
             IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
 
+            // Set once per frame, before any terrain/decoration/entity draws below read it, so
+            // sky-exposed tiles/trees/entities pick up the sun's current color (warm at sunset,
+            // cool at night) instead of always rendering at flat Color.White.
+            session.WorldMap.SetAmbientLight(session.EnvironmentSystem.SkyState.AmbientLight);
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -253,6 +258,11 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
             session.DrawSky(spriteBatch, screenW, screenH);
             spriteBatch.End();
+
+            // Its own Begin/End pass because it uses the SunRays pixel shader instead of the
+            // default sprite effect - SpriteBatch only supports one Effect per Begin/End pair.
+            session.DrawSunGlow(spriteBatch, screenW, screenH);
+            session.DrawMoons(spriteBatch, screenW, screenH);
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {

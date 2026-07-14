@@ -493,7 +493,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawEntities(SpriteBatch spriteBatch)
         {
-            ViewCoordinator.DrawEntities(spriteBatch);
+            ViewCoordinator.DrawEntities(spriteBatch, EnvironmentSystem.SkyState.AmbientLight);
         }
 
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -530,7 +530,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, EnvironmentSystem.SkyState.AmbientLight);
         }
 
         public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -563,6 +563,16 @@ namespace Nyvorn.Source.Game.States
         public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
             ViewCoordinator.DrawRainFront(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
+        }
+
+        public void DrawSunGlow(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.DrawSunGlow(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
+        }
+
+        public void DrawMoons(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.DrawMoons(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
         }
 
 

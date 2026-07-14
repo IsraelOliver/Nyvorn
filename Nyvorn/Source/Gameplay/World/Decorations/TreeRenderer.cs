@@ -16,7 +16,8 @@ namespace Nyvorn.Source.World.Decorations
             int endTileX,
             int startTileY,
             int endTileY,
-            TreeRenderLayer layer)
+            TreeRenderLayer layer,
+            Color tint)
         {
             if (texture == null || worldMap.Trees.Count == 0)
                 return;
@@ -43,7 +44,7 @@ namespace Nyvorn.Source.World.Decorations
                 if (!GetTreePixelBounds(worldMap, tree).Intersects(visiblePixels))
                     continue;
 
-                DrawTree(spriteBatch, texture, worldMap, tree);
+                DrawTree(spriteBatch, texture, worldMap, tree, tint);
             }
         }
 
@@ -58,7 +59,7 @@ namespace Nyvorn.Source.World.Decorations
             }
         }
 
-        private void DrawTree(SpriteBatch spriteBatch, Texture2D texture, WorldMap worldMap, TreeInstance tree)
+        private void DrawTree(SpriteBatch spriteBatch, Texture2D texture, WorldMap worldMap, TreeInstance tree, Color tint)
         {
             for (int i = 0; i < tree.Parts.Count; i++)
             {
@@ -74,7 +75,7 @@ namespace Nyvorn.Source.World.Decorations
                     source.Width,
                     source.Height);
 
-                spriteBatch.Draw(texture, destination, source, Color.White);
+                spriteBatch.Draw(texture, destination, source, tint);
             }
 
             if (!tree.HasCanopy)
@@ -90,7 +91,7 @@ namespace Nyvorn.Source.World.Decorations
                 canopy.SourceRectangle.Width,
                 canopy.SourceRectangle.Height);
 
-            spriteBatch.Draw(texture, canopyDestination, canopy.SourceRectangle, Color.White);
+            spriteBatch.Draw(texture, canopyDestination, canopy.SourceRectangle, tint);
         }
 
         private Rectangle GetTreePixelBounds(WorldMap worldMap, TreeInstance tree)

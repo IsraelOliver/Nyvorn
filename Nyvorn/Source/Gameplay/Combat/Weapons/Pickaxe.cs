@@ -120,7 +120,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             return frameIndex == 2;
         }
 
-        public override void Draw(SpriteBatch spriteBatch, Vector2 handWorld, Vector2 playerRootPosition, AnimFrame movementFrame, bool facingRight)
+        public override void Draw(SpriteBatch spriteBatch, Vector2 handWorld, Vector2 playerRootPosition, AnimFrame movementFrame, bool facingRight, Color tint)
         {
         }
 

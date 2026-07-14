@@ -103,31 +103,31 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 (float)System.Math.Round(position.Y + VisualFootSink));
         }
 
-        public void DrawLowerBody(SpriteBatch spriteBatch, Texture2D texture, Vector2 playerRootPosition)
+        public void DrawLowerBody(SpriteBatch spriteBatch, Texture2D texture, Vector2 playerRootPosition, Color tint)
         {
-            DrawLayer(spriteBatch, texture, MovementFrame, MovementFrame, playerRootPosition, Effects);
+            DrawLayer(spriteBatch, texture, MovementFrame, MovementFrame, playerRootPosition, Effects, tint);
         }
 
-        public void DrawUpperBody(SpriteBatch spriteBatch, Texture2D texture, Vector2 playerRootPosition)
+        public void DrawUpperBody(SpriteBatch spriteBatch, Texture2D texture, Vector2 playerRootPosition, Color tint)
         {
             // The upper body may use another animation, but it still receives the
             // movement offset so walk bounce keeps both body layers together.
-            DrawLayer(spriteBatch, texture, UpperFrame, MovementFrame, playerRootPosition, Effects);
+            DrawLayer(spriteBatch, texture, UpperFrame, MovementFrame, playerRootPosition, Effects, tint);
         }
 
-        public void DrawLayer(SpriteBatch spriteBatch, Texture2D texture, AnimFrame layerFrame, AnimFrame movementFrame, Vector2 playerRootPosition, SpriteEffects flip)
+        public void DrawLayer(SpriteBatch spriteBatch, Texture2D texture, AnimFrame layerFrame, AnimFrame movementFrame, Vector2 playerRootPosition, SpriteEffects flip, Color tint)
         {
             Rectangle source = layerFrame.GetSourceRectangle(PlayerAnimations.FrameW, PlayerAnimations.FrameH);
             Vector2 drawPosition = GetLayerDrawPosition(playerRootPosition, layerFrame, movementFrame);
-            spriteBatch.Draw(texture, drawPosition, source, Color.White, 0f, Vector2.Zero, 1f, flip, 0f);
+            spriteBatch.Draw(texture, drawPosition, source, tint, 0f, Vector2.Zero, 1f, flip, 0f);
         }
 
-        public void DrawLayer(SpriteBatch spriteBatch, Texture2D texture, AnimFrame layerFrame, AnimFrame movementFrame, Vector2 playerRootPosition, SpriteEffects flip, int frameWidth, int frameHeight)
+        public void DrawLayer(SpriteBatch spriteBatch, Texture2D texture, AnimFrame layerFrame, AnimFrame movementFrame, Vector2 playerRootPosition, SpriteEffects flip, Color tint, int frameWidth, int frameHeight)
         {
             Rectangle source = layerFrame.GetSourceRectangle(frameWidth, frameHeight);
             Vector2 drawPosition = GetLayerDrawPosition(playerRootPosition, layerFrame, movementFrame);
             drawPosition.Y -= frameHeight - PlayerAnimations.FrameH;
-            spriteBatch.Draw(texture, drawPosition, source, Color.White, 0f, Vector2.Zero, 1f, flip, 0f);
+            spriteBatch.Draw(texture, drawPosition, source, tint, 0f, Vector2.Zero, 1f, flip, 0f);
         }
 
         public Vector2 GetHandWorld(Vector2 position, bool useWeaponWalkAnchor)

@@ -86,7 +86,7 @@ namespace Nyvorn.Source.Gameplay.Items
             kinematicMotor.Position = position;
         }
 
-        public void Draw(SpriteBatch spriteBatch)
+        public void Draw(SpriteBatch spriteBatch, Color tint)
         {
             Vector2 topLeft = new Vector2(
                 (float)System.Math.Round(FrameLeft),
@@ -96,7 +96,7 @@ namespace Nyvorn.Source.Gameplay.Items
                 texture,
                 topLeft,
                 Definition.SourceRectangle,
-                Color.White);
+                tint);
         }
 
         private void MoveVertically(WorldCollisionQuery collision, float amount)

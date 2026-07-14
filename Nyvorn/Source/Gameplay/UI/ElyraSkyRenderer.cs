@@ -25,22 +25,35 @@ namespace Nyvorn.Source.Gameplay.UI
             new(dropCount: 60, fallSpeed: 430f, width: 2, height: 17, alphaScale: 0.75f, tint: new Color(210, 225, 235), salt: 500)
         };
 
+        // Base (unzoomed) pixel radius of the sun disc the SunRays shader draws - shared with the
+        // eclipse occluder below so its darkening overlay still matches the shader's sun size.
+        private const float SunRadiusBase = 16f;
+        private const float RaySeed = 4.73f;
+
+        // Adjustable sun-shader knobs (SunRays.fx) - tune these to change the look without editing
+        // the shader math itself.
+        private const float BloomRadiusMultiplier = 7f;  // gaussian sigma, in SunRadius units
+        private const float BloomIntensityValue = 0.4f;  // additive strength at the sun's center
+        private const float RayReachMultiplier = 24f;    // how far rays extend, in SunRadius units
+        private const float RayNoiseAmountValue = 0.55f; // 0 = uniform rays, higher = more irregular
+        private const float RayRotationSpeedValue = 0.004f; // radians/sec the ray field slowly turns
+        private const float RayShimmerSpeedValue = 0.06f;   // how fast the ray noise drifts/flickers
+        private const float CoreIntensityValue = 0.5f;   // fraction of the disc that blows out white
+
         private readonly Texture2D pixel;
-        private readonly Texture2D sunTexture;
-        private readonly Texture2D sunFallbackTexture;
-        private readonly Texture2D moonTexture;
         private readonly Texture2D eclipseOccluderTexture;
+        private readonly Effect sunRaysEffect;
+        private readonly Effect moonPhaseEffect;
 
         private static readonly Color DefaultSkyColor = new(102, 190, 255);
 
-        public ElyraSkyRenderer(GraphicsDevice graphicsDevice, Texture2D sunTexture = null)
+        public ElyraSkyRenderer(GraphicsDevice graphicsDevice, Effect sunRaysEffect = null, Effect moonPhaseEffect = null)
         {
             pixel = new Texture2D(graphicsDevice, 1, 1);
             pixel.SetData(new[] { Color.White });
-            this.sunTexture = sunTexture;
-            sunFallbackTexture = CreateDiscTexture(graphicsDevice, 18, Color.White);
-            moonTexture = CreateDiscTexture(graphicsDevice, 14, Color.White);
             eclipseOccluderTexture = CreateDiscTexture(graphicsDevice, 20, Color.White);
+            this.sunRaysEffect = sunRaysEffect;
+            this.moonPhaseEffect = moonPhaseEffect;
         }
 
         public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
@@ -56,7 +69,7 @@ namespace Nyvorn.Source.Gameplay.UI
             spriteBatch.Draw(pixel, new Rectangle(0, 0, screenWidth, screenHeight), skyColor);
         }
 
-        public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f)
         {
             if (screenWidth <= 0 || screenHeight <= 0)
                 return;
@@ -64,20 +77,74 @@ namespace Nyvorn.Source.Gameplay.UI
             DrawGradient(spriteBatch, screenWidth, screenHeight, skyState.TopColor, skyState.HorizonColor);
             DrawStars(spriteBatch, screenWidth, screenHeight, skyState);
             DrawCloudBands(spriteBatch, screenWidth, screenHeight, skyState);
-            DrawMoon(spriteBatch, screenWidth, screenHeight, skyState);
-            DrawSun(spriteBatch, screenWidth, screenHeight, skyState);
+            DrawEclipseOcclusion(spriteBatch, screenWidth, screenHeight, skyState, zoom);
             DrawFog(spriteBatch, screenWidth, screenHeight, skyState);
-            DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, BackRainLayers);
+            DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, BackRainLayers, zoom);
         }
 
         // Called separately, after terrain/entities are drawn, so the near rain layers pass in
         // front of trees/rooftops instead of the whole rain effect sitting strictly behind everything.
-        public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f)
         {
             if (screenWidth <= 0 || screenHeight <= 0)
                 return;
 
-            DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, FrontRainLayers);
+            DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, FrontRainLayers, zoom);
+        }
+
+        // Self-contained Begin/End using the SunRays pixel shader instead of sprite art - called as
+        // its own draw step (not nested inside the caller's default-effect sky batch) because
+        // SpriteBatch only supports one Effect per Begin/End pair.
+        public void DrawSunGlow(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0 || skyState.SunOpacity <= 0.01f || sunRaysEffect == null)
+                return;
+
+            Vector2 position = GetArcPosition(screenWidth, screenHeight, skyState.SunProgress);
+            float sunRadius = SunRadiusBase * zoom;
+
+            // Rays are eclipsed by cloud cover (overcast sky shouldn't show a sunburst) and by
+            // "warmth" - how orange the horizon currently is. At midday (blue horizon) warmth is ~0
+            // so only the bare glowing disc shows; at sunrise/sunset (already-orange horizon
+            // keyframes in WorldEnvironmentSystem) warmth is ~1 and the full burst shows.
+            float cloudFade = 1f - MathHelper.Clamp(skyState.CloudOpacity * 0.75f, 0f, 0.85f);
+            float warmth = GetSunWarmth(skyState);
+
+            // SpriteBatch does not auto-populate a custom effect's transform - unlike its own
+            // built-in default effect, it's on us to compute the same screen-space orthographic
+            // projection it would otherwise use, or every vertex collapses to the origin.
+            sunRaysEffect.Parameters["MatrixTransform"]?.SetValue(CreateScreenMatrixTransform(spriteBatch.GraphicsDevice));
+            sunRaysEffect.Parameters["SunPosition"]?.SetValue(position);
+            sunRaysEffect.Parameters["SunRadius"]?.SetValue(sunRadius);
+            sunRaysEffect.Parameters["SunColor"]?.SetValue(skyState.SunColor.ToVector4());
+            sunRaysEffect.Parameters["RayIntensity"]?.SetValue(cloudFade * warmth);
+            sunRaysEffect.Parameters["GlowIntensity"]?.SetValue(skyState.SunOpacity * cloudFade);
+            sunRaysEffect.Parameters["Seed"]?.SetValue(RaySeed);
+            sunRaysEffect.Parameters["Time"]?.SetValue(skyState.VisualTimeSeconds);
+            sunRaysEffect.Parameters["RayReach"]?.SetValue(RayReachMultiplier);
+            sunRaysEffect.Parameters["RayNoiseAmount"]?.SetValue(RayNoiseAmountValue);
+            sunRaysEffect.Parameters["RayRotationSpeed"]?.SetValue(RayRotationSpeedValue);
+            sunRaysEffect.Parameters["RayShimmerSpeed"]?.SetValue(RayShimmerSpeedValue);
+            sunRaysEffect.Parameters["CoreIntensity"]?.SetValue(CoreIntensityValue);
+            sunRaysEffect.Parameters["Warmth"]?.SetValue(warmth);
+            sunRaysEffect.Parameters["WarmTipColor"]?.SetValue(skyState.HorizonColor.ToVector4());
+            sunRaysEffect.Parameters["BloomRadius"]?.SetValue(BloomRadiusMultiplier);
+            sunRaysEffect.Parameters["BloomIntensity"]?.SetValue(BloomIntensityValue * cloudFade);
+
+            Color drawTint = Color.White * skyState.SunOpacity;
+            Rectangle fullScreen = new Rectangle(0, 0, screenWidth, screenHeight);
+
+            // Bloom first (wide, soft, additive - brightens the sky itself) so the sharper core and
+            // rays composite on top of an already-lit backdrop instead of sitting as a flat sticker.
+            sunRaysEffect.CurrentTechnique = sunRaysEffect.Techniques["SunBloom"];
+            spriteBatch.Begin(blendState: BlendState.Additive, samplerState: SamplerState.LinearClamp, effect: sunRaysEffect);
+            spriteBatch.Draw(pixel, fullScreen, drawTint);
+            spriteBatch.End();
+
+            sunRaysEffect.CurrentTechnique = sunRaysEffect.Techniques["SunRays"];
+            spriteBatch.Begin(blendState: BlendState.AlphaBlend, samplerState: SamplerState.LinearClamp, effect: sunRaysEffect);
+            spriteBatch.Draw(pixel, fullScreen, drawTint);
+            spriteBatch.End();
         }
 
         private void DrawGradient(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color top, Color horizon)
@@ -136,46 +203,91 @@ namespace Nyvorn.Source.Gameplay.UI
             }
         }
 
-        private void DrawSun(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        // The sun's glow/rays are drawn by DrawSunGlow (SunRays.fx, its own Begin/End pass) - this
+        // just places the eclipse-darkening disc at the same position/size within the normal
+        // default-effect sky pass, so it still layers correctly against clouds/fog/stars.
+        private void DrawEclipseOcclusion(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom)
         {
-            if (skyState.SunOpacity <= 0.01f)
+            if (skyState.SunOpacity <= 0.01f || skyState.EclipseIntensity <= 0.01f)
                 return;
 
             Vector2 position = GetArcPosition(screenWidth, screenHeight, skyState.SunProgress);
-            Texture2D texture = sunTexture ?? sunFallbackTexture;
-            float scale = sunTexture == null ? 1f : 1.45f;
-            int width = (int)(texture.Width * scale);
-            int height = (int)(texture.Height * scale);
+            int diameter = (int)(SunRadiusBase * 2f * zoom);
             Rectangle bounds = new(
-                (int)(position.X - width * 0.5f),
-                (int)(position.Y - height * 0.5f),
-                width,
-                height);
+                (int)(position.X - diameter * 0.5f),
+                (int)(position.Y - diameter * 0.5f),
+                diameter,
+                diameter);
 
-            spriteBatch.Draw(sunFallbackTexture, Inflate(bounds, 18), skyState.SunColor * skyState.SunOpacity * 0.14f);
-            spriteBatch.Draw(texture, bounds, skyState.SunColor * skyState.SunOpacity);
-
-            if (skyState.EclipseIntensity > 0.01f)
-            {
-                Rectangle occluder = Inflate(bounds, 10);
-                occluder.Offset((int)(12f * (1f - skyState.EclipseIntensity)), (int)(-4f * skyState.EclipseIntensity));
-                spriteBatch.Draw(eclipseOccluderTexture, occluder, new Color(5, 8, 18) * MathHelper.Clamp(skyState.EclipseIntensity, 0f, 1f));
-            }
+            Rectangle occluder = Inflate(bounds, (int)(10 * zoom));
+            occluder.Offset((int)(12f * zoom * (1f - skyState.EclipseIntensity)), (int)(-4f * zoom * skyState.EclipseIntensity));
+            spriteBatch.Draw(eclipseOccluderTexture, occluder, new Color(5, 8, 18) * MathHelper.Clamp(skyState.EclipseIntensity, 0f, 1f));
         }
 
-        private void DrawMoon(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        // Derived straight from the sky's own horizon color instead of duplicating time-of-day
+        // logic: WorldEnvironmentSystem's keyframes already go orange at dawn/dusk and blue at
+        // midday, so redness-over-blueness at the horizon is a free, always-in-sync warmth signal.
+        private static float GetSunWarmth(SkyState skyState)
         {
-            if (skyState.MoonOpacity <= 0.01f)
+            float redMinusBlue = (skyState.HorizonColor.R - skyState.HorizonColor.B) / 255f;
+            return MathHelper.Clamp(redMinusBlue * 1.8f, 0f, 1f);
+        }
+
+        // Self-contained Begin/End using the MoonPhase shader, called as its own draw step (same
+        // reason as DrawSunGlow: a custom Effect can't be nested inside the default-effect batch).
+        // Far moon drawn first, near moon second, so the near moon naturally occludes the far one
+        // on the rare nights their arc positions align - no extra masking code, just draw order.
+        public void DrawMoons(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f, float cameraPanX = 0f)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0 || moonPhaseEffect == null)
                 return;
 
-            Vector2 position = GetArcPosition(screenWidth, screenHeight, skyState.MoonProgress);
-            Rectangle bounds = new(
-                (int)(position.X - 18),
-                (int)(position.Y - 18),
-                36,
-                36);
-            spriteBatch.Draw(moonTexture, Inflate(bounds, 10), skyState.MoonColor * skyState.MoonOpacity * 0.10f);
-            spriteBatch.Draw(moonTexture, bounds, skyState.MoonColor * skyState.MoonOpacity);
+            DrawMoonGlow(spriteBatch, screenWidth, screenHeight, skyState.FarMoon, MoonDefinition.FarMoon, zoom, cameraPanX);
+            DrawMoonGlow(spriteBatch, screenWidth, screenHeight, skyState.NearMoon, MoonDefinition.NearMoon, zoom, cameraPanX);
+        }
+
+        private void DrawMoonGlow(
+            SpriteBatch spriteBatch,
+            int screenWidth,
+            int screenHeight,
+            MoonState moonState,
+            MoonDefinition definition,
+            float zoom,
+            float cameraPanX)
+        {
+            if (moonState.Opacity <= 0.01f)
+                return;
+
+            Vector2 position = GetArcPosition(screenWidth, screenHeight, moonState.Progress);
+
+            // Parallax: distant things drift backward relative to how far the camera has panned,
+            // scaled down by ParallaxFactor - the far moon (small factor) barely moves, the near
+            // moon (bigger factor) shifts a bit more, unlike the rest of the sky which never scrolls.
+            position.X -= cameraPanX * definition.ParallaxFactor;
+
+            float radius = definition.DiscRadius * zoom;
+
+            moonPhaseEffect.Parameters["MatrixTransform"]?.SetValue(CreateScreenMatrixTransform(spriteBatch.GraphicsDevice));
+            moonPhaseEffect.Parameters["MoonPosition"]?.SetValue(position);
+            moonPhaseEffect.Parameters["MoonRadius"]?.SetValue(radius);
+            moonPhaseEffect.Parameters["MoonColor"]?.SetValue(definition.Color.ToVector4());
+            moonPhaseEffect.Parameters["Opacity"]?.SetValue(moonState.Opacity);
+            moonPhaseEffect.Parameters["Phase01"]?.SetValue(moonState.Phase01);
+            moonPhaseEffect.Parameters["ResidualGlow"]?.SetValue(definition.ResidualGlow);
+            moonPhaseEffect.Parameters["BloomRadius"]?.SetValue(definition.BloomRadiusMultiplier);
+            moonPhaseEffect.Parameters["BloomIntensity"]?.SetValue(definition.BloomIntensity);
+
+            Rectangle fullScreen = new Rectangle(0, 0, screenWidth, screenHeight);
+
+            moonPhaseEffect.CurrentTechnique = moonPhaseEffect.Techniques["MoonBloom"];
+            spriteBatch.Begin(blendState: BlendState.Additive, samplerState: SamplerState.LinearClamp, effect: moonPhaseEffect);
+            spriteBatch.Draw(pixel, fullScreen, Color.White);
+            spriteBatch.End();
+
+            moonPhaseEffect.CurrentTechnique = moonPhaseEffect.Techniques["MoonDisc"];
+            spriteBatch.Begin(blendState: BlendState.AlphaBlend, samplerState: SamplerState.LinearClamp, effect: moonPhaseEffect);
+            spriteBatch.Draw(pixel, fullScreen, Color.White);
+            spriteBatch.End();
         }
 
         private void DrawFog(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
@@ -188,7 +300,7 @@ namespace Nyvorn.Source.Gameplay.UI
             spriteBatch.Draw(pixel, new Rectangle(0, y, screenWidth, fogHeight), skyState.FogColor * skyState.FogOpacity * 0.22f);
         }
 
-        private void DrawRainLayers(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, RainLayer[] layers)
+        private void DrawRainLayers(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, RainLayer[] layers, float zoom)
         {
             if (skyState.RainIntensity <= 0.01f)
                 return;
@@ -200,7 +312,7 @@ namespace Nyvorn.Source.Gameplay.UI
             float cosAngle = MathF.Cos(windAngleRadians);
 
             for (int layerIndex = 0; layerIndex < layers.Length; layerIndex++)
-                DrawRainLayer(spriteBatch, screenWidth, screenHeight, skyState, layers[layerIndex], sinAngle, cosAngle);
+                DrawRainLayer(spriteBatch, screenWidth, screenHeight, skyState, layers[layerIndex], sinAngle, cosAngle, zoom);
         }
 
         private void DrawRainLayer(
@@ -210,11 +322,14 @@ namespace Nyvorn.Source.Gameplay.UI
             SkyState skyState,
             RainLayer layer,
             float sinAngle,
-            float cosAngle)
+            float cosAngle,
+            float zoom)
         {
             int drops = (int)(layer.DropCount * MathHelper.Clamp(skyState.RainIntensity, 0f, 1f));
             Color rainColor = layer.Tint * MathHelper.Clamp(layer.AlphaScale * (0.55f + skyState.RainIntensity * 0.6f), 0f, 1f);
             float fall = skyState.VisualTimeSeconds * (layer.FallSpeed + (skyState.Wetness * 80f));
+            int width = System.Math.Max(1, (int)(layer.Width * zoom));
+            int height = (int)(layer.Height * zoom);
 
             for (int i = 0; i < drops; i++)
             {
@@ -229,10 +344,10 @@ namespace Nyvorn.Source.Gameplay.UI
                 for (int s = 0; s < segments; s++)
                 {
                     float t = s / (float)(segments - 1);
-                    int segX = x + (int)(sinAngle * layer.Height * t);
-                    int segY = y + (int)(cosAngle * layer.Height * t);
+                    int segX = x + (int)(sinAngle * height * t);
+                    int segY = y + (int)(cosAngle * height * t);
                     Color segColor = s == 0 ? rainColor : rainColor * 0.6f;
-                    spriteBatch.Draw(pixel, new Rectangle(segX, segY, layer.Width, System.Math.Max(2, layer.Height / segments)), segColor);
+                    spriteBatch.Draw(pixel, new Rectangle(segX, segY, width, System.Math.Max(2, height / segments)), segColor);
                 }
             }
         }
@@ -265,6 +380,23 @@ namespace Nyvorn.Source.Gameplay.UI
             float x = MathHelper.Lerp(screenWidth * 0.10f, screenWidth * 0.90f, t);
             float y = (screenHeight * 0.53f) - (MathF.Sin(t * MathF.PI) * screenHeight * 0.41f);
             return new Vector2(x, y);
+        }
+
+        // Mirrors the orthographic projection SpriteBatch's own built-in effect uses for
+        // screen-space (identity-transform) draws, since a custom Effect has to be told this
+        // explicitly - SpriteBatch only auto-fills its internal default effect's matrix, not ours.
+        private static Matrix CreateScreenMatrixTransform(GraphicsDevice graphicsDevice)
+        {
+            Viewport viewport = graphicsDevice.Viewport;
+            Matrix.CreateOrthographicOffCenter(0, viewport.Width, viewport.Height, 0, 0, -1, out Matrix projection);
+
+            if (graphicsDevice.UseHalfPixelOffset)
+            {
+                projection.M41 += -0.5f * projection.M11;
+                projection.M42 += -0.5f * projection.M22;
+            }
+
+            return projection;
         }
 
         private static Rectangle Inflate(Rectangle rectangle, int amount)

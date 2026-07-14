@@ -265,23 +265,23 @@
 /processorParam:TextureFormat=Color
 /build:ui/background_menu.png
 
-#begin background/Sun.png
-/importer:TextureImporter
-/processor:TextureProcessor
-/processorParam:ColorKeyColor=255,0,255,255
-/processorParam:ColorKeyEnabled=True
-/processorParam:GenerateMipmaps=False
-/processorParam:PremultiplyAlpha=True
-/processorParam:ResizeToPowerOfTwo=False
-/processorParam:MakeSquare=False
-/processorParam:TextureFormat=Color
-/build:background/Sun.png
-
 #begin effects/water.fx
 /importer:EffectImporter
 /processor:EffectProcessor
 /processorParam:DebugMode=Auto
 /build:effects/water.fx
+
+#begin effects/SunRays.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/SunRays.fx
+
+#begin effects/MoonPhase.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/MoonPhase.fx
 
 #begin ui/toolbar.png
 /importer:TextureImporter

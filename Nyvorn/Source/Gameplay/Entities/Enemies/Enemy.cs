@@ -88,7 +88,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             TriggerAttackVisual();
         }
 
-        public void Draw(SpriteBatch spriteBatch)
+        public void Draw(SpriteBatch spriteBatch, Color tint)
         {
             if (!IsAlive)
                 return;
@@ -98,7 +98,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                 src = new Rectangle(0, config.FrameHeight, config.FrameWidth, config.FrameHeight);
 
             Vector2 origin = new Vector2(16f, 32f);
-            spriteBatch.Draw(texture, Position, src, Color.White, 0f, origin, 1f, SpriteEffects.None, 0f);
+            spriteBatch.Draw(texture, Position, src, tint, 0f, origin, 1f, SpriteEffects.None, 0f);
         }
 
         private EnemyAnimState ResolveAnimState()

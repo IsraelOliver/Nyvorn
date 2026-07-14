@@ -87,7 +87,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             return Rectangle.Empty;
         }
 
-        public virtual void Draw(SpriteBatch spriteBatch, Vector2 handWorld, bool facingRight)
+        public virtual void Draw(SpriteBatch spriteBatch, Vector2 handWorld, bool facingRight, Color tint)
         {
             Rectangle src = new Rectangle(frameX * frameW, frameY * frameH, frameW, frameH);
 
@@ -98,12 +98,12 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             Vector2 topLeft = handWorld - new Vector2(pivotX, pivot.Y);
             SpriteEffects fx = facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
-            spriteBatch.Draw(texture, topLeft, src, Color.White, 0f, Vector2.Zero, 1f, fx, 0f);
+            spriteBatch.Draw(texture, topLeft, src, tint, 0f, Vector2.Zero, 1f, fx, 0f);
         }
 
-        public virtual void Draw(SpriteBatch spriteBatch, Vector2 handWorld, Vector2 playerRootPosition, AnimFrame movementFrame, bool facingRight)
+        public virtual void Draw(SpriteBatch spriteBatch, Vector2 handWorld, Vector2 playerRootPosition, AnimFrame movementFrame, bool facingRight, Color tint)
         {
-            Draw(spriteBatch, handWorld, facingRight);
+            Draw(spriteBatch, handWorld, facingRight, tint);
         }
 
         protected static Point CreatePivotFromBaseAnchor(int frameHeight, Point baseAnchor)

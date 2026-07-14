@@ -220,9 +220,21 @@ namespace Nyvorn.Source.Game.States
             WorldMap.PrepareVisibleChunkCache(graphicsDevice, startTileX, endTileX, startTileY, endTileY);
         }
 
-        public void DrawEntities(SpriteBatch spriteBatch)
+        public void DrawEntities(SpriteBatch spriteBatch, Color ambientLight)
         {
-            Player.Draw(spriteBatch);
+            Player.Draw(spriteBatch, GetAmbientTintAt(ambientLight, Player.Position));
+        }
+
+        // Entities aren't cached like terrain chunks, so unlike GetChunkAmbientTint above this can
+        // check each entity's own tile precisely - a buried enemy/item/player doesn't get the
+        // sky's tint even while a sibling entity standing in the open right next to it does.
+        private Color GetAmbientTintAt(Color ambientLight, Vector2 worldPosition)
+        {
+            if (ambientLight == Color.White)
+                return Color.White;
+
+            Point tile = WorldMap.WorldToTile(worldPosition);
+            return WorldMap.HasOpenSkyAbove(tile.X, tile.Y) ? ambientLight : Color.White;
         }
 
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -282,7 +294,7 @@ namespace Nyvorn.Source.Game.States
                 endTileY);
         }
 
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Color ambientLight)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
             WorldMap.DrawBackground(spriteBatch, startTileX, endTileX, startTileY, endTileY);
@@ -299,7 +311,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(enemy.Hurtbox, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                enemy.Draw(spriteBatch);
+                enemy.Draw(spriteBatch, GetAmbientTintAt(ambientLight, enemy.Position));
                 HealthBarRenderer.Draw(spriteBatch, enemy.Position + new Vector2(0f, -30f), enemy.Health, enemy.MaxHealth, 22, 3);
             }
 
@@ -308,7 +320,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(worldItem.WorldBounds, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                worldItem.Draw(spriteBatch);
+                worldItem.Draw(spriteBatch, GetAmbientTintAt(ambientLight, worldItem.WorldBounds.Center.ToVector2()));
             }
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
@@ -324,12 +336,22 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
         {
-            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyState);
+            ElyraSkyRenderer.Draw(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom);
         }
 
         public void DrawRainFront(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
         {
-            ElyraSkyRenderer.DrawRainFront(spriteBatch, screenWidth, screenHeight, skyState);
+            ElyraSkyRenderer.DrawRainFront(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom);
+        }
+
+        public void DrawSunGlow(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        {
+            ElyraSkyRenderer.DrawSunGlow(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom);
+        }
+
+        public void DrawMoons(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        {
+            ElyraSkyRenderer.DrawMoons(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom, Camera.Position.X);
         }
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color tint)

@@ -37,6 +37,7 @@ namespace Nyvorn.Source.World
         internal event Action<TissueChangedEvent> TissueChanged;
 
         private TileWetnessField _wetnessField;
+        private Color _ambientLight = Color.White;
         private Texture2D _dirt;
         private Texture2D _grass;
         private Texture2D _sand;
@@ -785,6 +786,14 @@ namespace Nyvorn.Source.World
             _wetnessField = wetnessField;
         }
 
+        // Called once per frame from the sky/environment system - SkyState.AmbientLight, tinting
+        // sky-exposed tiles/decorations so the ground reads warm at sunset and cool at night
+        // instead of always rendering at flat Color.White regardless of time of day.
+        public void SetAmbientLight(Color ambientLight)
+        {
+            _ambientLight = ambientLight;
+        }
+
         public void SetTextures(Texture2D dirt, Texture2D sand, Texture2D stone)
         {
             SetTextures(dirt, dirt, sand, stone, null);
@@ -1058,7 +1067,9 @@ namespace Nyvorn.Source.World
 
         public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer)
         {
-            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer);
+            // Trees only ever grow at the surface in this game, so they always take the ambient
+            // tint unconditionally - no HasOpenSkyAbove gate needed like tiles/entities.
+            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer, _ambientLight);
         }
 
         public void PrepareVisibleChunkCache(GraphicsDevice graphicsDevice, int startTileX, int endTileX, int startTileY, int endTileY)
@@ -1118,9 +1129,34 @@ namespace Nyvorn.Source.World
                     }
 
                     Rectangle worldBounds = GetChunkWorldBounds(chunkCoord);
-                    spriteBatch.Draw(cache.RenderTarget, worldBounds, Color.White);
+                    spriteBatch.Draw(cache.RenderTarget, worldBounds, GetChunkAmbientTint(chunkCoord));
                 }
             }
+        }
+
+        // A cached chunk's RenderTarget is one baked texture for its whole (32-tile-tall) column,
+        // so ambient light can only be gated per-chunk here, not per-tile, without re-baking the
+        // cache every frame as the sun moves. A chunk counts as "surface" if any tile in its top
+        // row has open sky above it; chunks that are entirely buried stay unlit so sunset/sunrise
+        // colors don't bleed underground. DrawTiles (below) does the precise per-tile version for
+        // the uncached fallback path - a future per-tile skylight system would replace this
+        // per-chunk approximation with a real light value baked per pixel instead.
+        private Color GetChunkAmbientTint(WorldChunkCoord chunkCoord)
+        {
+            if (_ambientLight == Color.White)
+                return Color.White;
+
+            int topRowY = chunkCoord.Y * ChunkTileSize;
+            int startX = chunkCoord.X * ChunkTileSize;
+            int endX = System.Math.Min(startX + ChunkTileSize, Width) - 1;
+
+            for (int x = startX; x <= endX; x++)
+            {
+                if (HasOpenSkyAbove(x, topRowY))
+                    return _ambientLight;
+            }
+
+            return Color.White;
         }
 
         private void DrawTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY, int pixelOffsetX, int pixelOffsetY)
@@ -1155,9 +1191,21 @@ namespace Nyvorn.Source.World
                         TileSize,
                         TileSize);
                     Color tint = GetWetnessTint(tile, x, y);
+                    if (_ambientLight != Color.White && HasOpenSkyAbove(x, y))
+                        tint = MultiplyColors(tint, _ambientLight);
+
                     spriteBatch.Draw(texture, destination, sourceRectangle, tint);
                 }
             }
+        }
+
+        private static Color MultiplyColors(Color a, Color b)
+        {
+            return new Color(
+                (a.R * b.R) / 255,
+                (a.G * b.G) / 255,
+                (a.B * b.B) / 255,
+                (a.A * b.A) / 255);
         }
 
         private Color GetWetnessTint(TileType tile, int x, int y)

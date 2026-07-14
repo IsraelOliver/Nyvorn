@@ -39,7 +39,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Weapons
             return new Rectangle(x, y, width, height);
         }
 
-        public override void Draw(SpriteBatch spriteBatch, Vector2 handWorld, bool facingRight)
+        public override void Draw(SpriteBatch spriteBatch, Vector2 handWorld, bool facingRight, Color tint)
         {
         }
     }

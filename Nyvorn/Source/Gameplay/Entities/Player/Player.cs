@@ -132,18 +132,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             combat.UpdateAttackHitbox(handWorld, playerAnimator.FacingRight);
         }
 
-        public void Draw(SpriteBatch spriteBatch)
+        public void Draw(SpriteBatch spriteBatch, Color tint)
         {
             if (combat.IsDodging)
             {
-                DrawDodge(spriteBatch);
+                DrawDodge(spriteBatch, tint);
                 return;
             }
 
             Vector2 drawPos = playerAnimator.GetDrawPosition(VisualPosition);
             bool isMoving = moveDir != 0;
 
-            playerAnimator.DrawLowerBody(spriteBatch, lowerBody, drawPos);
+            playerAnimator.DrawLowerBody(spriteBatch, lowerBody, drawPos, tint);
 
             if (combat.IsAttacking)
                 combat.EquippedWeapon.SetAttackFrame(combat.AttackAnimation.CurrentFrameIndex);
@@ -168,7 +168,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     weaponUpperFrame,
                     playerAnimator.MovementFrame,
                     drawPos,
-                    playerAnimator.Effects);
+                    playerAnimator.Effects,
+                    tint);
 
                 if (combat.EquippedWeapon.DrawsPlayerUpperBodyOverlay &&
                     combat.EquippedWeapon.PlayerUpperBodyOverlayTexture != null)
@@ -180,17 +181,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                         playerAnimator.MovementFrame,
                         drawPos,
                         playerAnimator.Effects,
+                        tint,
                         combat.EquippedWeapon.FrameWidth,
                         combat.EquippedWeapon.FrameHeight);
                 }
             }
             else
             {
-                playerAnimator.DrawUpperBody(spriteBatch, upperBody, drawPos);
+                playerAnimator.DrawUpperBody(spriteBatch, upperBody, drawPos, tint);
                 if (combat.EquippedWeapon.DrawsWithPlayerRoot)
-                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, drawPos, playerAnimator.MovementFrame, playerAnimator.FacingRight);
+                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, drawPos, playerAnimator.MovementFrame, playerAnimator.FacingRight, tint);
                 else
-                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight);
+                    combat.EquippedWeapon.Draw(spriteBatch, handWorld, playerAnimator.FacingRight, tint);
             }
         }
 
@@ -332,11 +334,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                    WaterSubmergedRatio < config.WaterDeepThreshold;
         }
 
-        private void DrawDodge(SpriteBatch spriteBatch)
+        private void DrawDodge(SpriteBatch spriteBatch, Color tint)
         {
             Vector2 drawPos = playerAnimator.GetDrawPosition(VisualPosition);
-            playerAnimator.DrawLowerBody(spriteBatch, lowerBody, drawPos);
-            playerAnimator.DrawUpperBody(spriteBatch, upperBody, drawPos);
+            playerAnimator.DrawLowerBody(spriteBatch, lowerBody, drawPos, tint);
+            playerAnimator.DrawUpperBody(spriteBatch, upperBody, drawPos, tint);
         }
     }
 }

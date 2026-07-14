@@ -371,18 +371,27 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 0f,
                 0.68f);
 
+            // Near moon reuses the exact progress formula the old single moon always used
+            // (ArcSpeedMultiplier 1.0 = ties to the same night window). Far moon drifts relative to
+            // it via a slightly slower ArcSpeedMultiplier - a per-night "beat" offset accumulates
+            // from that speed mismatch, so the two only line up again every several nights.
+            float farMoonProgress = ComputeDriftedMoonProgress(moonProgress, time.CycleIndex, MoonDefinition.FarMoon.ArcSpeedMultiplier);
+            float nearMoonPhase01 = ComputeMoonPhase01(time, MoonDefinition.NearMoon.PhasePeriodDays);
+            float farMoonPhase01 = ComputeMoonPhase01(time, MoonDefinition.FarMoon.PhasePeriodDays);
+            float moonConjunction01 = ComputeMoonConjunction01(moonProgress, farMoonProgress, nearMoonPhase01, farMoonPhase01);
+
             return new SkyState(
                 top,
                 horizon,
                 ambient,
                 fog,
                 Color.Lerp(new Color(255, 239, 165), new Color(154, 176, 210), eclipseIntensity),
-                new Color(195, 208, 226),
                 new Color(6, 12, 32) * overlayAlpha,
                 sunProgress,
                 sunOpacity,
-                moonProgress,
-                moonOpacity,
+                new MoonState(moonProgress, moonOpacity, nearMoonPhase01),
+                new MoonState(farMoonProgress, moonOpacity, farMoonPhase01),
+                moonConjunction01,
                 MathHelper.Clamp(starOpacity, 0f, 1f),
                 MathHelper.Clamp(cloudCover, 0f, 1f),
                 MathHelper.Clamp((rainVisual * 0.24f) + (wetness * 0.14f) + (tissueState.ResidueStrength * 0.12f), 0f, 1f),
@@ -393,6 +402,46 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 wind,
                 visualTimeSeconds);
         }
+
+        // Deterministic day-count drift instead of an explicit offset table: with ArcSpeedMultiplier
+        // slightly below 1, the far moon falls a little further behind the near moon's arc each
+        // night; that lag wraps modulo 1, so it periodically comes back around to near-zero (close
+        // alignment) without ever being scripted to "happen on day N".
+        private static float ComputeDriftedMoonProgress(float referenceProgress, int cycleIndex, float arcSpeedMultiplier)
+        {
+            float nightStartOffset = Frac(cycleIndex * (1f - arcSpeedMultiplier));
+            return Frac((referenceProgress * arcSpeedMultiplier) + nightStartOffset);
+        }
+
+        private static float ComputeMoonPhase01(WorldTimeSnapshot time, float phasePeriodDays)
+        {
+            float daysElapsed = time.CycleIndex + time.TimeOfDay01;
+            return Frac(daysElapsed / MathF.Max(phasePeriodDays, 0.0001f));
+        }
+
+        // 0 at new moon, 1 at full moon, 0 again at the next new moon.
+        private static float ComputeMoonFullness(float phase01)
+        {
+            return 0.5f - (0.5f * MathF.Cos(MathHelper.TwoPi * phase01));
+        }
+
+        // How close the two moons' arc positions currently are, as a 0..1 falloff - only pixels
+        // within MoonConjunctionPositionWindow of each other register any alignment at all.
+        private const float MoonConjunctionPositionWindow = 0.06f;
+
+        // Exposed on SkyState as MoonConjunction01 - product of position-alignment and
+        // fullness-alignment, so it's close to 0 almost always (both terms independently rare
+        // given the moons' different PhasePeriodDays/ArcSpeedMultiplier) and only spikes when both
+        // conditions land on the same night. Nothing subscribes to this yet (see SkyState comment).
+        private static float ComputeMoonConjunction01(float nearProgress, float farProgress, float nearPhase01, float farPhase01)
+        {
+            float progressDelta = MathF.Abs(nearProgress - farProgress);
+            float positionAlignment01 = MathHelper.Clamp(1f - (progressDelta / MoonConjunctionPositionWindow), 0f, 1f);
+            float fullnessAlignment01 = ComputeMoonFullness(nearPhase01) * ComputeMoonFullness(farPhase01);
+            return MathHelper.Clamp(positionAlignment01 * fullnessAlignment01, 0f, 1f);
+        }
+
+        private static float Frac(float value) => value - MathF.Floor(value);
 
         private TissueCycleState CreateTissueCycleState(WorldTimeSnapshot time)
         {

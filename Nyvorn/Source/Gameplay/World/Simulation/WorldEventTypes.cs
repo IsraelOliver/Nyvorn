@@ -77,18 +77,29 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         float PulseBoost,
         float ResidueStrength);
 
+    // Per-moon runtime values for a given frame - MoonDefinition (Simulation/MoonDefinition.cs)
+    // holds the config each of these plays against (radius, color, parallax, bloom, ...).
+    public readonly record struct MoonState(
+        float Progress,   // arc position within tonight's pass, 0..1 (same semantics as the old single MoonProgress)
+        float Opacity,    // tied to NightStrength - 0 during the day, same as before
+        float Phase01);   // this moon's own waxing/waning cycle position, 0/1 = new, 0.5 = full
+
     public readonly record struct SkyState(
         Color TopColor,
         Color HorizonColor,
         Color AmbientLight,
         Color FogColor,
         Color SunColor,
-        Color MoonColor,
         Color NightOverlayTint,
         float SunProgress,
         float SunOpacity,
-        float MoonProgress,
-        float MoonOpacity,
+        MoonState NearMoon,
+        MoonState FarMoon,
+        // 0..1 hook: how full AND aligned the two moons currently are (product of a fullness term
+        // and a position-alignment term - see WorldEnvironmentSystem.ComputeMoonConjunction01).
+        // Exposed as data only for now; no reactions (tissue tint, ambient cooling, discrete
+        // begin/peak/end events) are wired to it yet - that's the next pass, plugging in here.
+        float MoonConjunction01,
         float StarOpacity,
         float CloudOpacity,
         float FogOpacity,

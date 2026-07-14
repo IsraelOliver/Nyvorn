@@ -518,8 +518,9 @@ namespace Nyvorn.Source.Game.States
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
-            build.SunTexture = content.Load<Texture2D>("background/Sun");
             build.WaterEffect = content.Load<Effect>("effects/water");
+            build.SunRaysEffect = content.Load<Effect>("effects/SunRays");
+            build.MoonPhaseEffect = content.Load<Effect>("effects/MoonPhase");
 
             build.ItemTextures = LoadItemTextures();
             build.Weapons = CreateWeapons(build.ItemTextures, build.PlayerPickaxeMovesetTexture);
@@ -748,7 +749,7 @@ namespace Nyvorn.Source.Game.States
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
                 HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
-                ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice, build.SunTexture),
+                ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice, build.SunRaysEffect, build.MoonPhaseEffect),
                 WaterEffect = build.WaterEffect,
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
@@ -1196,8 +1197,9 @@ namespace Nyvorn.Source.Game.States
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
-            public Texture2D SunTexture { get; set; }
             public Effect WaterEffect { get; set; }
+            public Effect SunRaysEffect { get; set; }
+            public Effect MoonPhaseEffect { get; set; }
             public SpriteFont UiFont { get; set; }
             public WorldGenConfig WorldGenConfig { get; set; }
             public WorldMap WorldMap { get; set; }
