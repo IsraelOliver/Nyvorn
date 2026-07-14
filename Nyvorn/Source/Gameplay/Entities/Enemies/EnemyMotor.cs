@@ -23,7 +23,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         }
 
         public Vector2 Position => position;
-        public float KnockbackVelocityX => knockbackVelocityX;
         public float HorizontalVelocityX => horizontalVelocityX;
 
         private float HitLeft => position.X - (config.HurtboxSize.X * 0.5f);

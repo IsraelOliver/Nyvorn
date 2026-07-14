@@ -53,8 +53,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private float HitTop => HitBottom - currentHurtboxSize.Y + 1f;
 
         public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, currentHurtboxSize.X, currentHurtboxSize.Y);
-        public float HitBottomValue => HitBottom;
-        public float HitTopValue => HitTop;
 
         public void Update(
             float dt,
