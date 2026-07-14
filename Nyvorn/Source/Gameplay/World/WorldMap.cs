@@ -6,7 +6,6 @@ using Nyvorn.Source.World.Tissue;
 using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using System;
-using System.IO;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.World
@@ -186,49 +185,6 @@ namespace Nyvorn.Source.World
             RebuildBackgroundAutoTileVariants();
         }
 
-        public byte[] ExportTissueSnapshot()
-        {
-            if (_tissueField == null)
-                return null;
-
-            // Snapshot legado: preserva apenas presenca para compatibilidade com
-            // saves atuais. O novo modelo biologico devera ganhar formato proprio.
-            byte[] snapshot = new byte[Width * Height];
-            int index = 0;
-
-            for (int y = 0; y < Height; y++)
-            {
-                for (int x = 0; x < Width; x++)
-                    snapshot[index++] = _tissueField.HasTissue(x, y) ? (byte)1 : (byte)0;
-            }
-
-            return snapshot;
-        }
-
-        public void ImportTissueSnapshot(byte[] snapshot)
-        {
-            if (snapshot == null || snapshot.Length == 0)
-            {
-                SetTissueField(null);
-                return;
-            }
-
-            if (snapshot.Length != Width * Height)
-                throw new System.ArgumentException("Tissue snapshot size does not match world dimensions.", nameof(snapshot));
-
-            TissueField field = new TissueField(Width, Height);
-            int index = 0;
-
-            // Snapshot legado booleano: true entra como presenca/vitalidade basica.
-            for (int y = 0; y < Height; y++)
-            {
-                for (int x = 0; x < Width; x++)
-                    field.SetTissue(x, y, snapshot[index++] != 0);
-            }
-
-            SetTissueField(field);
-        }
-
         public void SetTissueField(TissueField tissueField)
         {
             if (ReferenceEquals(_tissueField, tissueField))
@@ -287,11 +243,6 @@ namespace Nyvorn.Source.World
             return _tissueField.ResetOverride(wrappedX, y);
         }
 
-        public void SetTissueAnalysis(TissueAnalysisResult analysis)
-        {
-            _tissueAnalysis = analysis;
-        }
-
         public void MarkPersisted()
         {
             _persistedTileRevision = TileRevision;
@@ -329,147 +280,6 @@ namespace Nyvorn.Source.World
             // Compatibilidade de API: a nova topologia vem da TissueNetwork.
             // O analyzer legado nao e mais executado automaticamente.
             return _tissueAnalysis;
-        }
-
-        public TissueAnalysisResult RebuildTissueAnalysis()
-        {
-            _tissueAnalysis = null;
-            return null;
-        }
-
-        public byte[] ExportTissueAnalysisSnapshot()
-        {
-            if (_tissueAnalysis == null)
-                return null;
-
-            using MemoryStream stream = new();
-            using BinaryWriter writer = new(stream);
-
-            writer.Write(_tissueAnalysis.Width);
-            writer.Write(_tissueAnalysis.Height);
-
-            for (int y = 0; y < _tissueAnalysis.Height; y++)
-            {
-                for (int x = 0; x < _tissueAnalysis.Width; x++)
-                {
-                    writer.Write(_tissueAnalysis.GetNeighborCount(x, y));
-                    writer.Write(_tissueAnalysis.GetOpennessScore(x, y));
-                    writer.Write((byte)_tissueAnalysis.GetLocalType(x, y));
-                }
-            }
-
-            writer.Write(_tissueAnalysis.Hubs.Count);
-            for (int i = 0; i < _tissueAnalysis.Hubs.Count; i++)
-            {
-                TissueHub hub = _tissueAnalysis.Hubs[i];
-                writer.Write(hub.TilePosition.X);
-                writer.Write(hub.TilePosition.Y);
-                writer.Write((byte)hub.LocalType);
-                writer.Write(hub.NeighborCount);
-                writer.Write(hub.Openness);
-                writer.Write(hub.ImportanceScore);
-            }
-
-            writer.Write(_tissueAnalysis.Links.Count);
-            for (int i = 0; i < _tissueAnalysis.Links.Count; i++)
-            {
-                TissueLink link = _tissueAnalysis.Links[i];
-                writer.Write(link.StartHubIndex);
-                writer.Write(link.EndHubIndex);
-                writer.Write(link.PathCost);
-                writer.Write((byte)link.LinkType);
-                writer.Write(link.TilePath.Count);
-
-                for (int pointIndex = 0; pointIndex < link.TilePath.Count; pointIndex++)
-                {
-                    Point point = link.TilePath[pointIndex];
-                    writer.Write(point.X);
-                    writer.Write(point.Y);
-                }
-            }
-
-            writer.Flush();
-            return stream.ToArray();
-        }
-
-        public void ImportTissueAnalysisSnapshot(byte[] snapshot)
-        {
-            if (snapshot == null || snapshot.Length == 0)
-            {
-                _tissueAnalysis = null;
-                return;
-            }
-
-            if (_tissueField == null)
-                throw new System.InvalidOperationException("TissueField precisa ser carregado antes da análise.");
-
-            using MemoryStream stream = new(snapshot);
-            using BinaryReader reader = new(stream);
-
-            int width = reader.ReadInt32();
-            int height = reader.ReadInt32();
-            if (width != Width || height != Height)
-                throw new System.ArgumentException("Tissue analysis snapshot size does not match world dimensions.", nameof(snapshot));
-
-            TissueAnalysisResult analysis = new(width, height);
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    analysis.SetNeighborCount(x, y, reader.ReadByte());
-                    analysis.SetOpennessScore(x, y, reader.ReadSingle());
-                    analysis.SetLocalType(x, y, (TissueLocalType)reader.ReadByte());
-                }
-            }
-
-            int hubCount = reader.ReadInt32();
-            for (int i = 0; i < hubCount; i++)
-            {
-                int tileX = reader.ReadInt32();
-                int tileY = reader.ReadInt32();
-                TissueLocalType localType = (TissueLocalType)reader.ReadByte();
-                byte neighborCount = reader.ReadByte();
-                float openness = reader.ReadSingle();
-                float importanceScore = reader.ReadSingle();
-
-                analysis.Hubs.Add(new TissueHub(
-                    new Point(tileX, tileY),
-                    GetTileCenter(tileX, tileY),
-                    localType,
-                    neighborCount,
-                    openness,
-                    importanceScore));
-            }
-
-            int linkCount = reader.ReadInt32();
-            for (int i = 0; i < linkCount; i++)
-            {
-                int startHubIndex = reader.ReadInt32();
-                int endHubIndex = reader.ReadInt32();
-                float pathCost = reader.ReadSingle();
-                TissueLink.TissueLinkType linkType = (TissueLink.TissueLinkType)reader.ReadByte();
-                int pathCount = reader.ReadInt32();
-                List<Point> path = new(pathCount);
-
-                for (int pointIndex = 0; pointIndex < pathCount; pointIndex++)
-                    path.Add(new Point(reader.ReadInt32(), reader.ReadInt32()));
-
-                TissueLink link = new(startHubIndex, endHubIndex, path, pathCost);
-                link.SetType(linkType);
-                analysis.Links.Add(link);
-            }
-
-            for (int i = 0; i < analysis.Links.Count; i++)
-            {
-                TissueLink link = analysis.Links[i];
-                if (link.StartHubIndex >= 0 && link.StartHubIndex < analysis.Hubs.Count)
-                    analysis.Hubs[link.StartHubIndex].IncrementLinkCount();
-                if (link.EndHubIndex >= 0 && link.EndHubIndex < analysis.Hubs.Count)
-                    analysis.Hubs[link.EndHubIndex].IncrementLinkCount();
-            }
-
-            _tissueAnalysis = analysis;
         }
 
         public bool InBounds(int x, int y)
@@ -514,8 +324,8 @@ namespace Nyvorn.Source.World
             return true;
         }
 
-        // Pure query seam for a future audio system: multiply rain SFX volume down when this
-        // returns true (player is sheltered), full volume otherwise. No audio wired up yet.
+        // Also doubles as a shelter query for the night-overlay tint (PlayingSession.cs), which
+        // softens darkening under a roof - not audio-exclusive despite the name.
         public bool IsWeatherAudioMuffled(int x, int y) => !HasOpenSkyAbove(x, y);
 
         public void SetObjectCollisionQueries(
@@ -560,12 +370,6 @@ namespace Nyvorn.Source.World
             return new WorldChunkCoord(
                 wrappedTileX / ChunkTileSize,
                 clampedTileY / ChunkTileSize);
-        }
-
-        public WorldChunkCoord GetChunkCoordForWorld(Vector2 worldPos)
-        {
-            Point tile = WorldToTile(worldPos);
-            return GetChunkCoordForTile(tile.X, tile.Y);
         }
 
         public Rectangle GetChunkTileBounds(WorldChunkCoord chunkCoord)
@@ -794,21 +598,6 @@ namespace Nyvorn.Source.World
             _ambientLight = ambientLight;
         }
 
-        public void SetTextures(Texture2D dirt, Texture2D sand, Texture2D stone)
-        {
-            SetTextures(dirt, dirt, sand, stone, null);
-        }
-
-        public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone)
-        {
-            SetTextures(dirt, grass, sand, stone, null);
-        }
-
-        public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone, Texture2D wood)
-        {
-            SetTextures(dirt, grass, sand, stone, wood, null);
-        }
-
         public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone, Texture2D wood, Texture2D ironOre)
         {
             _dirt = dirt;
@@ -831,36 +620,6 @@ namespace Nyvorn.Source.World
             _trees.Clear();
             if (trees != null)
                 _trees.AddRange(trees);
-        }
-
-        public bool TryGetTreeAtBaseTile(Point tile, out TreeInstance tree)
-        {
-            tree = null;
-
-            if (!InBounds(tile.X, tile.Y))
-                return false;
-
-            int wrappedTileX = WrapTileX(tile.X);
-            for (int treeIndex = 0; treeIndex < _trees.Count; treeIndex++)
-            {
-                TreeInstance candidate = _trees[treeIndex];
-                for (int partIndex = 0; partIndex < candidate.Parts.Count; partIndex++)
-                {
-                    TreePartPlacement placement = candidate.Parts[partIndex];
-                    if (placement.OffsetTiles.Y != 0)
-                        continue;
-
-                    int partX = WrapTileX(candidate.BaseTile.X + placement.OffsetTiles.X);
-                    int partY = candidate.BaseTile.Y + placement.OffsetTiles.Y;
-                    if (partX != wrappedTileX || partY != tile.Y)
-                        continue;
-
-                    tree = candidate;
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         public bool TryGetTreeAtTile(Point tile, out TreeInstance tree)

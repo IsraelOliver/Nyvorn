@@ -6,11 +6,5 @@ namespace Nyvorn.Source.World.Decorations
         TreePartType Type,
         Rectangle SourceRectangle,
         Point LogicalTileSize,
-        Point DrawOffsetPixels,
-        bool IsBase,
-        bool IsRoot,
-        bool IsBranch,
-        bool CanReceiveBranch,
-        bool CanContinueVertically,
-        TreePartType? ComplementaryPartType = null);
+        Point DrawOffsetPixels);
 }

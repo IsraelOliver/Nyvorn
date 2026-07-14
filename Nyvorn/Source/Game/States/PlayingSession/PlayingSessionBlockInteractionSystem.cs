@@ -373,8 +373,6 @@ namespace Nyvorn.Source.Game.States
                 WorldItemRuntimeSystem.SpawnItemDrops(ItemId.RawWood, System.Math.Max(1, supportedTree.Height), WorldMap.GetTileCenter(supportedTree.BaseTile.X, supportedTree.BaseTile.Y));
             WorldObjectRegistry?.NotifyForegroundTileBroken(new ForegroundTileBrokenContext(
                 tile,
-                removedTile,
-                tileCenter,
                 WorldItemRuntimeSystem));
             ResetMiningProgress();
         }

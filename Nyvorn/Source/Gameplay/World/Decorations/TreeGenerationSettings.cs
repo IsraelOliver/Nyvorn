@@ -6,7 +6,6 @@ namespace Nyvorn.Source.World.Decorations
         public int MinTreeHeight { get; init; } = 5;
         public int MaxTreeHeight { get; init; } = 10;
         public bool RequireFlatGroundForRoots { get; init; } = true;
-        public bool EnableTreeDebug { get; init; } = false;
         public int CanopyClearanceTiles { get; init; } = 3;
 
         // Spacing between tree bases, at the densest and sparsest points of a forest cluster.
