@@ -38,7 +38,6 @@ namespace Nyvorn.Source.Game.States
         private static readonly Color SandTopEdgeColor = new Color(207, 179, 120);
         private static readonly Color SandHighlightPixelColor = new Color(255, 252, 232);
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
-        private static readonly Vector4 WaterShaderColor = new Color(34, 128, 205, 199).ToVector4();
         private const float OpenAirLightDecayPerTile = 0.045f;
         private const float SolidLightDecayPerTile = 0.09f;
         private const int SkylightPropagationPasses = 16;
@@ -70,7 +69,6 @@ namespace Nyvorn.Source.Game.States
         public required Camera2D Camera { get; init; }
         public required Texture2D DebugPixel { get; init; }
         public LiquidSystem LiquidSystem { get; set; }
-        public Effect WaterEffect { get; init; }
         public required WorldHealthBarRenderer HealthBarRenderer { get; init; }
         public required HudRenderer HudRenderer { get; init; }
         public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
@@ -184,13 +182,6 @@ namespace Nyvorn.Source.Game.States
             Camera.Follow(smoothedCameraTarget, screenWidth, screenHeight);
         }
 
-        public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Rectangle hoveredTileBounds, WorldTilePreviewState hoveredTileState)
-        {
-            DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX);
-            DrawWater(spriteBatch, screenWidth, screenHeight, worldOffsetX);
-            DrawTerrainOverlay(spriteBatch, hoveredTileBounds, hoveredTileState);
-        }
-
         public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
@@ -202,16 +193,6 @@ namespace Nyvorn.Source.Game.States
             // over legitimate opaque tile pixels (e.g. onto grass at a dune's edge).
             DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
-        }
-
-        public Effect PrepareWaterEffect(float timeSeconds, GraphicsDevice graphicsDevice, Matrix transformMatrix)
-        {
-            if (WaterEffect == null || graphicsDevice == null)
-                return null;
-
-            SetEffectValue("MatrixTransform", CreateSpriteBatchMatrixTransform(graphicsDevice, transformMatrix));
-            SetEffectValue("WaterColor", WaterShaderColor);
-            return WaterEffect;
         }
 
         public void DrawWater(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -741,42 +722,6 @@ namespace Nyvorn.Source.Game.States
 
                 currentRawStartX = currentRawEndX + 1;
             }
-        }
-
-        private void SetEffectValue(string parameterName, float value)
-        {
-            WaterEffect.Parameters[parameterName]?.SetValue(value);
-        }
-
-        private void SetEffectValue(string parameterName, Vector4 value)
-        {
-            WaterEffect.Parameters[parameterName]?.SetValue(value);
-        }
-
-        private void SetEffectValue(string parameterName, Matrix value)
-        {
-            WaterEffect.Parameters[parameterName]?.SetValue(value);
-        }
-
-        private static Matrix CreateSpriteBatchMatrixTransform(GraphicsDevice graphicsDevice, Matrix transformMatrix)
-        {
-            Viewport viewport = graphicsDevice.Viewport;
-            Matrix.CreateOrthographicOffCenter(
-                0,
-                viewport.Width,
-                viewport.Height,
-                0,
-                0,
-                -1,
-                out Matrix projection);
-
-            if (graphicsDevice.UseHalfPixelOffset)
-            {
-                projection.M41 += -0.5f * projection.M11;
-                projection.M42 += -0.5f * projection.M22;
-            }
-
-            return transformMatrix * projection;
         }
 
         private int WrapPixelX(int pixelX)

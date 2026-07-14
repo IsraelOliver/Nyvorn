@@ -217,29 +217,9 @@ namespace Nyvorn.Source.Game.States
             return Create("Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
         }
 
-        public PlayingSession Create(string planetName, WorldSizePreset sizePreset, int seed)
-        {
-            return CompleteBuild(CreateBuildOperation(planetName, sizePreset, seed));
-        }
-
         public PlayingSession Create(string planetName, WorldSizePreset sizePreset, string seedText)
         {
             return CompleteBuild(CreateBuildOperation(planetName, sizePreset, seedText));
-        }
-
-        public PlayingSession Create(PlanetSaveData saveData)
-        {
-            if (saveData == null)
-                return Create();
-
-            return CompleteBuild(CreateBuildOperation(saveData));
-        }
-
-        public BuildOperation CreateBuildOperation(string planetName, WorldSizePreset sizePreset, int seed)
-        {
-            WorldGenConfig worldGenConfig = WorldGenConfig.CreatePreset(sizePreset, seed);
-            PlanetWorldMetadata planetMetadata = PlanetWorldMetadata.Create(planetName, worldGenConfig);
-            return CreateBuildOperation(planetMetadata, saveData: null);
         }
 
         public BuildOperation CreateBuildOperation(string planetName, WorldSizePreset sizePreset, string seedText)
@@ -518,7 +498,6 @@ namespace Nyvorn.Source.Game.States
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
-            build.WaterEffect = content.Load<Effect>("effects/water");
             build.SunRaysEffect = content.Load<Effect>("effects/SunRays");
             build.MoonPhaseEffect = content.Load<Effect>("effects/MoonPhase");
 
@@ -750,7 +729,6 @@ namespace Nyvorn.Source.Game.States
                 HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
                 ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice, build.SunRaysEffect, build.MoonPhaseEffect),
-                WaterEffect = build.WaterEffect,
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
@@ -1197,7 +1175,6 @@ namespace Nyvorn.Source.Game.States
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
-            public Effect WaterEffect { get; set; }
             public Effect SunRaysEffect { get; set; }
             public Effect MoonPhaseEffect { get; set; }
             public SpriteFont UiFont { get; set; }

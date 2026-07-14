@@ -453,25 +453,9 @@ namespace Nyvorn.Source.Game.States
             EnvironmentSystem.Update(dt, WorldTickTimeScale, WorldTicksPaused, DayNightCycle.CreateSnapshot());
         }
 
-        public void DrawTerrain(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
-        {
-            ViewCoordinator.DrawTerrain(
-                spriteBatch,
-                screenWidth,
-                screenHeight,
-                worldOffsetX,
-                BlockInteractionSystem.HoveredTileBounds,
-                BlockInteractionSystem.HoveredTileState);
-        }
-
         public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX);
-        }
-
-        public Effect PrepareWaterEffect(float timeSeconds, GraphicsDevice graphicsDevice, Matrix transformMatrix)
-        {
-            return ViewCoordinator.PrepareWaterEffect(timeSeconds, graphicsDevice, transformMatrix);
         }
 
         public void DrawWater(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
