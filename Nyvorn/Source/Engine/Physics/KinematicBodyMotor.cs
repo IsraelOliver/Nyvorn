@@ -48,11 +48,6 @@ namespace Nyvorn.Source.Engine.Physics
                 ref remainderY);
         }
 
-        public void ClearRemainderX()
-        {
-            remainderX = 0f;
-        }
-
         public void ClearRemainderY()
         {
             remainderY = 0f;

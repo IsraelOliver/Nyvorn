@@ -102,9 +102,6 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
         public bool HasLiquidInRectangle(int pixelX, int pixelY, int width, int height)
             => GetLiquidCoverage(new Rectangle(pixelX, pixelY, width, height)) > 0f;
 
-        public bool IsLiquidAt(Rectangle bounds)
-            => GetLiquidCoverage(bounds) > 0f;
-
         public float GetSubmergedRatio(Rectangle bounds)
             => GetLiquidCoverage(bounds);
 
@@ -177,15 +174,6 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
                    cell.Amount > 0
                 ? cell.Type
                 : LiquidType.None;
-        }
-
-        public float GetLiquidFillPercentAtWorldPosition(Vector2 worldPosition)
-        {
-            Point tile = worldMap.WorldToTile(worldPosition);
-            return MathHelper.Clamp(
-                GetLiquidAmountAtTile(tile.X, tile.Y) / (float)rules.MaxLiquidAmount,
-                0f,
-                1f);
         }
 
         public bool TryGetLiquidCell(int x, int y, out LiquidCell cell)
@@ -272,27 +260,6 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             LiquidType type = GetLiquidTypeAtTile(x, y);
             int nextAmount = Math.Max(0, currentAmount - amount);
             return SetLiquid(x, y, type, nextAmount);
-        }
-
-        public int DebugSpawnWaterRectangle(int x, int y, int width, int height)
-        {
-            if (width <= 0 || height <= 0)
-                return 0;
-
-            int placed = 0;
-            for (int cellY = y; cellY < y + height; cellY++)
-            {
-                if (cellY < 0 || cellY >= CellHeight)
-                    continue;
-
-                for (int cellX = x; cellX < x + width; cellX++)
-                {
-                    if (SetLiquid(cellX, cellY, LiquidType.Water, rules.MaxLiquidAmount))
-                        placed++;
-                }
-            }
-
-            return placed;
         }
 
         public bool DisplaceLiquidForPlacedTile(int tileX, int tileY)
