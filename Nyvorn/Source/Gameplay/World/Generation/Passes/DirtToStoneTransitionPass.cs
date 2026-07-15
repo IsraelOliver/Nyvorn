@@ -20,9 +20,6 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             context.ProgressReporter?.Begin(Name, "Misturando terra e pedra em bolsoes");
 
-            int dirtCount = 0;
-            int stoneCount = 0;
-
             for (int x = 0; x < context.WorldMap.Width; x++)
             {
                 int surfaceY = context.SurfaceHeights[x];
@@ -58,28 +55,13 @@ namespace Nyvorn.Source.World.Generation.Passes
 
                     if (nextTile != currentTile)
                         context.WorldMap.SetTile(x, y, nextTile);
-
-                    if (nextTile == TileType.Stone)
-                        stoneCount++;
-                    else
-                        dirtCount++;
                 }
 
                 if ((x & 31) == 0 || x == context.WorldMap.Width - 1)
                     context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Misturando terra e pedra em bolsoes");
             }
 
-            context.DebugStats["DirtToStoneTransition.DirtTiles"] = dirtCount.ToString();
-            context.DebugStats["DirtToStoneTransition.StoneTiles"] = stoneCount.ToString();
-            context.DebugStats["DirtToStoneTransition.InversionDepthPercent"] = InversionDepthPercent.ToString("0.00");
             context.ProgressReporter?.Complete(Name, "Transição terra-pedra pronta");
-        }
-
-        internal static float GetMaterialThreshold(float depth01)
-        {
-            return depth01 < InversionDepthPercent
-                ? GetTopStoneThreshold(depth01)
-                : GetBottomDirtThreshold(depth01);
         }
 
         internal static float GetTopStoneThreshold(float depth01)

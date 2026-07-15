@@ -2,9 +2,6 @@
  * Ported from https://gist.github.com/KdotJPG/b1270127455a94ac5d19
  * and heavily refactored to improve performance. */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Nyvorn.Source.World.Generation
@@ -189,11 +186,6 @@ namespace Nyvorn.Source.World.Generation
         {
             var xi = (int)x;
             return x < xi ? xi - 1 : xi;
-        }
-
-        public OpenSimplexNoise()
-            : this(DateTime.Now.Ticks)
-        {
         }
 
         public OpenSimplexNoise(long seed)

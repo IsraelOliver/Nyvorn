@@ -25,14 +25,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                 new WorldLayerDefinition(WorldLayerType.DeepCavern, cavernEnd + 1, lastRow)
             };
 
-            for (int i = 0; i < context.LayerDefinitions.Length; i++)
-            {
-                WorldLayerDefinition layer = context.LayerDefinitions[i];
-                context.DebugStats[$"Layer.{layer.LayerType}.StartY"] = layer.StartY.ToString();
-                context.DebugStats[$"Layer.{layer.LayerType}.EndY"] = layer.EndY.ToString();
-                context.DebugStats[$"Layer.{layer.LayerType}.Height"] = layer.Height.ToString();
-            }
-
             context.ProgressReporter?.Complete(Name, "Camadas do planeta definidas");
         }
 

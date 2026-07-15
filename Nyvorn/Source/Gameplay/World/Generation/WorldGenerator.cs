@@ -93,17 +93,6 @@ namespace Nyvorn.Source.World.Generation
             };
         }
 
-        public static WorldGenPhaseDefinition GetPhaseDefinition(string passName)
-        {
-            for (int i = 0; i < OrderedPasses.Length; i++)
-            {
-                if (OrderedPasses[i].Name == passName)
-                    return OrderedPasses[i];
-            }
-
-            return new WorldGenPhaseDefinition(passName, passName, 1f);
-        }
-
         public void ApplyPassByName(WorldGenContext context, string passName)
         {
             if (string.IsNullOrWhiteSpace(passName))

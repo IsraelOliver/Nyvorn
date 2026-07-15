@@ -27,12 +27,11 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             HashSet<long> liquidKeys = new();
             List<WaterSite> createdSites = new();
-            int undergroundWaterCells = 0;
             UndergroundWaterStats undergroundStats = new();
 
             if (context.Config.GenerateUndergroundWater)
             {
-                undergroundWaterCells = GenerateUndergroundWater(
+                GenerateUndergroundWater(
                     context,
                     liquidKeys,
                     createdSites,
@@ -40,15 +39,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                 context.ProgressReporter?.Report(Name, 0.90f, "Agua subterranea posicionada");
             }
 
-            context.DebugStats["Hydrology.UndergroundPuddles"] = undergroundStats.TotalPools.ToString();
-            context.DebugStats["Hydrology.UndergroundCavePools"] = undergroundStats.TotalPools.ToString();
-            context.DebugStats["Hydrology.UndergroundBottomPools"] = undergroundStats.BottomPools.ToString();
-            context.DebugStats["Hydrology.UndergroundPartialCaves"] = undergroundStats.PartialCaves.ToString();
-            context.DebugStats["Hydrology.UndergroundFullCaves"] = undergroundStats.FullCaves.ToString();
-            context.DebugStats["Hydrology.UndergroundBigLakes"] = undergroundStats.BigLakes.ToString();
-            context.DebugStats["Hydrology.UndergroundAquifers"] = "0";
-            context.DebugStats["Hydrology.UndergroundWaterCells"] = undergroundWaterCells.ToString();
-            context.DebugStats["Hydrology.TotalWaterCells"] = context.LiquidPlacements.Count.ToString();
             context.ProgressReporter?.Complete(Name, "Agua inicial distribuida");
         }
 

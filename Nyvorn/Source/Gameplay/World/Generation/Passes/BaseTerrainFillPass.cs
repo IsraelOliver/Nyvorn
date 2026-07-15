@@ -12,11 +12,6 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             context.ProgressReporter?.Begin(Name, "Preenchendo crosta");
 
-            int airCount = 0;
-            int dirtCount = 0;
-            int grassCount = 0;
-            int sandCount = 0;
-
             for (int x = 0; x < context.WorldMap.Width; x++)
             {
                 int surfaceY = context.SurfaceHeights[x];
@@ -27,17 +22,10 @@ namespace Nyvorn.Source.World.Generation.Passes
                     if (y < surfaceY)
                     {
                         context.WorldMap.SetTile(x, y, TileType.Empty);
-                        airCount++;
                     }
                     else if (y == surfaceY)
                     {
                         context.WorldMap.SetTile(x, y, biome.SurfaceTile);
-                        if (biome.SurfaceTile == TileType.Grass)
-                            grassCount++;
-                        else if (biome.SurfaceTile == TileType.Dirt)
-                            dirtCount++;
-                        else if (biome.SurfaceTile == TileType.Sand)
-                            sandCount++;
                     }
                     else
                     {
@@ -45,12 +33,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                             ? biome.SubsurfaceTile
                             : TileType.Dirt;
                         context.WorldMap.SetTile(x, y, fillTile);
-                        if (fillTile == TileType.Grass)
-                            grassCount++;
-                        else if (fillTile == TileType.Sand)
-                            sandCount++;
-                        else
-                            dirtCount++;
                     }
                 }
 
@@ -58,15 +40,8 @@ namespace Nyvorn.Source.World.Generation.Passes
                     context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Preenchendo crosta");
             }
 
-            int promotedGrassCount = PromoteSurfaceGrassShell(context);
-            grassCount += promotedGrassCount;
-            dirtCount -= promotedGrassCount;
+            PromoteSurfaceGrassShell(context);
 
-            context.DebugStats["BaseTerrain.AirTiles"] = airCount.ToString();
-            context.DebugStats["BaseTerrain.DirtTiles"] = dirtCount.ToString();
-            context.DebugStats["BaseTerrain.GrassTiles"] = grassCount.ToString();
-            context.DebugStats["BaseTerrain.SandTiles"] = sandCount.ToString();
-            context.DebugStats["BaseTerrain.StoneTiles"] = "0";
             context.ProgressReporter?.Complete(Name, "Crosta preenchida");
         }
 

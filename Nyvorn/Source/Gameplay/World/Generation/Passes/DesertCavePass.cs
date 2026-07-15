@@ -175,11 +175,6 @@ namespace Nyvorn.Source.World.Generation.Passes
             OpenSimplexNoise mineralVeinNoise = new(seed + 7000);
             OpenSimplexNoise warpNoise = new(seed + 8000);
 
-            int eligibleTiles = 0;
-            int carvedTiles = 0;
-            int hardBorderSkipped = 0;
-            int skippedColumns = 0;
-
             // Coletamos as posicoes a cavar em vez de aplicar na hora. Se
             // aplicassemos direto, uma coluna processada mais tarde poderia
             // escanear lateralmente (GetLateralSandDistance) e encontrar um
@@ -199,10 +194,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                     column.BottomY - BottomCoreProtectionTiles);
 
                 if (endY <= startY)
-                {
-                    skippedColumns++;
                     continue;
-                }
 
                 int lateralScanMax = HardBorderPaddingTiles + SoftBorderFadeTiles + LateralScanBuffer;
 
@@ -211,14 +203,9 @@ namespace Nyvorn.Source.World.Generation.Passes
                     if (context.WorldMap.GetTile(column.X, y) != TileType.Sand)
                         continue;
 
-                    eligibleTiles++;
-
                     int lateralDistance = GetLateralSandDistance(context, column.X, y, lateralScanMax);
                     if (lateralDistance < HardBorderPaddingTiles)
-                    {
-                        hardBorderSkipped++;
                         continue;
-                    }
 
                     if (!ShouldCarveDesertCave(
                         context,
@@ -241,7 +228,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                     }
 
                     tilesToCarve.Add((column.X, y));
-                    carvedTiles++;
                 }
 
                 if ((columnIndex & 15) == 0 || columnIndex == profile.Columns.Count - 1)
@@ -261,14 +247,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                 context.WorldMap.SetTile(x, y, TileType.Empty);
             }
 
-            context.DebugStats["DesertCave.Version"] = "v7.1-sandstone-fossil-pods-organic-edge";
-            context.DebugStats["DesertCave.Technique"] = "ridged-field-intersection";
-            context.DebugStats["DesertCave.EligibleTiles"] = eligibleTiles.ToString();
-            context.DebugStats["DesertCave.CarvedTiles"] = carvedTiles.ToString();
-            context.DebugStats["DesertCave.HardBorderSkippedTiles"] = hardBorderSkipped.ToString();
-            context.DebugStats["DesertCave.SkippedColumns"] = skippedColumns.ToString();
-            context.DebugStats["DesertCave.HardBorderPaddingTiles"] = HardBorderPaddingTiles.ToString();
-            context.DebugStats["DesertCave.SoftBorderFadeTiles"] = SoftBorderFadeTiles.ToString();
 
             context.ProgressReporter?.Complete(Name, "Bolsoes fosseis de arenito esculpidos");
         }

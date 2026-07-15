@@ -19,19 +19,11 @@ namespace Nyvorn.Source.World.Generation.Passes
                 return;
             }
 
-            int clearedTiles = 0;
-            int runCount = 0;
-            int pixelSandTiles = 0;
-            int minBaseY = int.MaxValue;
-            int maxBaseY = int.MinValue;
-
             for (int i = 0; i < profile.Columns.Count; i++)
             {
                 DesertRegionColumn column = profile.Columns[i];
                 int baseY = GetPixelSandBaseY(profile, column, context.WorldMap.Height);
                 profile.SetPixelSandBaseY(i, baseY);
-                minBaseY = Math.Min(minBaseY, baseY);
-                maxBaseY = Math.Max(maxBaseY, baseY);
 
                 int runStartY = -1;
                 int runHeight = 0;
@@ -45,8 +37,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                     }
 
                     context.WorldMap.SetTile(column.X, y, TileType.Empty);
-                    clearedTiles++;
-                    pixelSandTiles++;
 
                     if (runStartY < 0)
                     {
@@ -75,23 +65,11 @@ namespace Nyvorn.Source.World.Generation.Passes
                         return;
 
                     context.PixelSandPlacements.Add(new WorldGenPixelSandPlacement(column.X, runStartY, 1, runHeight));
-                    runCount++;
                     runStartY = -1;
                     runHeight = 0;
                 }
             }
 
-            if (minBaseY == int.MaxValue)
-                minBaseY = profile.SurfaceY;
-            if (maxBaseY == int.MinValue)
-                maxBaseY = profile.SurfaceY;
-
-            context.DebugStats["DesertPixelSand.TileRuns"] = runCount.ToString();
-            context.DebugStats["DesertPixelSand.Tiles"] = pixelSandTiles.ToString();
-            context.DebugStats["DesertPixelSand.PixelBudget"] = (pixelSandTiles * context.WorldMap.TileSize * context.WorldMap.TileSize).ToString();
-            context.DebugStats["DesertPixelSand.ClearedTiles"] = clearedTiles.ToString();
-            context.DebugStats["DesertPixelSand.MinBaseY"] = minBaseY.ToString();
-            context.DebugStats["DesertPixelSand.MaxBaseY"] = maxBaseY.ToString();
             context.ProgressReporter?.Complete(Name, "Dunas pixelizadas");
         }
 

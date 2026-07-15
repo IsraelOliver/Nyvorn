@@ -12,7 +12,6 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             context.ProgressReporter?.Begin(Name, "Plantando arvores modulares");
             context.WorldMap.SetTrees(generator.Generate(context));
-            context.DebugStats["Trees.Count"] = context.WorldMap.Trees.Count.ToString();
             context.ProgressReporter?.Complete(Name, "Arvores modulares prontas");
         }
     }

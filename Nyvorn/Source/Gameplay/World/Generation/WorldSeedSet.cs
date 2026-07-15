@@ -11,9 +11,7 @@ namespace Nyvorn.Source.World.Generation
         ulong TissueSeed,
         ulong DecorationSeed,
         ulong HydrologySeed,
-        ulong EnvironmentSeed,
-        ulong LootSeed,
-        ulong CorruptionSeed)
+        ulong EnvironmentSeed)
     {
         public static WorldSeedSet FromSeedText(string seedText)
         {
@@ -37,9 +35,7 @@ namespace Nyvorn.Source.World.Generation
                 legacySeed,
                 legacySeed,
                 legacySeed,
-                legacySeed,
-                SeedHash.Derive(legacySeed, "loot"),
-                SeedHash.Derive(legacySeed, "corruption"));
+                legacySeed);
         }
 
         public static WorldSeedSet FromMetadata(string seedText, ulong masterSeed, int legacySeed)
@@ -72,9 +68,7 @@ namespace Nyvorn.Source.World.Generation
                 SeedHash.Derive(masterSeed, "tissue"),
                 SeedHash.Derive(masterSeed, "decoration"),
                 SeedHash.Derive(masterSeed, "hydrology"),
-                SeedHash.Derive(masterSeed, "environment"),
-                SeedHash.Derive(masterSeed, "loot"),
-                SeedHash.Derive(masterSeed, "corruption"));
+                SeedHash.Derive(masterSeed, "environment"));
         }
     }
 }

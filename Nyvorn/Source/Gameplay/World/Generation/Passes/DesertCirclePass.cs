@@ -27,7 +27,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             DesertBranch[] branches = CreateBranches(random, baseRadius, mainDepth);
             float asymmetry = RandomRange(random, -1f, 1f);
 
-            int sandTiles = StampFossilizedWound(
+            StampFossilizedWound(
                 context,
                 centerX,
                 surfaceY,
@@ -36,25 +36,12 @@ namespace Nyvorn.Source.World.Generation.Passes
                 mainDepth,
                 asymmetry,
                 branches,
-                out int clearedTiles,
-                out int minDuneY,
-                out int maxDuneY,
+                out _,
+                out _,
+                out _,
                 out DesertRegionProfile desertProfile);
-            int desertColumns = MarkBiomeColumns(context, centerX, shapeHalfWidth);
+            MarkBiomeColumns(context, centerX, shapeHalfWidth);
             context.DesertRegion = desertProfile;
-
-            context.DebugStats["DesertCircle.Side"] = placeLeft ? "Left" : "Right";
-            context.DebugStats["DesertCircle.CenterX"] = centerX.ToString();
-            context.DebugStats["DesertCircle.SurfaceY"] = surfaceY.ToString();
-            context.DebugStats["DesertCircle.BaseRadiusTiles"] = baseRadius.ToString();
-            context.DebugStats["DesertCircle.WidthTiles"] = (shapeHalfWidth * 2).ToString();
-            context.DebugStats["DesertCircle.MainDepthTiles"] = mainDepth.ToString();
-            context.DebugStats["DesertCircle.Branches"] = branches.Length.ToString();
-            context.DebugStats["DesertCircle.SandTiles"] = sandTiles.ToString();
-            context.DebugStats["DesertCircle.ClearedSurfaceTiles"] = clearedTiles.ToString();
-            context.DebugStats["DesertCircle.MinDuneY"] = minDuneY.ToString();
-            context.DebugStats["DesertCircle.MaxDuneY"] = maxDuneY.ToString();
-            context.DebugStats["DesertCircle.Columns"] = desertColumns.ToString();
 
             context.ProgressReporter?.Complete(Name, "Deserto fossilizado criado");
         }
@@ -184,7 +171,6 @@ namespace Nyvorn.Source.World.Generation.Passes
                 maxDuneY = surfaceY;
 
             desertProfile = new DesertRegionProfile(
-                centerX,
                 surfaceY,
                 baseRadius,
                 shapeHalfWidth,

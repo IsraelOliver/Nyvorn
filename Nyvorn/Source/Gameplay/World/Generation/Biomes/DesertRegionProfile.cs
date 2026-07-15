@@ -7,14 +7,12 @@ namespace Nyvorn.Source.World.Generation.Biomes
         private readonly List<DesertRegionColumn> columns;
 
         public DesertRegionProfile(
-            int centerX,
             int surfaceY,
             int baseRadius,
             int halfWidth,
             int mainDepth,
             IReadOnlyList<DesertRegionColumn> columns)
         {
-            CenterX = centerX;
             SurfaceY = surfaceY;
             BaseRadius = baseRadius;
             HalfWidth = halfWidth;
@@ -24,7 +22,6 @@ namespace Nyvorn.Source.World.Generation.Biomes
                 : new List<DesertRegionColumn>(columns);
         }
 
-        public int CenterX { get; }
         public int SurfaceY { get; }
         public int BaseRadius { get; }
         public int HalfWidth { get; }

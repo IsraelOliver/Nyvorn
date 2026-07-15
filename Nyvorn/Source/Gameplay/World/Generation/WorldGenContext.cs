@@ -18,17 +18,11 @@ namespace Nyvorn.Source.World.Generation
         public BiomeField Biomes { get; set; }
         public DesertRegionProfile DesertRegion { get; set; }
         public Point SpawnTile { get; set; }
-        public Dictionary<string, string> DebugStats { get; } = new();
         public List<WorldGenLiquidPlacement> LiquidPlacements { get; } = new();
         public List<WorldGenPixelSandPlacement> PixelSandPlacements { get; } = new();
         public TissueField TissueField { get; set; }
         public TissueGenerationResult TissueGeneration { get; set; }
         public WorldGenProgressReporter ProgressReporter { get; set; }
-
-        public WorldLayerType GetLayerAtY(int y)
-        {
-            return GetLayerDefinitionAtY(y).LayerType;
-        }
 
         public WorldLayerDefinition GetLayerDefinitionAtY(int y)
         {

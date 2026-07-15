@@ -34,8 +34,6 @@ namespace Nyvorn.Source.World.Generation
 
         public int Width { get; }
         public int Height { get; }
-        public int BaseCellCount => baseCells.Count;
-        public int OverrideCount => overrides.Count;
         public int Revision { get; private set; }
         public bool HasUnsavedChanges => Revision != persistedRevision;
 
@@ -44,15 +42,6 @@ namespace Nyvorn.Source.World.Generation
         public bool HasTissue(int x, int y)
         {
             return GetState(x, y).HasBiologicalPresence;
-        }
-
-        // Compatibilidade com snapshots legados: true vira presenca viva basica.
-        public void SetTissue(int x, int y, bool hasTissue)
-        {
-            if (hasTissue)
-                SetState(x, y, TissueCellState.FromLegacyPresence(true));
-            else
-                Clear(x, y);
         }
 
         public TissueCellState GetState(int x, int y)

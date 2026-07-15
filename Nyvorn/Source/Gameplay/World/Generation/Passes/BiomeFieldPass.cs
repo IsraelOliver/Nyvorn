@@ -20,34 +20,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             }
 
             context.Biomes = field;
-            context.DebugStats["Biomes.ForestColumns"] = CountBiome(field, BiomeType.Forest).ToString();
-            context.DebugStats["Biomes.DesertColumns"] = CountBiome(field, BiomeType.Desert).ToString();
-            context.DebugStats["Biomes.Hash"] = ComputeHash(field).ToString("X16");
             context.ProgressReporter?.Complete(Name, "Biomas distribuidos");
-        }
-
-        private static int CountBiome(BiomeField field, BiomeType biome)
-        {
-            int count = 0;
-            for (int x = 0; x < field.Width; x++)
-            {
-                if (field.GetBiome(x) == biome)
-                    count++;
-            }
-
-            return count;
-        }
-
-        private static ulong ComputeHash(BiomeField field)
-        {
-            ulong hash = 14695981039346656037UL;
-            for (int x = 0; x < field.Width; x++)
-            {
-                hash ^= (byte)field.GetBiome(x);
-                hash *= 1099511628211UL;
-            }
-
-            return hash;
         }
     }
 }

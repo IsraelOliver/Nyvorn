@@ -22,8 +22,6 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             context.ProgressReporter?.Begin(Name, "Semeando veios de minerio de ferro");
 
-            int oreCount = 0;
-
             for (int x = 0; x < context.WorldMap.Width; x++)
             {
                 int surfaceY = Math.Clamp(context.SurfaceHeights[x], 0, context.WorldMap.Height - 1);
@@ -41,17 +39,13 @@ namespace Nyvorn.Source.World.Generation.Passes
                     float field = WorldFieldSampler.SampleIronOreVeinField(context, x, y);
 
                     if (field > threshold)
-                    {
                         context.WorldMap.SetTile(x, y, TileType.IronOre);
-                        oreCount++;
-                    }
                 }
 
                 if ((x & 31) == 0 || x == context.WorldMap.Width - 1)
                     context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Semeando veios de minerio de ferro");
             }
 
-            context.DebugStats["IronOreVein.OreTiles"] = oreCount.ToString();
             context.ProgressReporter?.Complete(Name, "Veios de minerio de ferro prontos");
         }
 
