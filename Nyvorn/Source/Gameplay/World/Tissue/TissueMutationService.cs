@@ -47,17 +47,6 @@ namespace Nyvorn.Source.World.Tissue
                 state => state.With(corruption: MathF.Min(1f, state.Corruption + amount)));
         }
 
-        public bool ReduceCorruption(int tileX, int tileY, float amount)
-        {
-            if (!IsPositiveFinite(amount))
-                return false;
-
-            return MutateExistingTissue(
-                tileX,
-                tileY,
-                state => state.With(corruption: MathF.Max(0f, state.Corruption - amount)));
-        }
-
         public bool AddMemory(int tileX, int tileY, float amount)
         {
             if (!IsPositiveFinite(amount))

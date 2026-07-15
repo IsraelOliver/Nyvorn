@@ -1,6 +1,5 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.World.Generation;
-using System;
 
 namespace Nyvorn.Source.World.Tissue
 {
@@ -34,8 +33,6 @@ namespace Nyvorn.Source.World.Tissue
 
     public interface ITissueQueryService
     {
-        event Action<TissueChangedEvent> Changed;
-
         TissueCellState GetState(int tileX, int tileY);
 
         bool HasTissue(
@@ -46,11 +43,6 @@ namespace Nyvorn.Source.World.Tissue
         TissueAreaSample SampleArea(Rectangle tileArea);
 
         bool IsDenseRegion(Rectangle tileArea, float minimumDensity);
-
-        bool TryFindNearestNode(
-            Vector2 worldPosition,
-            float maximumDistance,
-            out TissueNodeInfo node);
 
         bool TryFindNearestConnectedNode(
             Vector2 worldPosition,

@@ -62,16 +62,6 @@ namespace Nyvorn.Source.Gameplay.UI
                 return new WorldMinimapInteractionResult(true, true, -1);
             }
 
-            if (pointerJustPressed &&
-                pointerOverMap &&
-                tissueMode &&
-                fastTravelEnabled &&
-                TryGetActivatedHubAtPoint(worldMap, layout, mousePoint, activatedHubKeys, out int travelHubIndex))
-            {
-                isDragging = false;
-                return new WorldMinimapInteractionResult(true, false, travelHubIndex);
-            }
-
             if (mouseWheelDelta != 0)
                 AdjustZoomAtPoint(worldMap, playerPosition, screenWidth, screenHeight, layout, mouseScreenPosition, mouseWheelDelta, pointerOverMap);
 
@@ -370,63 +360,6 @@ namespace Nyvorn.Source.Gameplay.UI
                 float size = node.IsPrimary ? 4f : 2f;
                 DrawRect(spriteBatch, new Rectangle((int)System.MathF.Round(mapped.X - (size * 0.5f)), (int)System.MathF.Round(mapped.Y - (size * 0.5f)), (int)size, (int)size), Color.White);
             }
-        }
-
-        private bool TryGetActivatedHubAtPoint(WorldMap worldMap, MinimapLayout layout, Point mousePoint, IReadOnlySet<int> activatedHubKeys, out int hubIndex)
-        {
-            hubIndex = -1;
-
-            if (activatedHubKeys == null || activatedHubKeys.Count == 0)
-                return false;
-
-            TissueAnalysisResult analysis = worldMap.GetOrCreateTissueAnalysis();
-            if (analysis == null)
-                return false;
-
-            int minPixelWidth = System.Math.Max(1, (int)System.MathF.Ceiling(layout.Panel.Width / (float)layout.SourceRect.Width));
-            int minPixelHeight = System.Math.Max(1, (int)System.MathF.Ceiling(layout.Panel.Height / (float)layout.SourceRect.Height));
-            int markerSize = System.Math.Max(6, System.Math.Max(minPixelWidth, minPixelHeight) * 4);
-
-            for (int i = analysis.Hubs.Count - 1; i >= 0; i--)
-            {
-                TissueHub hub = analysis.Hubs[i];
-                if (!IsHubActivated(worldMap, hub, activatedHubKeys))
-                    continue;
-
-                if (hub.TilePosition.X < layout.SourceRect.Left || hub.TilePosition.X >= layout.SourceRect.Right ||
-                    hub.TilePosition.Y < layout.SourceRect.Top || hub.TilePosition.Y >= layout.SourceRect.Bottom)
-                {
-                    continue;
-                }
-
-                int centerX = layout.Panel.X + (int)System.MathF.Round(((hub.TilePosition.X + 0.5f - layout.SourceRect.X) / layout.SourceRect.Width) * layout.Panel.Width);
-                int centerY = layout.Panel.Y + (int)System.MathF.Round(((hub.TilePosition.Y + 0.5f - layout.SourceRect.Y) / layout.SourceRect.Height) * layout.Panel.Height);
-                Rectangle markerRect = new Rectangle(
-                    centerX - (markerSize / 2),
-                    centerY - (markerSize / 2),
-                    markerSize,
-                    markerSize);
-
-                if (!markerRect.Contains(mousePoint))
-                    continue;
-
-                hubIndex = i;
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool IsHubActivated(WorldMap worldMap, TissueHub hub, IReadOnlySet<int> activatedHubKeys)
-        {
-            return activatedHubKeys != null &&
-                   activatedHubKeys.Contains(CreateHubKey(worldMap, hub.TilePosition));
-        }
-
-        private static int CreateHubKey(WorldMap worldMap, Point tilePosition)
-        {
-            int wrappedX = worldMap.WrapTileX(tilePosition.X);
-            return (tilePosition.Y * worldMap.Width) + wrappedX;
         }
 
         private void AdjustZoomAtPoint(WorldMap worldMap, Vector2 playerPosition, int screenWidth, int screenHeight, MinimapLayout layout, Vector2 mouseScreenPosition, int mouseWheelDelta, bool pointerOverMap)

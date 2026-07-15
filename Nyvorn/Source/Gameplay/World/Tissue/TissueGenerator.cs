@@ -47,12 +47,10 @@ namespace Nyvorn.Source.World.Tissue
             int[] degrees = ComputeDegrees(points.Count, edges);
             List<TissueNode> nodes = BuildNodes(points, degrees);
             List<TissueBranch> branches = BuildBranches(points, edges, degrees, pixelWidth);
-            int mainBranchCount = branches.Count;
             AddMicroFilaments(points, degrees, branches, pixelWidth, pixelHeight);
 
-            TissueField rasterizedField = Rasterize(worldMap, nodes, branches, out int rasterizedTileCount);
-            float dominantRatio = GetDominantComponentRatio(points.Count, edges);
-            TissueGenerationStats stats = BuildStats(points, degrees, mainBranchCount, branches.Count - mainBranchCount, nests.Count, rasterizedTileCount, dominantRatio, edges);
+            TissueField rasterizedField = Rasterize(worldMap, nodes, branches, out _);
+            TissueGenerationStats stats = BuildStats(points, edges);
 
             return new TissueGenerationResult
             {
@@ -403,37 +401,10 @@ namespace Nyvorn.Source.World.Tissue
             field.SetBaseState(tileX, tileY, new TissueCellState(presence, vitality, 0f, 0f, flow));
         }
 
-        private TissueGenerationStats BuildStats(List<PointDraft> points, int[] degrees, int edgeCount, int microCount, int nestCount, int rasterizedTiles, float dominantRatio, List<EdgeDraft> edges)
+        private TissueGenerationStats BuildStats(List<PointDraft> points, List<EdgeDraft> edges)
         {
-            int minDegree = points.Count == 0 ? 0 : int.MaxValue;
-            int maxDegree = 0;
-            long degreeTotal = 0;
-            int upper = 0;
-            int middle = 0;
-            int deep = 0;
-            for (int i = 0; i < points.Count; i++)
-            {
-                minDegree = Math.Min(minDegree, degrees[i]);
-                maxDegree = Math.Max(maxDegree, degrees[i]);
-                degreeTotal += degrees[i];
-                if (points[i].Depth < TissueConfig.Network.MiddleLayerStart) upper++;
-                else if (points[i].Depth < TissueConfig.Network.DeepLayerStart) middle++;
-                else deep++;
-            }
             return new TissueGenerationStats
             {
-                PointCount = points.Count,
-                EdgeCount = edgeCount,
-                MicroFilamentCount = microCount,
-                NestCount = nestCount,
-                RasterizedTileCount = rasterizedTiles,
-                MinDegree = minDegree,
-                MaxDegree = maxDegree,
-                AverageDegree = points.Count == 0 ? 0f : degreeTotal / (float)points.Count,
-                DominantComponentRatio = dominantRatio,
-                UpperPointCount = upper,
-                MiddlePointCount = middle,
-                DeepPointCount = deep,
                 DeterministicHash = ComputeHash(points, edges)
             };
         }
@@ -464,14 +435,6 @@ namespace Nyvorn.Source.World.Tissue
                 degrees[edges[i].B]++;
             }
             return degrees;
-        }
-
-        private static float GetDominantComponentRatio(int pointCount, List<EdgeDraft> edges)
-        {
-            if (pointCount == 0)
-                return 1f;
-            UnionFind union = BuildUnion(pointCount, edges);
-            return GetLargestComponentSize(union, pointCount) / (float)pointCount;
         }
 
         private static UnionFind BuildUnion(int pointCount, List<EdgeDraft> edges)

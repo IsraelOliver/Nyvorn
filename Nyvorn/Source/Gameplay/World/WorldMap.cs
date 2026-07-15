@@ -25,7 +25,6 @@ namespace Nyvorn.Source.World
         public bool HasUnsavedChanges => TileRevision != _persistedTileRevision || HasUnsavedTissueChanges;
         public int PixelWidth => Width * TileSize;
         public TissueField TissueField => _tissueField;
-        public TissueAnalysisResult TissueAnalysis => _tissueAnalysis;
         public int TissueRevision { get; private set; }
         public bool HasUnsavedTissueChanges => _tissueField?.HasUnsavedChanges ?? false;
         public int ChunkTileSize => DefaultChunkTileSize;
@@ -45,7 +44,6 @@ namespace Nyvorn.Source.World
         private Texture2D _ironOre;
         private Texture2D _treeTexture;
         private TissueField _tissueField;
-        private TissueAnalysisResult _tissueAnalysis;
         private int _persistedTileRevision;
         private SpriteBatch _chunkRenderSpriteBatch;
         private int _chunkRenderTick;
@@ -199,7 +197,6 @@ namespace Nyvorn.Source.World
                 _tissueField.SetOccupancyValidator(IsSolidAt);
                 _tissueField.Changed += HandleTissueFieldChanged;
             }
-            _tissueAnalysis = null;
             TissueRevision++;
         }
 
@@ -251,7 +248,6 @@ namespace Nyvorn.Source.World
 
         public void MarkTissueDirty()
         {
-            _tissueAnalysis = null;
             TissueRevision++;
         }
 
@@ -266,20 +262,12 @@ namespace Nyvorn.Source.World
 
         private void HandleTissueFieldChanged(TissueFieldChange change)
         {
-            _tissueAnalysis = null;
             TissueRevision++;
             TissueChanged?.Invoke(new TissueChangedEvent(
                 new Point(change.X, change.Y),
                 change.Previous,
                 change.Current,
                 TissueRevision));
-        }
-
-        public TissueAnalysisResult GetOrCreateTissueAnalysis()
-        {
-            // Compatibilidade de API: a nova topologia vem da TissueNetwork.
-            // O analyzer legado nao e mais executado automaticamente.
-            return _tissueAnalysis;
         }
 
         public bool InBounds(int x, int y)

@@ -55,11 +55,6 @@ namespace Nyvorn.Source.World.Tissue
             }
         }
 
-        internal bool TryFindNearestNode(Vector2 position, float maximumDistance, out TissueNode nearestNode)
-        {
-            return TryFindNearestNode(position, maximumDistance, requireConnected: false, out nearestNode);
-        }
-
         internal bool TryFindNearestConnectedNode(Vector2 position, float maximumDistance, out TissueNode nearestNode)
         {
             return TryFindNearestNode(position, maximumDistance, requireConnected: true, out nearestNode);

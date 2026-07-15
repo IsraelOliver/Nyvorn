@@ -8,8 +8,6 @@ namespace Nyvorn.Source.World.Tissue
 
         bool AddCorruption(int tileX, int tileY, float amount);
 
-        bool ReduceCorruption(int tileX, int tileY, float amount);
-
         bool AddMemory(int tileX, int tileY, float amount);
 
         bool SetFlow(int tileX, int tileY, float value);

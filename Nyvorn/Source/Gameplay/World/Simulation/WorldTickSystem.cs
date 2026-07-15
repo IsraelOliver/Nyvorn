@@ -13,7 +13,6 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         public WorldTickSystem(WorldTickConfig config = null)
         {
             this.config = config ?? WorldTickConfig.Default;
-            LastDispatch = default;
         }
 
         public WorldTickConfig Config => config;
@@ -22,7 +21,6 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         public long FastTickCount { get; private set; }
         public long MediumTickCount { get; private set; }
         public long SlowTickCount { get; private set; }
-        public WorldTickDispatch LastDispatch { get; private set; }
 
         public void SetTimeScale(float timeScale)
         {
@@ -35,8 +33,6 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         public void SetPaused(bool isPaused)
         {
             IsPaused = isPaused;
-            if (isPaused)
-                LastDispatch = default;
         }
 
         public void RecordManualDispatch(WorldTickDispatch dispatch)
@@ -44,16 +40,12 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             FastTickCount += dispatch.FastTicks;
             MediumTickCount += dispatch.MediumTicks;
             SlowTickCount += dispatch.SlowTicks;
-            LastDispatch = dispatch;
         }
 
         public WorldTickDispatch Advance(float dt)
         {
             if (dt <= 0f || IsPaused)
-            {
-                LastDispatch = default;
-                return LastDispatch;
-            }
+                return default;
 
             dt *= TimeScale;
             fastAccumulator += dt;
@@ -71,33 +63,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             FastTickCount += dispatch.FastTicks;
             MediumTickCount += dispatch.MediumTicks;
             SlowTickCount += dispatch.SlowTicks;
-            LastDispatch = dispatch;
             return dispatch;
-        }
-
-        public void Reset()
-        {
-            fastAccumulator = 0f;
-            mediumAccumulator = 0f;
-            slowAccumulator = 0f;
-            FastTickCount = 0;
-            MediumTickCount = 0;
-            SlowTickCount = 0;
-            LastDispatch = default;
-        }
-
-        public WorldTickSnapshot CreateSnapshot()
-        {
-            return new WorldTickSnapshot(
-                FastTickCount,
-                MediumTickCount,
-                SlowTickCount,
-                fastAccumulator,
-                mediumAccumulator,
-                slowAccumulator,
-                TimeScale,
-                IsPaused,
-                LastDispatch);
         }
 
         private static int ConsumeTicks(ref float accumulator, float interval, int maxTicks, out bool overflowed)

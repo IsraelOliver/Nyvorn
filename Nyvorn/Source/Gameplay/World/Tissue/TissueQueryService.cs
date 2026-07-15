@@ -32,11 +32,7 @@ namespace Nyvorn.Source.World.Tissue
                     "TissueQueryService precisa usar o TissueField oficial do WorldMap.",
                     nameof(tissueField));
             }
-
-            worldMap.TissueChanged += HandleTissueChanged;
         }
-
-        public event Action<TissueChangedEvent> Changed;
 
         public TissueCellState GetState(int tileX, int tileY)
         {
@@ -122,33 +118,6 @@ namespace Nyvorn.Source.World.Tissue
                    sample.Coverage >= NormalizeThreshold(minimumDensity);
         }
 
-        public bool TryFindNearestNode(
-            Vector2 worldPosition,
-            float maximumDistance,
-            out TissueNodeInfo node)
-        {
-            node = default;
-            if (!IsFinite(worldPosition.X) ||
-                !IsFinite(worldPosition.Y) ||
-                !IsFinite(maximumDistance) ||
-                maximumDistance <= 0f)
-            {
-                return false;
-            }
-
-            if (!tissueNetwork.TryFindNearestNode(worldPosition, maximumDistance, out TissueNode nearest))
-                return false;
-
-            node = new TissueNodeInfo(
-                nearest.Id,
-                nearest.Position,
-                nearest.IsPrimary,
-                nearest.Strength,
-                nearest.Degree,
-                nearest.NestInfluence);
-            return true;
-        }
-
         public bool TryFindNearestConnectedNode(
             Vector2 worldPosition,
             float maximumDistance,
@@ -187,11 +156,6 @@ namespace Nyvorn.Source.World.Tissue
         private static bool IsFinite(float value)
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);
-        }
-
-        private void HandleTissueChanged(TissueChangedEvent change)
-        {
-            Changed?.Invoke(change);
         }
     }
 }

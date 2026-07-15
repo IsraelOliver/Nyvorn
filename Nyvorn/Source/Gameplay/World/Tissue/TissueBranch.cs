@@ -11,11 +11,6 @@ namespace Nyvorn.Source.World.Tissue
             Micro
         }
 
-        public TissueBranch(int id, int startNodeId, int endNodeId, bool isPrimary, float thickness, IReadOnlyList<Vector2> points)
-            : this(id, startNodeId, endNodeId, isPrimary, thickness, 1f, TissueBranchKind.Main, points)
-        {
-        }
-
         public TissueBranch(int id, int startNodeId, int endNodeId, bool isPrimary, float thickness, float intensity, TissueBranchKind kind, IReadOnlyList<Vector2> points)
         {
             Id = id;
