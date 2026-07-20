@@ -1,10 +1,23 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.Gameplay.Entities.Enemies.AI;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies
 {
     public sealed class EnemyConfig
     {
         public static EnemyConfig Default { get; } = new EnemyConfig();
+
+        // "Signature" preset: uses UtilityBrain (IAUS-lite) instead of the plain FSM, and lets its
+        // Chase action route through EnemyPathfinder instead of the cheap walk-and-jump-when-blocked
+        // locomotion every other enemy uses. Reserved for the handful of enemies whose design
+        // actually needs to navigate around terrain - not meant to become the default.
+        public static EnemyConfig Signature { get; } = new EnemyConfig
+        {
+            Brain = BrainType.Utility,
+            UsesPathfinding = true,
+            PlayerAwarenessRange = 240f,
+            PlayerVerticalAwarenessRange = 120f
+        };
 
         public Point HurtboxSize { get; init; } = new Point(16, 24);
         public float GravityScale { get; init; } = 1f;
@@ -31,5 +44,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         public float RetreatSpeed { get; init; } = 56f;
         public float LowHealthRetreatThreshold { get; init; } = 0.35f;
         public float LowHealthRetreatRange { get; init; } = 72f;
+        public float JumpSpeed { get; init; } = 220f;
+        public BrainType Brain { get; init; } = BrainType.Fsm;
+        public bool UsesPathfinding { get; init; } = false;
     }
 }

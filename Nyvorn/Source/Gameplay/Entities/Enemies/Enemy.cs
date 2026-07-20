@@ -4,7 +4,6 @@ using Nyvorn.Source.Gameplay.Combat.Interfaces;
 using Nyvorn.Source.Gameplay.Entities.Enemies.AI;
 using Nyvorn.Source.Gameplay.Entities.Enemies.EnemyAnimations;
 using Nyvorn.Source.World;
-using System;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies
 {
@@ -13,9 +12,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         private readonly EnemyConfig config;
         private readonly Texture2D texture;
         private readonly EnemyAnimator animator;
-        private readonly EnemyBrain brain;
+        private readonly IEnemyBrain brain;
         private readonly EnemyCombat combat;
         private readonly EnemyMotor motor;
+        private readonly PerceptionComponent perceptionComponent;
+        private readonly LocomotionController locomotion;
 
         public Vector2 Position => motor.Position;
         public bool IsAlive => combat.IsAlive;
@@ -40,8 +41,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             this.config = config ?? EnemyConfig.Default;
             this.texture = texture;
             motor = new EnemyMotor(position, this.config);
-            brain = new EnemyBrain(this.config);
+            brain = this.config.Brain == BrainType.Utility ? new UtilityBrain(this.config) : new EnemyBrain(this.config);
             combat = new EnemyCombat(this.config);
+            perceptionComponent = new PerceptionComponent();
+            locomotion = new LocomotionController();
 
             animator = new EnemyAnimator(EnemyTestAnimations.Create(), EnemyAnimState.Idle);
         }
@@ -49,22 +52,28 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         public void Update(float dt, WorldMap worldMap, Vector2 playerPosition)
         {
             combat.Tick(dt);
-            EnemyBrainDecision decision = brain.Update(
-                dt,
+
+            Perception perception = perceptionComponent.Scan(
                 Position,
                 playerPosition,
                 worldMap.PixelWidth,
+                motor.OnGround,
+                motor.BlockedHorizontally,
+                config);
+
+            EnemyBrainDecision decision = brain.Update(
+                dt,
+                perception,
+                Position,
+                worldMap.PixelWidth,
                 combat.Health,
-                combat.MaxHealth);
+                combat.MaxHealth,
+                worldMap);
 
             if (decision.TriggerAttackVisual)
                 TriggerAttackVisual();
 
-            motor.Update(dt, worldMap, decision.MoveVelocityX);
-
-            EnemyAnimState state = ResolveAnimState();
-            animator.Play(state);
-            animator.Update(dt);
+            locomotion.Apply(motor, animator, combat, decision, perception, dt, worldMap);
         }
 
         public void ApplyKnockback(float forceX, float forceY = -55f)
@@ -100,27 +109,5 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             Vector2 origin = new Vector2(16f, 32f);
             spriteBatch.Draw(texture, Position, src, tint, 0f, origin, 1f, SpriteEffects.None, 0f);
         }
-
-        private EnemyAnimState ResolveAnimState()
-        {
-            if (!IsAlive)
-                return EnemyAnimState.Dead;
-
-            if (combat.HurtTimer > 0f)
-                return EnemyAnimState.Hurt;
-
-            if (combat.AttackTimer > 0f)
-                return EnemyAnimState.Attack;
-
-            bool isMoving = Math.Abs(motor.HorizontalVelocityX) > 8f
-                || brain.CurrentIntent == EnemyIntent.Chase
-                || brain.CurrentIntent == EnemyIntent.Investigate
-                || brain.CurrentIntent == EnemyIntent.Retreat;
-            if (isMoving)
-                return EnemyAnimState.Move;
-
-            return EnemyAnimState.Idle;
-        }
-
     }
 }

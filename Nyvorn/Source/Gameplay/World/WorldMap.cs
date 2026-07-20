@@ -316,6 +316,31 @@ namespace Nyvorn.Source.World
         // softens darkening under a roof - not audio-exclusive despite the name.
         public bool IsWeatherAudioMuffled(int x, int y) => !HasOpenSkyAbove(x, y);
 
+        private const int SkyExposureFadeTiles = 4;
+
+        // HasOpenSkyAbove alone is a hard binary gate - true only for a tile with a perfectly clear
+        // vertical line to the sky. Used directly for ambient tinting, that made every sky-exposed
+        // surface tile go fully dark at night while the tile one row deeper (blocked by the surface
+        // tile itself) got no tint at all, an abrupt bright/dark seam exactly at ground level. This
+        // fades the exposure over a few tiles instead of cutting off after exactly one.
+        public float GetSkyExposure01(int x, int y)
+        {
+            if (!IsSolidAt(x, y))
+                return HasOpenSkyAbove(x, y) ? 1f : 0f;
+
+            for (int depth = 0; depth <= SkyExposureFadeTiles; depth++)
+            {
+                int checkY = y - depth;
+                if (checkY < 0)
+                    break;
+
+                if (HasOpenSkyAbove(x, checkY))
+                    return 1f - (depth / (float)SkyExposureFadeTiles);
+            }
+
+            return 0f;
+        }
+
         public void SetObjectCollisionQueries(
             Func<int, int, bool> objectOccupancyQuery,
             Func<int, int, bool> movementBlockQuery)
@@ -516,7 +541,9 @@ namespace Nyvorn.Source.World
             {
                 TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y, background),
                 TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background),
-                TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background),
+                // Stone uses its own larger mix-rule sheet (BaseAutoTileMixRules), not the small
+                // dirt-style grid - see the matching fix in DrawBackgroundTiles.
+                TileType.Stone => GetStoneAutoTileSourceRectangle(x, y, background),
                 TileType.Sand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
                 TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background),
                 _ => Rectangle.Empty
@@ -883,11 +910,12 @@ namespace Nyvorn.Source.World
 
         // A cached chunk's RenderTarget is one baked texture for its whole (32-tile-tall) column,
         // so ambient light can only be gated per-chunk here, not per-tile, without re-baking the
-        // cache every frame as the sun moves. A chunk counts as "surface" if any tile in its top
-        // row has open sky above it; chunks that are entirely buried stay unlit so sunset/sunrise
-        // colors don't bleed underground. DrawTiles (below) does the precise per-tile version for
-        // the uncached fallback path - a future per-tile skylight system would replace this
-        // per-chunk approximation with a real light value baked per pixel instead.
+        // cache every frame as the sun moves. The chunk's tint is the average sky exposure across
+        // its top row (graduated, not a hard yes/no) - a chunk whose top row is mostly buried gets
+        // a proportionally weaker tint instead of the same full tint as a fully-exposed one, and
+        // chunks entirely underground still land at White. DrawTiles (below) does the precise
+        // per-tile version for the uncached fallback path - a future per-tile skylight system would
+        // replace this per-chunk approximation with a real light value baked per pixel instead.
         private Color GetChunkAmbientTint(WorldChunkCoord chunkCoord)
         {
             if (_ambientLight == Color.White)
@@ -896,14 +924,16 @@ namespace Nyvorn.Source.World
             int topRowY = chunkCoord.Y * ChunkTileSize;
             int startX = chunkCoord.X * ChunkTileSize;
             int endX = System.Math.Min(startX + ChunkTileSize, Width) - 1;
+            int columnCount = endX - startX + 1;
+            if (columnCount <= 0)
+                return Color.White;
 
+            float exposureSum = 0f;
             for (int x = startX; x <= endX; x++)
-            {
-                if (HasOpenSkyAbove(x, topRowY))
-                    return _ambientLight;
-            }
+                exposureSum += GetSkyExposure01(x, topRowY);
 
-            return Color.White;
+            float averageExposure = exposureSum / columnCount;
+            return averageExposure <= 0f ? Color.White : Color.Lerp(Color.White, _ambientLight, averageExposure);
         }
 
         private void DrawTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY, int pixelOffsetX, int pixelOffsetY)
@@ -925,8 +955,12 @@ namespace Nyvorn.Source.World
                     // (a tile edit), but wetness dries out continuously on its own; baking it here
                     // made tiles show a stale wetness tint until some unrelated edit forced a re-bake.
                     Color tint = Color.White;
-                    if (_ambientLight != Color.White && HasOpenSkyAbove(x, y))
-                        tint = _ambientLight;
+                    if (_ambientLight != Color.White)
+                    {
+                        float exposure = GetSkyExposure01(x, y);
+                        if (exposure > 0f)
+                            tint = Color.Lerp(Color.White, _ambientLight, exposure);
+                    }
 
                     spriteBatch.Draw(texture, destination, sourceRectangle, tint);
                 }
@@ -1031,10 +1065,13 @@ namespace Nyvorn.Source.World
                     {
                         TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background: true),
-                        TileType.Stone => GetDirtAutoTileSourceRectangle(x, y, background: true),
+                        // Stone/IronOre have their own larger mix-rule sheet (BaseAutoTileMixRules) -
+                        // the dirt-style function assumes a much smaller grid, so calling it here
+                        // against the stone/ore texture picked crops with no matching tile shape.
+                        TileType.Stone => GetStoneAutoTileSourceRectangle(x, y, background: true),
                         TileType.Sand => GetBackgroundAutoTileSourceRectangle(x, y),
                         TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background: true),
-                        TileType.IronOre => GetDirtAutoTileSourceRectangle(x, y, background: true),
+                        TileType.IronOre => GetIronOreAutoTileSourceRectangle(x, y, background: true),
                         _ => null
                     };
 
@@ -1292,14 +1329,14 @@ namespace Nyvorn.Source.World
             return GetDirtAutoTileSourceRectangle(x, y);
         }
 
-        private Rectangle GetStoneAutoTileSourceRectangle(int x, int y)
+        private Rectangle GetStoneAutoTileSourceRectangle(int x, int y, bool background = false)
         {
-            return EvaluateAutoTileMixRules(TileType.Stone, TileType.Dirt, x, y, BaseAutoTileMixRules);
+            return EvaluateAutoTileMixRules(TileType.Stone, TileType.Dirt, x, y, BaseAutoTileMixRules, background);
         }
 
-        private Rectangle GetIronOreAutoTileSourceRectangle(int x, int y)
+        private Rectangle GetIronOreAutoTileSourceRectangle(int x, int y, bool background = false)
         {
-            return EvaluateAutoTileMixRules(TileType.IronOre, TileType.Stone, x, y, BaseAutoTileMixRules);
+            return EvaluateAutoTileMixRules(TileType.IronOre, TileType.Stone, x, y, BaseAutoTileMixRules, background);
         }
 
         private Rectangle GetDirtMixAutoTileSourceRectangle(int x, int y)
@@ -1454,16 +1491,16 @@ namespace Nyvorn.Source.World
             new AutoTileMixRule(N.A, N.A, N.A, N.A, 1, 1, 3, true), // bloco cheio (fallback)
         };
 
-        private Rectangle EvaluateAutoTileMixRules(TileType self, TileType? mixPartner, int x, int y, AutoTileMixRule[] rules)
+        private Rectangle EvaluateAutoTileMixRules(TileType self, TileType? mixPartner, int x, int y, AutoTileMixRule[] rules, bool background = false)
         {
-            NeighborState up = ClassifyAutoTileNeighbor(self, mixPartner, x, y - 1);
-            NeighborState right = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y);
-            NeighborState down = ClassifyAutoTileNeighbor(self, mixPartner, x, y + 1);
-            NeighborState left = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y);
-            NeighborState upLeft = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y - 1);
-            NeighborState upRight = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y - 1);
-            NeighborState downLeft = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y + 1);
-            NeighborState downRight = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y + 1);
+            NeighborState up = ClassifyAutoTileNeighbor(self, mixPartner, x, y - 1, background);
+            NeighborState right = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y, background);
+            NeighborState down = ClassifyAutoTileNeighbor(self, mixPartner, x, y + 1, background);
+            NeighborState left = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y, background);
+            NeighborState upLeft = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y - 1, background);
+            NeighborState upRight = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y - 1, background);
+            NeighborState downLeft = ClassifyAutoTileNeighbor(self, mixPartner, x - 1, y + 1, background);
+            NeighborState downRight = ClassifyAutoTileNeighbor(self, mixPartner, x + 1, y + 1, background);
 
             for (int i = 0; i < rules.Length; i++)
             {
@@ -1488,9 +1525,9 @@ namespace Nyvorn.Source.World
             return GetAutoTileSheetCell(1, 1);
         }
 
-        private NeighborState ClassifyAutoTileNeighbor(TileType self, TileType? mixPartner, int x, int y)
+        private NeighborState ClassifyAutoTileNeighbor(TileType self, TileType? mixPartner, int x, int y, bool background = false)
         {
-            TileType tile = GetTile(x, y);
+            TileType tile = background ? GetBackgroundTile(x, y) : GetTile(x, y);
             if (!IsSolid(tile))
                 return NeighborState.Empty;
 

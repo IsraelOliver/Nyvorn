@@ -30,6 +30,7 @@ namespace Nyvorn.Source.Game.States
         private int persistedConsoleCommandHistoryRevision;
 
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
+        public required string PlayerId { get; init; }
         public required SessionRuntimeContext RuntimeContext { get; init; }
         public SandSystem SandSystem { get; private set; }
         public LiquidSystem LiquidSystem { get; private set; }
@@ -529,6 +530,11 @@ namespace Nyvorn.Source.Game.States
                 ViewCoordinator.DrawTissueFieldOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
+        public void DrawBackgroundWalls(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawBackgroundWalls(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+        }
+
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, EnvironmentSystem.SkyState.AmbientLight);
@@ -576,6 +582,10 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawMoons(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
         }
 
+        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.DrawParallaxMountains(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
+        }
 
         public void DrawTissueDebug(SpriteBatch spriteBatch)
         {

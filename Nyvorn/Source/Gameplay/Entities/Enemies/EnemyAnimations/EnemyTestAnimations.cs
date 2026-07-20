@@ -31,6 +31,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies.EnemyAnimations
                 [EnemyAnimState.Attack] = new EnemyAnimationClip(new[] { jump }, 0.08f, false),
                 [EnemyAnimState.Hurt] = new EnemyAnimationClip(new[] { fall }, 0.08f, false),
                 [EnemyAnimState.Dead] = new EnemyAnimationClip(new[] { fall }, 0.12f, false),
+                [EnemyAnimState.Jump] = new EnemyAnimationClip(new[] { jump }, 0.1f, false),
+                [EnemyAnimState.Fall] = new EnemyAnimationClip(new[] { fall }, 0.1f, false),
             };
         }
     }

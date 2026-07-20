@@ -62,5 +62,13 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         {
             return new Enemy(enemyTexture, spawnPositionProvider(), enemyConfig);
         }
+
+        // Debug/manual spawn entry point (e.g. the /spawn enemy console command) - reuses the same
+        // texture as the normal respawn cycle but lets the caller pick position and config, so a
+        // "signature" enemy can be dropped in for testing without wiring a whole spawn-rate rule.
+        public Enemy SpawnAt(Vector2 position, EnemyConfig overrideConfig = null)
+        {
+            return new Enemy(enemyTexture, position, overrideConfig ?? enemyConfig);
+        }
     }
 }

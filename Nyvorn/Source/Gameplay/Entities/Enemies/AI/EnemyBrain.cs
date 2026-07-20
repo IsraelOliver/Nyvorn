@@ -1,9 +1,10 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.World;
 using System;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies.AI
 {
-    public sealed class EnemyBrain
+    public sealed class EnemyBrain : IEnemyBrain
     {
         private readonly EnemyConfig config;
 
@@ -31,11 +32,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies.AI
 
         public EnemyBrainDecision Update(
             float dt,
+            in Perception perception,
             Vector2 selfPosition,
-            Vector2 playerPosition,
             float worldWidth,
             int health,
-            int maxHealth)
+            int maxHealth,
+            WorldMap worldMap)
         {
             if (attackCooldownTimer > 0f)
                 attackCooldownTimer -= dt;
@@ -44,9 +46,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies.AI
             if (retreatTimer > 0f)
                 retreatTimer -= dt;
 
-            Vector2 playerOffset = GetLoopAwareOffset(selfPosition, playerPosition, worldWidth);
-            bool seesPlayer = MathF.Abs(playerOffset.X) <= config.PlayerAwarenessRange
-                && MathF.Abs(playerOffset.Y) <= config.PlayerVerticalAwarenessRange;
+            Vector2 playerOffset = perception.TargetOffset;
+            bool seesPlayer = perception.SeesTarget;
 
             if (seesPlayer)
             {
@@ -85,7 +86,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies.AI
 
             if (memoryTimer > 0f)
             {
-                Vector2 rememberedOffset = GetLoopAwareOffset(selfPosition, lastKnownPlayerPosition, worldWidth);
+                Vector2 rememberedOffset = LoopAwareMath.GetOffset(selfPosition, lastKnownPlayerPosition, worldWidth);
                 float speed = MathF.Abs(rememberedOffset.X) <= config.InvestigateStopDistance
                     ? 0f
                     : MathF.Sign(rememberedOffset.X) * config.InvestigateSpeed;
@@ -100,20 +101,6 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies.AI
         {
             CurrentIntent = intent;
             return new EnemyBrainDecision(intent, moveVelocityX, triggerAttackVisual);
-        }
-
-        private static Vector2 GetLoopAwareOffset(Vector2 from, Vector2 to, float worldWidth)
-        {
-            float deltaX = to.X - from.X;
-            if (worldWidth > 0f)
-            {
-                if (deltaX > worldWidth * 0.5f)
-                    deltaX -= worldWidth;
-                else if (deltaX < -worldWidth * 0.5f)
-                    deltaX += worldWidth;
-            }
-
-            return new Vector2(deltaX, to.Y - from.Y);
         }
     }
 }

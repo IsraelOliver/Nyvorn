@@ -6,6 +6,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         Move = 1,
         Attack = 2,
         Hurt = 3,
-        Dead = 4
+        Dead = 4,
+        Jump = 5,
+        Fall = 6
     }
 }

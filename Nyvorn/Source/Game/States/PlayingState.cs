@@ -291,6 +291,13 @@ namespace Nyvorn.Source.Game.States
             session.DrawSunGlow(spriteBatch, screenW, screenH);
             session.DrawMoons(spriteBatch, screenW, screenH);
 
+            // Drawn after the sun/moons (not merged into DrawSky above) so the mountains, which
+            // sit closer than the sky, occlude the sun/moons instead of the sun rendering on top.
+            // PointClamp (not LinearClamp) so the pixel-art background stays crisp when scaled.
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            session.DrawParallaxMountains(spriteBatch, screenW, screenH);
+            spriteBatch.End();
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -299,7 +306,7 @@ namespace Nyvorn.Source.Game.States
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
 
@@ -350,6 +357,20 @@ namespace Nyvorn.Source.Game.States
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTerrainOverlay(spriteBatch);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                // Fires after the foreground terrain pass above (not bundled with the background
+                // walls earlier) so solid ground tiles no longer paint over enemies/items/placed
+                // objects standing in front of/on top of them.
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
 
@@ -1630,7 +1651,21 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            string identifier = string.Join(' ', parts, 1, parts.Length - 1);
+            string identifier = string.Join(' ', parts, 1, parts.Length - 1).ToLowerInvariant();
+            if (identifier == "enemy" || identifier == "enemy fsm")
+            {
+                SpawnDebugEnemy(Nyvorn.Source.Gameplay.Entities.Enemies.EnemyConfig.Default);
+                SetConsoleMessage("Inimigo (FSM) spawnado perto do jogador");
+                return true;
+            }
+
+            if (identifier == "enemy signature" || identifier == "enemy utility")
+            {
+                SpawnDebugEnemy(Nyvorn.Source.Gameplay.Entities.Enemies.EnemyConfig.Signature);
+                SetConsoleMessage("Inimigo assinatura (UtilityBrain + pathfinding) spawnado perto do jogador");
+                return true;
+            }
+
             if (ItemDefinitions.TryResolveCommandId(identifier, out ItemDefinition item))
             {
                 SetConsoleMessage(
@@ -1638,8 +1673,15 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage($"Entidade desconhecida: {identifier}. /spawn aceita somente entidades");
+            SetConsoleMessage($"Entidade desconhecida: {identifier}. Use /spawn enemy ou /spawn enemy signature");
             return true;
+        }
+
+        private void SpawnDebugEnemy(Nyvorn.Source.Gameplay.Entities.Enemies.EnemyConfig enemyConfig)
+        {
+            Vector2 spawnPosition = session.Player.Position + new Vector2(48f, 0f);
+            Nyvorn.Source.Gameplay.Entities.Enemies.Enemy enemy = session.EntityRuntimeSystem.EnemyRespawnController.SpawnAt(spawnPosition, enemyConfig);
+            session.Enemies.Add(enemy);
         }
 
         private void ShowTissuePulseStatus()

@@ -38,8 +38,15 @@ namespace Nyvorn.Source.Game.States
         private static readonly Color SandTopEdgeColor = new Color(207, 179, 120);
         private static readonly Color SandHighlightPixelColor = new Color(255, 252, 232);
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
-        private const float OpenAirLightDecayPerTile = 0.045f;
-        private const float SolidLightDecayPerTile = 0.09f;
+        // Open air used to decay slowly enough (0.045/tile, ~22-tile reach) that a single straight
+        // tunnel connected to the sky - even one whose mouth sat outside the visible screen, inside
+        // only the padded search buffer - could carry full-strength light most of the way across the
+        // view in one relaxation pass, reading as a sharp, unnatural "ray" cutting through solid rock
+        // instead of a soft local glow. Tightened so light exhausts within the buffer padding itself
+        // (reach < SkylightBufferPadding) - a tunnel actually visible on screen still glows near its
+        // mouth, but one lighting up from an off-screen opening no longer happens.
+        private const float OpenAirLightDecayPerTile = 0.12f;
+        private const float SolidLightDecayPerTile = 0.16f;
         private const int SkylightPropagationPasses = 16;
         private const int SkylightBufferPadding = 10;
         private const float MaxSkylightShadowAlpha = 1f;
@@ -435,11 +442,18 @@ namespace Nyvorn.Source.Game.States
                 endTileY);
         }
 
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Color ambientLight)
+        // Background wall tiles stay a separate draw so they can be issued before the foreground
+        // terrain pass (they sit visually behind it) while DrawLoopedWorldEntities below - enemies,
+        // items, particles, placed objects - moves to fire after the foreground terrain instead, so
+        // solid ground no longer paints over them.
+        public void DrawBackgroundWalls(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
             WorldMap.DrawBackground(spriteBatch, startTileX, endTileX, startTileY, endTileY);
+        }
 
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Color ambientLight)
+        {
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
             float localLeft = Camera.Position.X - worldOffsetX - EntityDrawPaddingPixels;
@@ -490,6 +504,11 @@ namespace Nyvorn.Source.Game.States
             ElyraSkyRenderer.DrawMoons(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom, Camera.Position.X);
         }
 
+        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        {
+            ElyraSkyRenderer.DrawParallaxMountains(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom, Camera.Position.X);
+        }
+
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color tint)
         {
             if (screenWidth <= 0 || screenHeight <= 0 || tint.A == 0)
@@ -500,7 +519,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawHud(SpriteBatch spriteBatch, Hotbar hotbar, int selectedHotbarIndex, int screenWidth, int screenHeight, string clockText)
         {
-            HudRenderer.Draw(spriteBatch, hotbar, selectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight, clockText);
+            HudRenderer.Draw(spriteBatch, hotbar, selectedHotbarIndex, Player.Health, Player.MaxHealth, screenWidth, screenHeight, clockText, Camera.Zoom);
         }
 
         public void DrawPowerHud(SpriteBatch spriteBatch, PlayerPowerSystem powerSystem, int screenWidth, int screenHeight, bool constructionMode)

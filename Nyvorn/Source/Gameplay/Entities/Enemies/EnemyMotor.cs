@@ -24,6 +24,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
         public Vector2 Position => position;
         public float HorizontalVelocityX => horizontalVelocityX;
+        public float VelocityY => velocityY;
+        public bool OnGround { get; private set; }
+        public bool BlockedHorizontally { get; private set; }
 
         private float HitLeft => position.X - (config.HurtboxSize.X * 0.5f);
         private float HitRight => HitLeft + config.HurtboxSize.X - 1f;
@@ -32,7 +35,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
         public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, config.HurtboxSize.X, config.HurtboxSize.Y);
 
-        public void Update(float dt, WorldMap worldMap, float desiredVelocityX)
+        public void Update(float dt, WorldMap worldMap, float desiredVelocityX, bool wantsJump = false)
         {
             WorldCollisionQuery collision = WorldCollisionQuery.SolidTiles(worldMap);
 
@@ -40,6 +43,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
             horizontalVelocityX = totalVelocityX;
             MoveHorizontally(collision, totalVelocityX * dt);
             knockbackVelocityX = MathHelper.Lerp(knockbackVelocityX, 0f, MathHelper.Clamp(dt * config.KnockbackRecovery, 0f, 1f));
+
+            if (wantsJump && OnGround)
+            {
+                velocityY = -config.JumpSpeed;
+                OnGround = false;
+            }
 
             velocityY += PhysicsSettings.WorldGravity * config.GravityScale * dt;
             MoveVertically(collision, velocityY * dt);
@@ -61,6 +70,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         private void MoveHorizontally(WorldCollisionQuery collision, float amount)
         {
             kinematicMotor.Position = position;
+            BlockedHorizontally = false;
 
             kinematicMotor.MoveX(
                 amount,
@@ -69,6 +79,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                 {
                     knockbackVelocityX = 0f;
                     horizontalVelocityX = 0f;
+                    BlockedHorizontally = true;
                     return false;
                 });
 
@@ -77,6 +88,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
 
         private void MoveVertically(WorldCollisionQuery collision, float amount)
         {
+            OnGround = false;
             kinematicMotor.Position = position;
 
             kinematicMotor.MoveY(
@@ -85,10 +97,29 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
                 hit =>
                 {
                     velocityY = 0f;
+                    OnGround = hit.Direction > 0;
                     return false;
                 });
 
             position = kinematicMotor.Position;
+
+            if (!OnGround && velocityY >= 0f && HasGroundSupportAtCurrentPosition(collision))
+            {
+                velocityY = 0f;
+                OnGround = true;
+            }
+        }
+
+        private bool HasGroundSupportAtCurrentPosition(WorldCollisionQuery collision)
+        {
+            int ts = collision.TileSize;
+            float left = HitLeft + 1f;
+            float right = HitRight - 1f;
+            int tileXLeft = (int)System.MathF.Floor(left / ts);
+            int tileXRight = (int)System.MathF.Floor(right / ts);
+            int tileY = (int)System.MathF.Floor(HitBottom / ts);
+
+            return collision.IsBlockedAt(tileXLeft, tileY) || collision.IsBlockedAt(tileXRight, tileY);
         }
 
         private bool HasHorizontalSolidCollisionAt(WorldCollisionQuery collision, Vector2 candidatePosition, int direction)
