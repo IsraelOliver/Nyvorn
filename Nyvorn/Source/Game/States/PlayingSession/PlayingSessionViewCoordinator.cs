@@ -38,29 +38,24 @@ namespace Nyvorn.Source.Game.States
         private static readonly Color SandTopEdgeColor = new Color(207, 179, 120);
         private static readonly Color SandHighlightPixelColor = new Color(255, 252, 232);
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
-        // Open air used to decay slowly enough (0.045/tile, ~22-tile reach) that a single straight
-        // tunnel connected to the sky - even one whose mouth sat outside the visible screen, inside
-        // only the padded search buffer - could carry full-strength light most of the way across the
-        // view in one relaxation pass, reading as a sharp, unnatural "ray" cutting through solid rock
-        // instead of a soft local glow. Tightened so light exhausts within the buffer padding itself
-        // (reach < SkylightBufferPadding) - a tunnel actually visible on screen still glows near its
-        // mouth, but one lighting up from an off-screen opening no longer happens.
-        private const float OpenAirLightDecayPerTile = 0.12f;
-        private const float SolidLightDecayPerTile = 0.16f;
-        private const int SkylightPropagationPasses = 16;
-        private const int SkylightBufferPadding = 10;
-        private const float MaxSkylightShadowAlpha = 1f;
-        // The flood-fill recompute below (16 passes x 4 sweeps over the whole buffer, plus a
-        // per-column surface scan) is expensive enough to cost real FPS if it reruns every single
-        // frame. Shadows don't need 60Hz freshness - recomputing a few times a second instead is
-        // visually indistinguishable and cuts that cost by ~SkylightRecomputeEveryNFrames. Drawing
-        // (below) still happens every frame, just reusing whichever buffer was last computed.
-        private const int SkylightRecomputeEveryNFrames = 6;
-        private static readonly Color SkylightShadowColor = new Color(4, 5, 10);
-        private float[,] skylightBuffer;
-        private int skylightBufferStartX;
-        private int skylightBufferStartY;
-        private int skylightRecomputeCounter;
+
+        private Texture2D lightTexture;
+        private int lightTextureCapacityWidth;
+        private int lightTextureCapacityHeight;
+        private Color[] lightTextureBuffer = System.Array.Empty<Color>();
+        private int lightTextureActiveWidth;
+        private int lightTextureActiveHeight;
+        private int lightTextureOriginTileX;
+        private int lightTextureOriginTileY;
+
+        private Texture2D glowTexture;
+        private int glowTextureCapacityWidth;
+        private int glowTextureCapacityHeight;
+        private Color[] glowTextureBuffer = System.Array.Empty<Color>();
+        private int glowTextureActiveWidth;
+        private int glowTextureActiveHeight;
+        private int glowTextureOriginTileX;
+        private int glowTextureOriginTileY;
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -90,6 +85,7 @@ namespace Nyvorn.Source.Game.States
         public required BlockParticleSystem BlockParticleSystem { get; init; }
         public WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
         public FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
+        public TorchRuntimeSystem TorchRuntimeSystem { get; init; }
         public DoorRuntimeSystem DoorRuntimeSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
@@ -189,7 +185,7 @@ namespace Nyvorn.Source.Game.States
             Camera.Follow(smoothedCameraTarget, screenWidth, screenHeight);
         }
 
-        public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
 
@@ -198,7 +194,7 @@ namespace Nyvorn.Source.Game.States
             // genuinely open), while every opaque tile pixel still fully occludes the sand as
             // expected. Drawing sand after tiles instead would let its edge bleed visibly paint
             // over legitimate opaque tile pixels (e.g. onto grass at a dune's edge).
-            DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX, lightingSystem);
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
@@ -221,145 +217,125 @@ namespace Nyvorn.Source.Game.States
             WorldMap.DrawWetnessOverlay(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
-        // Terraria/Starbound-style skylight: light starts at full strength on every open-air tile
-        // that has a clear straight line to the true sky, then floods outward through the visible
-        // area, fading a little per tile through open air and a lot per tile through solid rock.
-        // Because light can bend around corners this way (crawl sideways through a tunnel, then
-        // back up into a pocket), a floating platform blocks only the direct column beneath it, not
-        // every tile below it on the map -- unlike a naive per-column depth count. Solid tiles are
-        // then tinted dark in inverse proportion to how much light reached them.
-        public void DrawSkylightShadows(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        // Uploads WorldLightingSystem's current window into a small grayscale texture (1 texel per
+        // tile) once per frame - called outside the per-loop-offset draw loop below, since the data
+        // itself doesn't change between the 1-3 wrapped copies drawn per frame, only where on screen
+        // it lands. DrawWorldLighting (below) just re-positions and re-draws this same texture per
+        // copy instead of re-uploading it each time.
+        public void PrepareWorldLighting(GraphicsDevice graphicsDevice, WorldLightingSystem lightingSystem)
+        {
+            if (lightingSystem == null || lightingSystem.WindowWidth <= 0 || lightingSystem.WindowHeight <= 0)
+                return;
+
+            int width = lightingSystem.WindowWidth;
+            int height = lightingSystem.WindowHeight;
+            int cellCount = width * height;
+
+            if (lightTextureBuffer.Length < cellCount)
+                lightTextureBuffer = new Color[cellCount];
+            lightingSystem.CopyLightGridTo(lightTextureBuffer);
+
+            // Grown-only, like lightBuffer/lightTextureBuffer above: allocated at the largest size
+            // ever needed and never recreated just because this frame's window is a tile smaller or
+            // bigger than last frame's. WorldLightingSystem's window width/height is now stable
+            // frame-to-frame (see the comment in its Update), but recreating a GPU texture on any
+            // size mismatch was still fragile - e.g. across a zoom transition - and recreating one
+            // every single frame is what actually caused the severe slowdown, so this stays
+            // defensive even with that fixed.
+            if (lightTexture == null || width > lightTextureCapacityWidth || height > lightTextureCapacityHeight)
+            {
+                lightTexture?.Dispose();
+                lightTextureCapacityWidth = System.Math.Max(width, lightTextureCapacityWidth);
+                lightTextureCapacityHeight = System.Math.Max(height, lightTextureCapacityHeight);
+                lightTexture = new Texture2D(graphicsDevice, lightTextureCapacityWidth, lightTextureCapacityHeight, false, SurfaceFormat.Color);
+            }
+
+            lightTexture.SetData(0, new Rectangle(0, 0, width, height), lightTextureBuffer, 0, cellCount);
+            lightTextureActiveWidth = width;
+            lightTextureActiveHeight = height;
+            lightTextureOriginTileX = lightingSystem.WindowOriginTileX;
+            lightTextureOriginTileY = lightingSystem.WindowOriginTileY;
+        }
+
+        // Darkens solid tiles (and, being a texture stretched with linear filtering, smoothly blends
+        // between them) wherever WorldLightingSystem found them occluded from any sky-exposed opening
+        // - works day or night, unlike the old ambient tint hack (which produced zero darkening at
+        // full daylight). Multiplied over the already-drawn terrain (MultiplyBlend, set by the
+        // caller) rather than tinting each tile's own sprite, so the GPU's bilinear sampling of this
+        // small stretched texture is what produces the soft tile-to-tile transition for free.
+        public void DrawWorldLighting(SpriteBatch spriteBatch, float worldOffsetX)
+        {
+            if (lightTexture == null || lightTextureActiveWidth <= 0 || lightTextureActiveHeight <= 0)
+                return;
+
+            int tileSize = WorldMap.TileSize;
+            // Mirrors the frame-shift correction used elsewhere: the texture was built from the
+            // camera's true (unshifted) position, so a looped world-wrap copy (worldOffsetX != 0)
+            // needs its destination shifted back into that copy's local draw space.
+            int lightingTileOffset = (int)System.MathF.Round(worldOffsetX / tileSize);
+            int destX = (lightTextureOriginTileX - lightingTileOffset) * tileSize;
+            int destY = lightTextureOriginTileY * tileSize;
+            Rectangle destination = new Rectangle(destX, destY, lightTextureActiveWidth * tileSize, lightTextureActiveHeight * tileSize);
+            // Source-cropped to this frame's active window - the texture itself may be larger,
+            // holding onto capacity from a previous, bigger frame (see PrepareWorldLighting).
+            Rectangle source = new Rectangle(0, 0, lightTextureActiveWidth, lightTextureActiveHeight);
+
+            spriteBatch.Draw(lightTexture, destination, source, Color.White);
+        }
+
+        // Mirrors PrepareWorldLighting, but for the point-light-only glow grid (no sky color mixed
+        // in - see WorldLightingSystem.CopyGlowGridTo). Uploaded once per frame, same reasoning.
+        public void PrepareTorchGlow(GraphicsDevice graphicsDevice, WorldLightingSystem lightingSystem)
+        {
+            if (lightingSystem == null || lightingSystem.WindowWidth <= 0 || lightingSystem.WindowHeight <= 0)
+                return;
+
+            int width = lightingSystem.WindowWidth;
+            int height = lightingSystem.WindowHeight;
+            int cellCount = width * height;
+
+            if (glowTextureBuffer.Length < cellCount)
+                glowTextureBuffer = new Color[cellCount];
+            lightingSystem.CopyGlowGridTo(glowTextureBuffer);
+
+            if (glowTexture == null || width > glowTextureCapacityWidth || height > glowTextureCapacityHeight)
+            {
+                glowTexture?.Dispose();
+                glowTextureCapacityWidth = System.Math.Max(width, glowTextureCapacityWidth);
+                glowTextureCapacityHeight = System.Math.Max(height, glowTextureCapacityHeight);
+                glowTexture = new Texture2D(graphicsDevice, glowTextureCapacityWidth, glowTextureCapacityHeight, false, SurfaceFormat.Color);
+            }
+
+            glowTexture.SetData(0, new Rectangle(0, 0, width, height), glowTextureBuffer, 0, cellCount);
+            glowTextureActiveWidth = width;
+            glowTextureActiveHeight = height;
+            glowTextureOriginTileX = lightingSystem.WindowOriginTileX;
+            glowTextureOriginTileY = lightingSystem.WindowOriginTileY;
+        }
+
+        // Drawn with an additive blend (set by the caller) over the ENTIRE screen - sky, terrain,
+        // entities alike - since it only ever adds warm light back in and never darkens anything.
+        // This is what lets a torch punch through DrawNightOverlay's full-screen darkness even out in
+        // the open, where there's no solid tile for DrawWorldLighting's masked multiply to apply to.
+        public void DrawTorchGlow(SpriteBatch spriteBatch, float worldOffsetX)
+        {
+            if (glowTexture == null || glowTextureActiveWidth <= 0 || glowTextureActiveHeight <= 0)
+                return;
+
+            int tileSize = WorldMap.TileSize;
+            int lightingTileOffset = (int)System.MathF.Round(worldOffsetX / tileSize);
+            int destX = (glowTextureOriginTileX - lightingTileOffset) * tileSize;
+            int destY = glowTextureOriginTileY * tileSize;
+            Rectangle destination = new Rectangle(destX, destY, glowTextureActiveWidth * tileSize, glowTextureActiveHeight * tileSize);
+            Rectangle source = new Rectangle(0, 0, glowTextureActiveWidth, glowTextureActiveHeight);
+
+            spriteBatch.Draw(glowTexture, destination, source, Color.White);
+        }
+
+        public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer, Color ambientLight)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
-
-            RecomputeSkylightBufferIfDue(startTileX, endTileX, startTileY, endTileY);
-            if (skylightBuffer == null)
-                return;
-
-            int bufferWidth = skylightBuffer.GetLength(0);
-            int bufferHeight = skylightBuffer.GetLength(1);
-
-            for (int tileX = startTileX; tileX <= endTileX; tileX++)
-            {
-                int localX = tileX - skylightBufferStartX;
-                // The cached buffer's window can lag a few frames behind the camera (see
-                // RecomputeSkylightBufferIfDue) - a tile that's drifted outside it just skips the
-                // shadow this frame rather than throwing, and picks it back up once recomputed.
-                if (localX < 0 || localX >= bufferWidth)
-                    continue;
-
-                for (int tileY = System.Math.Max(0, startTileY); tileY <= System.Math.Min(WorldMap.Height - 1, endTileY); tileY++)
-                {
-                    int localY = tileY - skylightBufferStartY;
-                    if (localY < 0 || localY >= bufferHeight)
-                        continue;
-
-                    if (!WorldMap.IsSolidAt(tileX, tileY))
-                        continue;
-
-                    float alpha = MathHelper.Clamp(1f - skylightBuffer[localX, localY], 0f, MaxSkylightShadowAlpha);
-                    if (alpha <= 0.02f)
-                        continue;
-
-                    // Drawn with the tile's own sprite/source-rectangle instead of a flat square over
-                    // its bounds - autotile edges have transparent corners/notches, and a plain tinted
-                    // square would paint over those gaps instead of following the tile's real shape.
-                    if (!WorldMap.TryGetTileSprite(tileX, tileY, out Texture2D tileTexture, out Rectangle? tileSourceRectangle))
-                        continue;
-
-                    spriteBatch.Draw(tileTexture, WorldMap.GetTileBounds(tileX, tileY), tileSourceRectangle, SkylightShadowColor * alpha);
-                }
-            }
-        }
-
-        private void RecomputeSkylightBufferIfDue(int startTileX, int endTileX, int startTileY, int endTileY)
-        {
-            skylightRecomputeCounter++;
-            if (skylightBuffer != null && skylightRecomputeCounter % SkylightRecomputeEveryNFrames != 0)
-                return;
-
-            int bufferStartX = startTileX - SkylightBufferPadding;
-            int bufferEndX = endTileX + SkylightBufferPadding;
-            int bufferStartY = System.Math.Max(0, startTileY - SkylightBufferPadding);
-            int bufferEndY = System.Math.Min(WorldMap.Height - 1, endTileY + SkylightBufferPadding);
-
-            int width = bufferEndX - bufferStartX + 1;
-            int height = bufferEndY - bufferStartY + 1;
-            if (width <= 0 || height <= 0)
-                return;
-
-            skylightBufferStartX = bufferStartX;
-            skylightBufferStartY = bufferStartY;
-
-            if (skylightBuffer == null || skylightBuffer.GetLength(0) != width || skylightBuffer.GetLength(1) != height)
-                skylightBuffer = new float[width, height];
-            else
-                System.Array.Clear(skylightBuffer, 0, skylightBuffer.Length);
-
-            for (int localX = 0; localX < width; localX++)
-            {
-                int tileX = bufferStartX + localX;
-                int surfaceY = FindColumnSurfaceY(tileX, bufferEndY);
-
-                for (int localY = 0; localY < height; localY++)
-                {
-                    int tileY = bufferStartY + localY;
-                    // Includes the sky-facing surface tile itself (not just the open air above it),
-                    // so the very top layer of ground reads as fully lit and decay only kicks in one
-                    // tile deeper -- matching how a real sun-facing surface looks in direct light.
-                    if (tileY <= surfaceY)
-                        skylightBuffer[localX, localY] = 1f;
-                }
-            }
-
-            for (int pass = 0; pass < SkylightPropagationPasses; pass++)
-            {
-                for (int localY = 0; localY < height; localY++)
-                {
-                    for (int localX = 1; localX < width; localX++)
-                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX - 1, localY);
-                    for (int localX = width - 2; localX >= 0; localX--)
-                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX + 1, localY);
-                }
-
-                for (int localX = 0; localX < width; localX++)
-                {
-                    for (int localY = 1; localY < height; localY++)
-                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX, localY - 1);
-                    for (int localY = height - 2; localY >= 0; localY--)
-                        SpreadSkylight(bufferStartX, bufferStartY, localX, localY, localX, localY + 1);
-                }
-            }
-        }
-
-        private void SpreadSkylight(int bufferStartX, int bufferStartY, int targetLocalX, int targetLocalY, int sourceLocalX, int sourceLocalY)
-        {
-            int targetTileX = bufferStartX + targetLocalX;
-            int targetTileY = bufferStartY + targetLocalY;
-            float decay = WorldMap.IsSolidAt(targetTileX, targetTileY) ? SolidLightDecayPerTile : OpenAirLightDecayPerTile;
-            float candidate = skylightBuffer[sourceLocalX, sourceLocalY] - decay;
-            if (candidate > skylightBuffer[targetLocalX, targetLocalY])
-                skylightBuffer[targetLocalX, targetLocalY] = candidate;
-        }
-
-        // Topmost solid tile in this column, scanning from the true world top (row 0) so a column
-        // whose visible portion is entirely underground still resolves the same surface depth that
-        // WorldMap.HasOpenSkyAbove would find.
-        private int FindColumnSurfaceY(int tileX, int maxY)
-        {
-            for (int y = 0; y <= maxY; y++)
-            {
-                if (WorldMap.IsSolidAt(tileX, y))
-                    return y;
-            }
-
-            return maxY + 1;
-        }
-
-        public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
-        {
-            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
-            WorldMap.DrawDecorations(spriteBatch, startTileX, endTileX, startTileY, endTileY, layer);
+            WorldMap.DrawDecorations(spriteBatch, startTileX, endTileX, startTileY, endTileY, layer, ambientLight);
         }
 
         public void PrepareTerrainRender(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight, float worldOffsetX)
@@ -368,21 +344,22 @@ namespace Nyvorn.Source.Game.States
             WorldMap.PrepareVisibleChunkCache(graphicsDevice, startTileX, endTileX, startTileY, endTileY);
         }
 
-        public void DrawEntities(SpriteBatch spriteBatch, Color ambientLight)
+        public void DrawEntities(SpriteBatch spriteBatch, WorldLightingSystem lightingSystem)
         {
-            Player.Draw(spriteBatch, GetAmbientTintAt(ambientLight, Player.Position));
+            Player.Draw(spriteBatch, GetAmbientTintAt(lightingSystem, Player.Position));
         }
 
-        // Entities aren't cached like terrain chunks, so unlike GetChunkAmbientTint above this can
-        // check each entity's own tile precisely - a buried enemy/item/player doesn't get the
-        // sky's tint even while a sibling entity standing in the open right next to it does.
-        private Color GetAmbientTintAt(Color ambientLight, Vector2 worldPosition)
+        // Entities aren't tile-cached, so this can query WorldLightingSystem at each entity's own
+        // exact position - a buried enemy/item/player doesn't get the sky's brightness even while a
+        // sibling entity standing in the open right next to it does, and a torch nearby brightens
+        // whichever entities are close to it, same as it does for solid ground.
+        private Color GetAmbientTintAt(WorldLightingSystem lightingSystem, Vector2 worldPosition)
         {
-            if (ambientLight == Color.White)
+            if (lightingSystem == null)
                 return Color.White;
 
             Point tile = WorldMap.WorldToTile(worldPosition);
-            return WorldMap.HasOpenSkyAbove(tile.X, tile.Y) ? ambientLight : Color.White;
+            return lightingSystem.GetLightAt(tile.X, tile.Y);
         }
 
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -452,7 +429,7 @@ namespace Nyvorn.Source.Game.States
             WorldMap.DrawBackground(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, Color ambientLight)
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem)
         {
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
@@ -466,7 +443,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(enemy.Hurtbox, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                enemy.Draw(spriteBatch, GetAmbientTintAt(ambientLight, enemy.Position));
+                enemy.Draw(spriteBatch, GetAmbientTintAt(lightingSystem, enemy.Position));
                 HealthBarRenderer.Draw(spriteBatch, enemy.Position + new Vector2(0f, -30f), enemy.Health, enemy.MaxHealth, 22, 3);
             }
 
@@ -475,12 +452,13 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(worldItem.WorldBounds, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                worldItem.Draw(spriteBatch, GetAmbientTintAt(ambientLight, worldItem.WorldBounds.Center.ToVector2()));
+                worldItem.Draw(spriteBatch, GetAmbientTintAt(lightingSystem, worldItem.WorldBounds.Center.ToVector2()));
             }
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
             WorkbenchRuntimeSystem?.Draw(spriteBatch);
             FurnaceRuntimeSystem?.Draw(spriteBatch);
+            TorchRuntimeSystem?.Draw(spriteBatch);
             DoorRuntimeSystem?.Draw(spriteBatch);
         }
 
@@ -574,7 +552,7 @@ namespace Nyvorn.Source.Game.States
                 System.Math.Max(1, (int)System.MathF.Ceiling(viewHeight)));
         }
 
-        private void DrawSandPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        private void DrawSandPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem)
         {
             if (SandSystem == null)
                 return;
@@ -586,9 +564,42 @@ namespace Nyvorn.Source.Game.States
             int startPixelY = System.Math.Max(0, (int)System.MathF.Floor(Camera.Position.Y));
             int endPixelY = System.Math.Min(SandSystem.Height - 1, (int)System.MathF.Ceiling(Camera.Position.Y + viewHeight));
 
-            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandPixelColor, topEdgesOnly: false);
-            DrawWrappedSandHighlights(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY);
-            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, topEdgesOnly: true);
+            // Same frame-shift correction as DrawWorldLighting: WorldLightingSystem's window is
+            // anchored to the camera's true (unshifted) position once per frame, not once per looped
+            // world-wrap copy like this draw call.
+            int lightingTileOffset = (int)System.MathF.Round(worldOffsetX / WorldMap.TileSize);
+
+            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandPixelColor, lightingSystem, lightingTileOffset, topEdgesOnly: false);
+            DrawWrappedSandHighlights(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandHighlightPixelColor, lightingSystem, lightingTileOffset);
+            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, lightingSystem, lightingTileOffset, topEdgesOnly: true);
+        }
+
+        // Loose sand has no per-pixel sky-exposure check like WorldMap tiles - it's drawn as many
+        // single-row segments per frame, so querying WorldLightingSystem once per segment (not per
+        // pixel) is granular enough without being expensive. WorldLightingSystem.GetLightAt already
+        // combines day/night sky color with occlusion and nearby torches, so sand darkens/lights up
+        // the same way solid ground does - a dune with a dug-out pocket darkens like the rock around
+        // it, and a torch nearby brightens it the same way.
+        private Color ComputeSandSegmentTint(Color baseColor, WorldLightingSystem lightingSystem, int wrappedPixelX, int pixelY, int lightingTileOffset)
+        {
+            if (lightingSystem == null)
+                return baseColor;
+
+            int tileX = (wrappedPixelX / WorldMap.TileSize) + lightingTileOffset;
+            int tileY = pixelY / WorldMap.TileSize;
+            return ApplyColorMultiply(baseColor, lightingSystem.GetLightAt(tileX, tileY));
+        }
+
+        private static Color ApplyColorMultiply(Color baseColor, Color light)
+        {
+            if (light == Color.White)
+                return baseColor;
+
+            return new Color(
+                (baseColor.R * light.R) / 255,
+                (baseColor.G * light.G) / 255,
+                (baseColor.B * light.B) / 255,
+                baseColor.A);
         }
 
         private void DrawLiquidPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -606,7 +617,9 @@ namespace Nyvorn.Source.Game.States
             DrawWrappedLiquidRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, WaterPixelColor, surfaceOnly: false);
         }
 
-        private void DrawWrappedSandRange(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY, Color tint, bool topEdgesOnly)
+        private void DrawWrappedSandRange(
+            SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY,
+            Color baseColor, WorldLightingSystem lightingSystem, int lightingTileOffset, bool topEdgesOnly)
         {
             int worldWidth = SandSystem.Width;
             if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
@@ -628,6 +641,7 @@ namespace Nyvorn.Source.Game.States
                 foreach (Rectangle segment in segments)
                 {
                     Rectangle drawBounds = new Rectangle(segment.X + drawOffsetX, segment.Y, segment.Width, segment.Height);
+                    Color tint = ComputeSandSegmentTint(baseColor, lightingSystem, segment.X, segment.Y, lightingTileOffset);
                     spriteBatch.Draw(DebugPixel, drawBounds, tint);
                 }
 
@@ -635,7 +649,9 @@ namespace Nyvorn.Source.Game.States
             }
         }
 
-        private void DrawWrappedSandHighlights(SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY)
+        private void DrawWrappedSandHighlights(
+            SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY,
+            Color baseColor, WorldLightingSystem lightingSystem, int lightingTileOffset)
         {
             int worldWidth = SandSystem.Width;
             if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
@@ -650,13 +666,15 @@ namespace Nyvorn.Source.Game.States
                 int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
                 int drawOffsetX = currentRawStartX - wrappedStartX;
 
-                DrawSandHighlightRange(spriteBatch, wrappedStartX, wrappedEndX, startPixelY, endPixelY, drawOffsetX);
+                DrawSandHighlightRange(spriteBatch, wrappedStartX, wrappedEndX, startPixelY, endPixelY, drawOffsetX, baseColor, lightingSystem, lightingTileOffset);
 
                 currentRawStartX = currentRawEndX + 1;
             }
         }
 
-        private void DrawSandHighlightRange(SpriteBatch spriteBatch, int minPixelX, int maxPixelX, int minPixelY, int maxPixelY, int drawOffsetX)
+        private void DrawSandHighlightRange(
+            SpriteBatch spriteBatch, int minPixelX, int maxPixelX, int minPixelY, int maxPixelY, int drawOffsetX,
+            Color baseColor, WorldLightingSystem lightingSystem, int lightingTileOffset)
         {
             int minCellX = minPixelX / SandHighlightCellSize;
             int maxCellX = maxPixelX / SandHighlightCellSize;
@@ -679,7 +697,8 @@ namespace Nyvorn.Source.Game.States
                     if (!IsSandHighlightCandidate(pixelX, pixelY))
                         continue;
 
-                    spriteBatch.Draw(DebugPixel, new Rectangle(pixelX + drawOffsetX, pixelY, 1, 1), SandHighlightPixelColor);
+                    Color tint = ComputeSandSegmentTint(baseColor, lightingSystem, pixelX, pixelY, lightingTileOffset);
+                    spriteBatch.Draw(DebugPixel, new Rectangle(pixelX + drawOffsetX, pixelY, 1, 1), tint);
                 }
             }
         }

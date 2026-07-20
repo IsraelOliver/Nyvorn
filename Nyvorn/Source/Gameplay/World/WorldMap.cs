@@ -35,7 +35,6 @@ namespace Nyvorn.Source.World
         internal event Action<TissueChangedEvent> TissueChanged;
 
         private TileWetnessField _wetnessField;
-        private Color _ambientLight = Color.White;
         private Texture2D _dirt;
         private Texture2D _grass;
         private Texture2D _sand;
@@ -539,13 +538,14 @@ namespace Nyvorn.Source.World
 
             sourceRectangle = tile switch
             {
-                TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y, background),
+                // Dirt/Stone/IronOre all share the larger mix-rule sheet (BaseAutoTileMixRules), not
+                // the small dirt-style grid - see the matching fix in DrawBackgroundTiles.
+                TileType.Dirt => GetDirtMixAutoTileSourceRectangle(x, y, background),
                 TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background),
-                // Stone uses its own larger mix-rule sheet (BaseAutoTileMixRules), not the small
-                // dirt-style grid - see the matching fix in DrawBackgroundTiles.
                 TileType.Stone => GetStoneAutoTileSourceRectangle(x, y, background),
                 TileType.Sand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
                 TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background),
+                TileType.IronOre => GetIronOreAutoTileSourceRectangle(x, y, background),
                 _ => Rectangle.Empty
             };
 
@@ -603,14 +603,6 @@ namespace Nyvorn.Source.World
         public void SetWetnessField(TileWetnessField wetnessField)
         {
             _wetnessField = wetnessField;
-        }
-
-        // Called once per frame from the sky/environment system - SkyState.AmbientLight, tinting
-        // sky-exposed tiles/decorations so the ground reads warm at sunset and cool at night
-        // instead of always rendering at flat Color.White regardless of time of day.
-        public void SetAmbientLight(Color ambientLight)
-        {
-            _ambientLight = ambientLight;
         }
 
         public void SetTextures(Texture2D dirt, Texture2D grass, Texture2D sand, Texture2D stone, Texture2D wood, Texture2D ironOre)
@@ -839,11 +831,11 @@ namespace Nyvorn.Source.World
             DrawBackgroundTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY);
         }
 
-        public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer)
+        public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer, Color ambientLight)
         {
             // Trees only ever grow at the surface in this game, so they always take the ambient
             // tint unconditionally - no HasOpenSkyAbove gate needed like tiles/entities.
-            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer, _ambientLight);
+            _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer, ambientLight);
         }
 
         public void PrepareVisibleChunkCache(GraphicsDevice graphicsDevice, int startTileX, int endTileX, int startTileY, int endTileY)
@@ -903,40 +895,30 @@ namespace Nyvorn.Source.World
                     }
 
                     Rectangle worldBounds = GetChunkWorldBounds(chunkCoord);
-                    spriteBatch.Draw(cache.RenderTarget, worldBounds, GetChunkAmbientTint(chunkCoord));
+                    // No tint applied here - day/night color, occlusion, and torch light are all
+                    // handled by WorldLightingSystem's own multiply pass, drawn as a separate step
+                    // after the terrain (see PlayingSessionViewCoordinator.DrawWorldLighting). This
+                    // used to also apply a per-chunk ambient tint here, which double-darkened solid
+                    // tiles once WorldLightingSystem started covering the same ground.
+                    spriteBatch.Draw(cache.RenderTarget, worldBounds, Color.White);
                 }
             }
         }
 
-        // A cached chunk's RenderTarget is one baked texture for its whole (32-tile-tall) column,
-        // so ambient light can only be gated per-chunk here, not per-tile, without re-baking the
-        // cache every frame as the sun moves. The chunk's tint is the average sky exposure across
-        // its top row (graduated, not a hard yes/no) - a chunk whose top row is mostly buried gets
-        // a proportionally weaker tint instead of the same full tint as a fully-exposed one, and
-        // chunks entirely underground still land at White. DrawTiles (below) does the precise
-        // per-tile version for the uncached fallback path - a future per-tile skylight system would
-        // replace this per-chunk approximation with a real light value baked per pixel instead.
-        private Color GetChunkAmbientTint(WorldChunkCoord chunkCoord)
-        {
-            if (_ambientLight == Color.White)
-                return Color.White;
-
-            int topRowY = chunkCoord.Y * ChunkTileSize;
-            int startX = chunkCoord.X * ChunkTileSize;
-            int endX = System.Math.Min(startX + ChunkTileSize, Width) - 1;
-            int columnCount = endX - startX + 1;
-            if (columnCount <= 0)
-                return Color.White;
-
-            float exposureSum = 0f;
-            for (int x = startX; x <= endX; x++)
-                exposureSum += GetSkyExposure01(x, topRowY);
-
-            float averageExposure = exposureSum / columnCount;
-            return averageExposure <= 0f ? Color.White : Color.Lerp(Color.White, _ambientLight, averageExposure);
-        }
-
-        private void DrawTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY, int pixelOffsetX, int pixelOffsetY)
+        // Wetness is NOT applied here - see DrawWetnessOverlay. That would otherwise get baked into
+        // a chunk's cached RenderTarget and only re-run when the chunk is marked dirty (a tile edit),
+        // but wetness dries out continuously on its own; baking it here made tiles show a stale tint
+        // until some unrelated edit forced a re-bake. No ambient tint here either - see DrawCachedChunks
+        // - WorldLightingSystem's own multiply pass over the terrain handles day/night, occlusion, and
+        // torch light in one place now.
+        private void DrawTiles(
+            SpriteBatch spriteBatch,
+            int minTileX,
+            int maxTileX,
+            int minTileY,
+            int maxTileY,
+            int pixelOffsetX,
+            int pixelOffsetY)
         {
             for (int y = minTileY; y <= maxTileY; y++)
             {
@@ -950,19 +932,8 @@ namespace Nyvorn.Source.World
                         (y * TileSize) - pixelOffsetY,
                         TileSize,
                         TileSize);
-                    // Wetness is NOT applied here - see DrawWetnessOverlay. This draw gets baked into
-                    // a chunk's cached RenderTarget and only re-runs when the chunk is marked dirty
-                    // (a tile edit), but wetness dries out continuously on its own; baking it here
-                    // made tiles show a stale wetness tint until some unrelated edit forced a re-bake.
-                    Color tint = Color.White;
-                    if (_ambientLight != Color.White)
-                    {
-                        float exposure = GetSkyExposure01(x, y);
-                        if (exposure > 0f)
-                            tint = Color.Lerp(Color.White, _ambientLight, exposure);
-                    }
 
-                    spriteBatch.Draw(texture, destination, sourceRectangle, tint);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, Color.White);
                 }
             }
         }
@@ -992,10 +963,10 @@ namespace Nyvorn.Source.World
             }
         }
 
-        // Exposed so overlays (e.g. the skylight shadow pass in PlayingSessionViewCoordinator) can
-        // tint a tile using its own sprite shape - autotile edges have transparent corners/notches,
-        // so a flat tinted square over the tile's bounds would paint over those gaps instead of
-        // conforming to the tile's actual silhouette.
+        // Exposed so overlays (e.g. a lighting/shadow pass) can tint a tile using its own sprite
+        // shape - autotile edges have transparent corners/notches, so a flat tinted square over the
+        // tile's bounds would paint over those gaps instead of conforming to the tile's actual
+        // silhouette.
         public bool TryGetTileSprite(int x, int y, out Texture2D texture, out Rectangle? sourceRectangle)
         {
             TileType tile = GetTile(x, y);
@@ -1063,11 +1034,11 @@ namespace Nyvorn.Source.World
 
                     Rectangle? sourceRectangle = tile switch
                     {
-                        TileType.Dirt => GetDirtAutoTileSourceRectangle(x, y, background: true),
-                        TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background: true),
-                        // Stone/IronOre have their own larger mix-rule sheet (BaseAutoTileMixRules) -
+                        // Dirt/Stone/IronOre have their own larger mix-rule sheet (BaseAutoTileMixRules) -
                         // the dirt-style function assumes a much smaller grid, so calling it here
-                        // against the stone/ore texture picked crops with no matching tile shape.
+                        // against those textures picked crops with no matching tile shape.
+                        TileType.Dirt => GetDirtMixAutoTileSourceRectangle(x, y, background: true),
+                        TileType.Grass => GetDirtAutoTileSourceRectangle(x, y, background: true),
                         TileType.Stone => GetStoneAutoTileSourceRectangle(x, y, background: true),
                         TileType.Sand => GetBackgroundAutoTileSourceRectangle(x, y),
                         TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background: true),
@@ -1339,11 +1310,11 @@ namespace Nyvorn.Source.World
             return EvaluateAutoTileMixRules(TileType.IronOre, TileType.Stone, x, y, BaseAutoTileMixRules, background);
         }
 
-        private Rectangle GetDirtMixAutoTileSourceRectangle(int x, int y)
+        private Rectangle GetDirtMixAutoTileSourceRectangle(int x, int y, bool background = false)
         {
             // Dirt's mix partner will be a dirt variant tile added later; until that tile exists,
             // every solid neighbor renders as a normal connected edge (no mix cells triggered).
-            return EvaluateAutoTileMixRules(TileType.Dirt, null, x, y, BaseAutoTileMixRules);
+            return EvaluateAutoTileMixRules(TileType.Dirt, null, x, y, BaseAutoTileMixRules, background);
         }
 
         private enum NeighborState

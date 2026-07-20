@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies
@@ -11,8 +12,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         private EnemyAnimState prevState;
         private int frameIndex;
         private float timer;
+        private bool facingRight = true;
 
         public EnemyAnimState CurrentState => state;
+        public bool FacingRight => facingRight;
+        public SpriteEffects Effects => facingRight ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
+
+        public void SetFacing(bool right)
+        {
+            facingRight = right;
+        }
 
         public EnemyAnimator(Dictionary<EnemyAnimState, EnemyAnimationClip> clips, EnemyAnimState startState = EnemyAnimState.Idle)
         {

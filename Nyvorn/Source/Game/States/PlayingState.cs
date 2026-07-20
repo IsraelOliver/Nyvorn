@@ -228,7 +228,7 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && !session.IsConstructionMode && input.ActivePowerJustPressed)
                 session.PowerSystem.TryActivateCurrentPower();
 
-            session.Update(dt, input, mouseWorld);
+            session.Update(dt, input, mouseWorld, screenW, screenH);
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
@@ -270,17 +270,17 @@ namespace Nyvorn.Source.Game.States
             float worldWidthPixels = session.WorldMap.PixelWidth;
             IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
 
-            // Set once per frame, before any terrain/decoration/entity draws below read it, so
-            // sky-exposed tiles/trees/entities pick up the sun's current color (warm at sunset,
-            // cool at night) instead of always rendering at flat Color.White.
-            session.WorldMap.SetAmbientLight(session.EnvironmentSystem.SkyState.AmbientLight);
-
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
                 float worldOffset = loopIndex * worldWidthPixels;
                 session.PrepareTerrainRender(graphicsDevice, screenW, screenH, worldOffset);
             }
+
+            // Uploaded once per frame - the light data itself doesn't change between the 1-3 wrapped
+            // copies drawn below, only where on screen each copy places it.
+            session.PrepareWorldLighting(graphicsDevice);
+            session.PrepareTorchGlow(graphicsDevice);
 
             spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
             session.DrawSky(spriteBatch, screenW, screenH);
@@ -348,11 +348,14 @@ namespace Nyvorn.Source.Game.States
                 session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
+                // LinearClamp (not PointClamp) so the small 1-texel-per-tile light texture gets
+                // smoothly interpolated as it's stretched over the world instead of showing hard,
+                // blocky per-tile edges.
                 spriteBatch.Begin(
-                    samplerState: SamplerState.PointClamp,
-                    blendState: BlendState.AlphaBlend,
+                    samplerState: SamplerState.LinearClamp,
+                    blendState: MultiplyBlend,
                     transformMatrix: transform);
-                session.DrawSkylightShadows(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawWorldLighting(spriteBatch, worldOffset);
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
@@ -420,6 +423,25 @@ namespace Nyvorn.Source.Game.States
             session.DrawRainFront(spriteBatch, screenW, screenH);
             session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
+
+            // Drawn after the night overlay (not alongside DrawWorldLighting, much earlier in this
+            // method) specifically so it visibly punches through that overlay's flat darkness instead
+            // of being painted over by it. Needs the camera transform (unlike the screen-space night
+            // overlay above) since the glow is positioned in world space, so it runs once per looped
+            // wrap copy like the other world-space passes.
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(
+                    samplerState: SamplerState.LinearClamp,
+                    blendState: BlendState.Additive,
+                    transformMatrix: transform);
+                session.DrawTorchGlow(spriteBatch, worldOffset);
+                spriteBatch.End();
+            }
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW, screenH);
@@ -822,29 +844,6 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
-            if (normalized == "skylight on")
-            {
-                session.SetSkylightShadowsEnabled(true);
-                SetConsoleMessage("Sombras de skylight ativadas");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "skylight off")
-            {
-                session.SetSkylightShadowsEnabled(false);
-                SetConsoleMessage("Sombras de skylight desativadas");
-                consoleInput = string.Empty;
-                return;
-            }
-
-            if (normalized == "skylight")
-            {
-                SetConsoleMessage("Uso: /skylight on ou /skylight off");
-                consoleInput = string.Empty;
-                return;
-            }
-
             if (normalized == "fps on")
             {
                 showFps = true;
@@ -961,7 +960,6 @@ namespace Nyvorn.Source.Game.States
             "/debugfly [on|off]",
             "/tissuevisual on|off",
             "/tissuefield on|off",
-            "/skylight on|off",
             "/fps on|off",
             "/tissuepulse",
             "/tissuepulse <speed|trail|fade|memory|curve|intensity|node> <valor>",
@@ -1005,6 +1003,7 @@ namespace Nyvorn.Source.Game.States
             "/water clear",
             "/grass grow [1..10000]",
             "/debug ticks",
+            "/debug light",
             "/world save"
         };
 
@@ -1655,14 +1654,14 @@ namespace Nyvorn.Source.Game.States
             if (identifier == "enemy" || identifier == "enemy fsm")
             {
                 SpawnDebugEnemy(Nyvorn.Source.Gameplay.Entities.Enemies.EnemyConfig.Default);
-                SetConsoleMessage("Inimigo (FSM) spawnado perto do jogador");
+                SetConsoleMessage("Inimigo spawnado perto do jogador");
                 return true;
             }
 
             if (identifier == "enemy signature" || identifier == "enemy utility")
             {
                 SpawnDebugEnemy(Nyvorn.Source.Gameplay.Entities.Enemies.EnemyConfig.Signature);
-                SetConsoleMessage("Inimigo assinatura (UtilityBrain + pathfinding) spawnado perto do jogador");
+                SetConsoleMessage("Inimigo assinatura (alcance de percepcao maior) spawnado perto do jogador");
                 return true;
             }
 
@@ -1719,8 +1718,43 @@ namespace Nyvorn.Source.Game.States
                 return true;
             }
 
-            SetConsoleMessage("Uso: /debug ticks");
+            if (parts.Length >= 2 && parts[1].Equals("light", System.StringComparison.OrdinalIgnoreCase))
+            {
+                PrintLightDebugGrid();
+                return true;
+            }
+
+            SetConsoleMessage("Uso: /debug ticks | /debug light");
             return true;
+        }
+
+        // Fase 1 do motor de luz (WorldLightingSystem) ainda não desenha nada na tela - este comando
+        // existe só pra inspecionar os valores calculados sem esperar a etapa de renderização.
+        private void PrintLightDebugGrid()
+        {
+            const int radius = 4;
+            Vector2 playerPosition = session.Player.Position;
+            int tileSize = session.WorldMap.TileSize;
+            int centerTileX = (int)System.MathF.Floor(playerPosition.X / tileSize);
+            int centerTileY = (int)System.MathF.Floor(playerPosition.Y / tileSize);
+
+            AddConsoleHistory($"Luz ao redor do jogador (tile {centerTileX},{centerTileY}), 0=escuro 9=claro:");
+            for (int y = centerTileY - radius; y <= centerTileY + radius; y++)
+            {
+                StringBuilder row = new();
+                for (int x = centerTileX - radius; x <= centerTileX + radius; x++)
+                {
+                    Color light = session.LightingSystem.GetLightAt(x, y);
+                    float brightness = (light.R + light.G + light.B) / (3f * 255f);
+                    int level = System.Math.Clamp((int)System.MathF.Round(brightness * 9f), 0, 9);
+                    row.Append(level);
+                    row.Append(' ');
+                }
+
+                AddConsoleHistory(row.ToString());
+            }
+
+            SetConsoleMessage("Grade de luz impressa no historico do console");
         }
 
         private bool TryExecuteWorldCommand(string command)

@@ -117,7 +117,8 @@ IDs atuais:
 
 | Comando | Efeito |
 |---|---|
-| `/spawn <entidade>` | Reservado exclusivamente para entidades. Ainda não existem entidades debug registradas para esse comando. |
+| `/spawn enemy` | Spawna um inimigo com FSM simples (`EnemyConfig.Default`) perto do jogador. |
+| `/spawn enemy signature` (alias: `/spawn enemy utility`) | Spawna o inimigo assinatura, com `UtilityBrain` e pathfinding (`EnemyConfig.Signature`), perto do jogador. |
 
 Itens nunca usam `/spawn`. Para adicionar itens ao jogador, use `/get`.
 
@@ -153,6 +154,7 @@ Itens nunca usam `/spawn`. Para adicionar itens ao jogador, use `/get`.
 | `/water clear` | Remove toda a agua do mundo. |
 | `/grass grow [amostras]` | Força de `1` a `10000` amostras de crescimento; o default é `256`. |
 | `/debug ticks` | Mostra contadores fast/medium/slow, amostras, grama, chunks e velocidade. |
+| `/debug light` | Imprime no histórico do console uma grade 9x9 dos valores de luz (`WorldLightingSystem`) ao redor do jogador, 0 (escuro) a 9 (claro). Ferramenta de depuração da Fase 1 do motor de luz, que ainda não desenha nada na tela. |
 
 ## Mundo e persistência
 

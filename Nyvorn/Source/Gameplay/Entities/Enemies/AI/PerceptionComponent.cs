@@ -4,7 +4,7 @@ using Nyvorn.Source.Gameplay.Entities.Enemies;
 namespace Nyvorn.Source.Gameplay.Entities.Enemies.AI
 {
     // Sensor layer: turns raw world/physics state into a Perception snapshot the brain reasons
-    // over. Kept separate from EnemyBrain so decision logic never touches raw positions/collision
+    // over. Kept separate from the brain so decision logic never touches raw positions/collision
     // flags directly - swapping in a smarter brain later only means consuming more of this struct.
     public sealed class PerceptionComponent
     {

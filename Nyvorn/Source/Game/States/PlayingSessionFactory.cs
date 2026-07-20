@@ -302,6 +302,9 @@ namespace Nyvorn.Source.Game.States
             build.SavedFurnaces = saveData != null && saveData.Version >= 17 && saveData.Furnaces != null
                 ? new List<FurnaceSaveData>(saveData.Furnaces)
                 : null;
+            build.SavedTorches = saveData != null && saveData.Version >= 19 && saveData.Torches != null
+                ? new List<TorchSaveData>(saveData.Torches)
+                : null;
             build.SavedDoors = saveData != null && saveData.Version >= 9 && saveData.Doors != null
                 ? new List<DoorSaveData>(saveData.Doors)
                 : null;
@@ -695,6 +698,14 @@ namespace Nyvorn.Source.Game.States
                 Texture = build.FurnaceTexture
             };
             furnaceRuntimeSystem.Restore(build.SavedFurnaces);
+            TorchRuntimeSystem torchRuntimeSystem = new TorchRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.FurnaceTexture
+            };
+            torchRuntimeSystem.Restore(build.SavedTorches);
             DoorRuntimeSystem doorRuntimeSystem = new DoorRuntimeSystem
             {
                 WorldMap = build.WorldMap,
@@ -706,6 +717,7 @@ namespace Nyvorn.Source.Game.States
             WorldObjectRegistry worldObjectRegistry = new();
             worldObjectRegistry.Register(workbenchRuntimeSystem);
             worldObjectRegistry.Register(furnaceRuntimeSystem);
+            worldObjectRegistry.Register(torchRuntimeSystem);
             worldObjectRegistry.Register(doorRuntimeSystem);
             blockInteractionSystem.WorldObjectRegistry = worldObjectRegistry;
             build.WorldMap.SetObjectCollisionQueries(
@@ -758,6 +770,7 @@ namespace Nyvorn.Source.Game.States
                 BlockParticleSystem = blockParticleSystem,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 FurnaceRuntimeSystem = furnaceRuntimeSystem,
+                TorchRuntimeSystem = torchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem
             };
             WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
@@ -766,6 +779,8 @@ namespace Nyvorn.Source.Game.States
                 build.SavedWorldEnvironment,
                 dayNightCycle.CreateSnapshot());
             entityRuntimeSystem.EnvironmentSystem = environmentSystem;
+            entityRuntimeSystem.DayNightCycle = dayNightCycle;
+            entityRuntimeSystem.NightSurfaceSpawnSystem = new NightSurfaceSpawnSystem(build.EnemyTexture, build.EnemyConfig);
             PlayingSessionWorldTickCoordinator worldTickCoordinator = new PlayingSessionWorldTickCoordinator
             {
                 WorldMap = build.WorldMap,
@@ -776,6 +791,7 @@ namespace Nyvorn.Source.Game.States
                 WetnessField = new TileWetnessField(build.WorldMap)
             };
             build.WorldMap.SetWetnessField(worldTickCoordinator.WetnessField);
+            WorldLightingSystem lightingSystem = new(build.WorldMap);
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
                 RuntimeContext = runtimeContext,
@@ -800,11 +816,13 @@ namespace Nyvorn.Source.Game.States
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
+                LightingSystem = lightingSystem,
                 DayNightCycle = dayNightCycle,
                 EnvironmentSystem = environmentSystem,
                 CombatCoordinator = combatCoordinator,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 FurnaceRuntimeSystem = furnaceRuntimeSystem,
+                TorchRuntimeSystem = torchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
@@ -1237,6 +1255,7 @@ namespace Nyvorn.Source.Game.States
             public List<WorldItemSaveData> SavedWorldItems { get; set; }
             public List<WorkbenchSaveData> SavedWorkbenches { get; set; }
             public List<FurnaceSaveData> SavedFurnaces { get; set; }
+            public List<TorchSaveData> SavedTorches { get; set; }
             public List<DoorSaveData> SavedDoors { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }

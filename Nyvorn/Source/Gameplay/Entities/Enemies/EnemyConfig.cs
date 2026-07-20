@@ -1,5 +1,4 @@
 using Microsoft.Xna.Framework;
-using Nyvorn.Source.Gameplay.Entities.Enemies.AI;
 
 namespace Nyvorn.Source.Gameplay.Entities.Enemies
 {
@@ -7,17 +6,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
     {
         public static EnemyConfig Default { get; } = new EnemyConfig();
 
-        // "Signature" preset: uses UtilityBrain (IAUS-lite) instead of the plain FSM, and lets its
-        // Chase action route through EnemyPathfinder instead of the cheap walk-and-jump-when-blocked
-        // locomotion every other enemy uses. Reserved for the handful of enemies whose design
-        // actually needs to navigate around terrain - not meant to become the default.
+        // "Signature" preset: same GroundChaserBrain as every other enemy, just notices the player
+        // from further away.
         public static EnemyConfig Signature { get; } = new EnemyConfig
         {
-            Brain = BrainType.Utility,
-            UsesPathfinding = true,
             PlayerAwarenessRange = 240f,
             PlayerVerticalAwarenessRange = 120f
         };
+
+        // Scopes the day/night spawn+aggro rule (see NightSurfaceSpawnSystem/GroundChaserBrain) to
+        // enemies that actually live on the surface - cave enemies will get their own rules later
+        // and shouldn't turn passive just because it's daytime up above.
+        public EnemyHabitat Habitat { get; init; } = EnemyHabitat.Surface;
 
         public Point HurtboxSize { get; init; } = new Point(16, 24);
         public float GravityScale { get; init; } = 1f;
@@ -25,6 +25,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         public float AttackVisualDuration { get; init; } = 0.12f;
         public float HurtDuration { get; init; } = 0.15f;
         public int MaxHealth { get; init; } = 100;
+
+        // Damage from the enemy's body touching the player's - see the comment on
+        // Enemy.HitDamage for why this is the only damage source right now.
         public int ContactDamage { get; init; } = 10;
         public float ContactKnockbackX { get; init; } = 180f;
         public float ContactKnockbackY { get; init; } = -75f;
@@ -32,20 +35,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Enemies
         public int FrameHeight { get; init; } = 32;
         public float PlayerAwarenessRange { get; init; } = 168f;
         public float PlayerVerticalAwarenessRange { get; init; } = 72f;
-        public float PlayerMemoryDuration { get; init; } = 2.2f;
         public float ChaseSpeed { get; init; } = 38f;
-        public float ChaseStopDistance { get; init; } = 18f;
-        public float InvestigateSpeed { get; init; } = 24f;
-        public float InvestigateStopDistance { get; init; } = 10f;
-        public float AttackRange { get; init; } = 22f;
-        public float AttackVerticalRange { get; init; } = 20f;
-        public float AttackCooldown { get; init; } = 0.85f;
-        public float HitRetreatDuration { get; init; } = 0.35f;
-        public float RetreatSpeed { get; init; } = 56f;
-        public float LowHealthRetreatThreshold { get; init; } = 0.35f;
-        public float LowHealthRetreatRange { get; init; } = 72f;
+
+        // How close counts as "there" - kept small on purpose so the chase only stops once the
+        // enemy's hurtbox actually overlaps the player's, not at some earlier "attack range".
+        public float ChaseStopDistance { get; init; } = 8f;
         public float JumpSpeed { get; init; } = 220f;
-        public BrainType Brain { get; init; } = BrainType.Fsm;
-        public bool UsesPathfinding { get; init; } = false;
     }
 }

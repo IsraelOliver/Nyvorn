@@ -16,6 +16,7 @@ namespace Nyvorn.Source.Gameplay.Items
         Sand = 12,
         IronOreBlock = 13,
         Furnace = 14,
-        IronBar = 15
+        IronBar = 15,
+        Torch = 16
     }
 }

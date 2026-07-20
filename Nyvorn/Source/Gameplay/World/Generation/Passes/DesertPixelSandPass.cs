@@ -75,13 +75,16 @@ namespace Nyvorn.Source.World.Generation.Passes
 
         private static int GetPixelSandBaseY(DesertRegionProfile profile, DesertRegionColumn column, int worldHeight)
         {
+            // Kept deliberately shallow: this loose sand gets fully simulated by SandSystem, so a
+            // deep column here is a worst-case memory/perf risk if a player clears the solid ground
+            // out from under it. 5-6 tiles at the dune center, up to ~9-10 near the edges.
             float edgeT = Math.Clamp(MathF.Abs(column.LocalX) / Math.Max(1f, profile.HalfWidth), 0f, 1f);
-            float centerDepth = Math.Clamp(profile.BaseRadius * 0.16f, 18f, 34f);
-            float edgeBonus = Math.Clamp(profile.BaseRadius * 0.08f, 8f, 18f);
+            float centerDepth = Math.Clamp(profile.BaseRadius * 0.16f, 5f, 6f);
+            float edgeBonus = Math.Clamp(profile.BaseRadius * 0.08f, 2f, 4f);
             float sideDepth = edgeBonus * SmoothStep(0.46f, 1f, edgeT);
-            float bottomNoise = MathF.Sin((column.LocalX / Math.Max(1f, profile.BaseRadius)) * MathF.PI * 1.25f) * profile.BaseRadius * 0.018f;
+            float bottomNoise = MathF.Sin((column.LocalX / Math.Max(1f, profile.BaseRadius)) * MathF.PI * 1.25f) * profile.BaseRadius * 0.004f;
 
-            int depth = Math.Max(6, (int)MathF.Round(centerDepth + sideDepth + bottomNoise));
+            int depth = Math.Max(5, (int)MathF.Round(centerDepth + sideDepth + bottomNoise));
             int maxBaseY = Math.Min(worldHeight - 2, column.TopY + Math.Max(8, (int)MathF.Round(profile.MainDepth * 0.42f)));
             return Math.Clamp(column.TopY + depth, column.TopY, maxBaseY);
         }

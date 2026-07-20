@@ -195,5 +195,17 @@
     "worldPivot": [4, 24],
     "spriteSheetCell": [0, 0],
     "worldCollisionRect": [0, 16, 8, 8]
+  },
+  {
+    "id": "Torch",
+    "name": "Torch",
+    "texturePath": "objects/furnace-Sheet",
+    "stackable": true,
+    "maxStack": 99,
+    "gravityScale": 1.0,
+    "worldSize": [6, 12],
+    "worldPivot": [3, 12],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [0, 0, 6, 12]
   }
 ]

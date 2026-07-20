@@ -46,11 +46,13 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
+        public required WorldLightingSystem LightingSystem { get; init; }
         public required WorldDayNightCycle DayNightCycle { get; init; }
         public required WorldEnvironmentSystem EnvironmentSystem { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
         public required WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
         public required FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
+        public required TorchRuntimeSystem TorchRuntimeSystem { get; init; }
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
@@ -73,6 +75,7 @@ namespace Nyvorn.Source.Game.States
                                               LiquidSystem?.HasUnsavedChanges == true ||
                                               WorkbenchRuntimeSystem.HasUnsavedChanges ||
                                               FurnaceRuntimeSystem.HasUnsavedChanges ||
+                                              TorchRuntimeSystem.HasUnsavedChanges ||
                                               DoorRuntimeSystem.HasUnsavedChanges ||
                                               consoleCommandHistoryRevision != persistedConsoleCommandHistoryRevision;
         public Player Player => RuntimeContext.Player;
@@ -92,7 +95,6 @@ namespace Nyvorn.Source.Game.States
         public bool IsConstructionMode { get; private set; }
         public bool TissueVisualEnabled { get; private set; }
         public bool TissueFieldVisualEnabled { get; private set; }
-        public bool SkylightShadowsEnabled { get; private set; } = true;
         public bool DebugFlyEnabled => Player.DebugFlyEnabled;
         public float TimeOfDay01 => DayNightCycle.TimeOfDay01;
         public float WorldTimeCyclePercent => DayNightCycle.CyclePercent;
@@ -350,11 +352,6 @@ namespace Nyvorn.Source.Game.States
             TissueFieldVisualEnabled = enabled;
         }
 
-        public void SetSkylightShadowsEnabled(bool enabled)
-        {
-            SkylightShadowsEnabled = enabled;
-        }
-
         public void SetDebugFly(bool enabled)
         {
             Player.SetDebugFly(enabled);
@@ -377,11 +374,11 @@ namespace Nyvorn.Source.Game.States
             Player.RespawnAt(spawnPosition);
         }
 
-        public void Update(float dt, InputState input, Vector2 mouseWorld)
+        public void Update(float dt, InputState input, Vector2 mouseWorld, int screenWidth, int screenHeight)
         {
             AdvanceDayNightCycle(dt);
             RefreshWorldEnvironment(dt);
-            UpdateFrame(dt, input, mouseWorld);
+            UpdateFrame(dt, input, mouseWorld, screenWidth, screenHeight);
             AdvanceWorldTicks(dt);
         }
 
@@ -393,7 +390,7 @@ namespace Nyvorn.Source.Game.States
                 screenHeight / Camera.Zoom);
         }
 
-        private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld)
+        private void UpdateFrame(float dt, InputState input, Vector2 mouseWorld, int screenWidth, int screenHeight)
         {
             BlockInteractionSystem.Update(dt);
             WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
@@ -413,6 +410,7 @@ namespace Nyvorn.Source.Game.States
             bool objectPlacementHandled =
                 WorkbenchRuntimeSystem.TryPlaceSelectedWorkbench(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 FurnaceRuntimeSystem.TryPlaceSelectedFurnace(worldInput, SelectedHotbarIndex, mouseWorld) ||
+                TorchRuntimeSystem.TryPlaceSelectedTorch(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 DoorRuntimeSystem.TryPlaceSelectedDoor(worldInput, SelectedHotbarIndex, mouseWorld);
             if (objectPlacementHandled)
             {
@@ -433,7 +431,9 @@ namespace Nyvorn.Source.Game.States
             TissueSystem.Update(dt, input);
             PowerSystem.Update(dt);
             BlockInteractionSystem.TryBreakTargetBlock(dt, worldInput, mouseWorld, SelectedHotbarIndex);
-            EntityRuntimeSystem.Update(dt);
+            EntityRuntimeSystem.Update(dt, screenWidth, screenHeight);
+            LightingSystem.SetPointLights(TorchRuntimeSystem.GetLightSourcePositions());
+            LightingSystem.Update(dt, Camera.Position, Camera.Zoom, screenWidth, screenHeight, EnvironmentSystem.SkyState.AmbientLight);
             BlockParticleSystem.Update(dt);
 
             CombatCoordinator.ResolveCombat();
@@ -456,7 +456,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            ViewCoordinator.DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX);
+            ViewCoordinator.DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX, LightingSystem);
         }
 
         public void DrawWater(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -472,20 +472,34 @@ namespace Nyvorn.Source.Game.States
                 BlockInteractionSystem.HoveredTileState);
         }
 
-        public void DrawSkylightShadows(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
-        {
-            if (SkylightShadowsEnabled)
-                ViewCoordinator.DrawSkylightShadows(spriteBatch, screenWidth, screenHeight, worldOffsetX);
-        }
-
         public void DrawWetnessOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawWetnessOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
+        public void PrepareWorldLighting(GraphicsDevice graphicsDevice)
+        {
+            ViewCoordinator.PrepareWorldLighting(graphicsDevice, LightingSystem);
+        }
+
+        public void DrawWorldLighting(SpriteBatch spriteBatch, float worldOffsetX)
+        {
+            ViewCoordinator.DrawWorldLighting(spriteBatch, worldOffsetX);
+        }
+
+        public void PrepareTorchGlow(GraphicsDevice graphicsDevice)
+        {
+            ViewCoordinator.PrepareTorchGlow(graphicsDevice, LightingSystem);
+        }
+
+        public void DrawTorchGlow(SpriteBatch spriteBatch, float worldOffsetX)
+        {
+            ViewCoordinator.DrawTorchGlow(spriteBatch, worldOffsetX);
+        }
+
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
         {
-            ViewCoordinator.DrawTreeDecorations(spriteBatch, screenWidth, screenHeight, worldOffsetX, layer);
+            ViewCoordinator.DrawTreeDecorations(spriteBatch, screenWidth, screenHeight, worldOffsetX, layer, EnvironmentSystem.SkyState.AmbientLight);
         }
 
         public void PrepareTerrainRender(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight, float worldOffsetX)
@@ -495,7 +509,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawEntities(SpriteBatch spriteBatch)
         {
-            ViewCoordinator.DrawEntities(spriteBatch, EnvironmentSystem.SkyState.AmbientLight);
+            ViewCoordinator.DrawEntities(spriteBatch, LightingSystem);
         }
 
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -537,7 +551,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, EnvironmentSystem.SkyState.AmbientLight);
+            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, LightingSystem);
         }
 
         public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -710,6 +724,7 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.LiquidSystem = LiquidSystem;
             WorldTickCoordinator.SandSystem = SandSystem;
             WorldTickCoordinator.LiquidSystem = LiquidSystem;
+            EntityRuntimeSystem.SandSystem = SandSystem;
         }
 
         private int ResolveWaterRadiusPixels(int radiusTiles)
