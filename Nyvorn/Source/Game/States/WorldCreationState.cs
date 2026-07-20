@@ -521,6 +521,10 @@ namespace Nyvorn.Source.Game.States
 
         private void CreateWorld()
         {
+            string playerId = new PlayerSaveService().GetLastSelectedPlayerId();
+            if (string.IsNullOrWhiteSpace(playerId))
+                return;
+
             string seed = ResolveSeedText();
             string finalPlanetName = string.IsNullOrWhiteSpace(planetName) ? "Elyra" : planetName.Trim();
             PlayingSessionFactory factory = new PlayingSessionFactory(graphicsDevice, content);
@@ -528,7 +532,7 @@ namespace Nyvorn.Source.Game.States
                 graphicsDevice,
                 content,
                 stateMachine,
-                factory.CreateBuildOperation(finalPlanetName, selectedPreset, seed),
+                factory.CreateBuildOperation(playerId, finalPlanetName, selectedPreset, seed),
                 "Gerando Planeta",
                 session => saveService.Save(session)));
         }

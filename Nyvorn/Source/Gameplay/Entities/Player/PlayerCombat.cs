@@ -180,6 +180,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             return true;
         }
 
+        public void SetHealth(int value)
+        {
+            health = System.Math.Clamp(value, 0, config.MaxHealth);
+        }
+
         private void TickCooldowns(float dt)
         {
             if (hurtCooldownTimer > 0f)

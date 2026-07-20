@@ -64,9 +64,7 @@ namespace Nyvorn.Source.World.Persistence
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
                 return;
 
-            string worldId = TryLoadFromPath(filePath)?.Metadata?.WorldId;
             File.Delete(filePath);
-            playerSaveService.Delete(worldId);
         }
 
         public void Rename(string filePath, string newPlanetName)
@@ -105,6 +103,9 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = DateTime.UtcNow,
                 TimeOfDay01 = session.TimeOfDay01,
                 CycleIndex = session.WorldCycleIndex,
+                LastPlayerPositionX = session.Player.Position.X,
+                LastPlayerPositionY = session.Player.Position.Y,
+                ActivatedTissueHubKeys = session.ActivatedTissueHubKeys.ToList(),
                 Environment = session.CreateWorldEnvironmentSaveData(),
                 TileChanges = session.WorldMap.TrackedTileChanges.ToList(),
                 Trees = session.WorldMap.Trees
@@ -218,6 +219,9 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TimeOfDay01 = saveData.TimeOfDay01,
                 CycleIndex = saveData.CycleIndex,
+                LastPlayerPositionX = saveData.LastPlayerPositionX,
+                LastPlayerPositionY = saveData.LastPlayerPositionY,
+                ActivatedTissueHubKeys = saveData.ActivatedTissueHubKeys ?? new List<int>(),
                 Environment = saveData.Environment ?? new WorldEnvironmentSaveData(),
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),
@@ -245,6 +249,9 @@ namespace Nyvorn.Source.World.Persistence
                 SavedAtUtc = saveData.SavedAtUtc,
                 TimeOfDay01 = saveData.TimeOfDay01,
                 CycleIndex = saveData.CycleIndex,
+                LastPlayerPositionX = saveData.LastPlayerPositionX,
+                LastPlayerPositionY = saveData.LastPlayerPositionY,
+                ActivatedTissueHubKeys = saveData.ActivatedTissueHubKeys ?? new List<int>(),
                 Environment = saveData.Environment ?? new WorldEnvironmentSaveData(),
                 TileChanges = saveData.TileChanges ?? new List<WorldTileChange>(),
                 WorldItems = saveData.WorldItems ?? new List<WorldItemSaveData>(),

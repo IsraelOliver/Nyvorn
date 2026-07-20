@@ -70,6 +70,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             playerAnimator = new PlayerAnimator();
         }
 
+        public void SetHealth(int value)
+        {
+            combat.SetHealth(value);
+        }
+
         public void Update(
             float dt,
             WorldMap worldMap,

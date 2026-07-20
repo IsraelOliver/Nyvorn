@@ -214,27 +214,28 @@ namespace Nyvorn.Source.Game.States
 
         public PlayingSession Create()
         {
-            return Create("Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
+            string playerId = playerSaveService.CreatePlayer("Jogador").PlayerId;
+            return Create(playerId, "Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
         }
 
-        public PlayingSession Create(string planetName, WorldSizePreset sizePreset, string seedText)
+        public PlayingSession Create(string playerId, string planetName, WorldSizePreset sizePreset, string seedText)
         {
-            return CompleteBuild(CreateBuildOperation(planetName, sizePreset, seedText));
+            return CompleteBuild(CreateBuildOperation(playerId, planetName, sizePreset, seedText));
         }
 
-        public BuildOperation CreateBuildOperation(string planetName, WorldSizePreset sizePreset, string seedText)
+        public BuildOperation CreateBuildOperation(string playerId, string planetName, WorldSizePreset sizePreset, string seedText)
         {
             WorldGenConfig worldGenConfig = WorldGenConfig.CreatePreset(sizePreset, seedText);
             PlanetWorldMetadata planetMetadata = PlanetWorldMetadata.Create(planetName, worldGenConfig);
-            return CreateBuildOperation(planetMetadata, saveData: null);
+            return CreateBuildOperation(playerId, planetMetadata, saveData: null);
         }
 
-        public BuildOperation CreateBuildOperation(PlanetSaveData saveData)
+        public BuildOperation CreateBuildOperation(string playerId, PlanetSaveData saveData)
         {
             if (saveData == null)
-                return CreateBuildOperation("Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
+                return CreateBuildOperation(playerId, "Elyra", WorldSizePreset.Medium, WorldSeedSet.CreateRandom().SeedText);
 
-            return CreateBuildOperationFromSaveData(saveData);
+            return CreateBuildOperationFromSaveData(playerId, saveData);
         }
 
         private PlayingSession CompleteBuild(BuildOperation operation)
@@ -245,15 +246,21 @@ namespace Nyvorn.Source.Game.States
             return operation.Result;
         }
 
-        private BuildOperation CreateBuildOperationFromSaveData(PlanetSaveData saveData)
+        private BuildOperation CreateBuildOperationFromSaveData(string playerId, PlanetSaveData saveData)
         {
-            return CreateBuildOperation(saveData.Metadata, saveData);
+            return CreateBuildOperation(playerId, saveData.Metadata, saveData);
         }
 
-        private BuildOperation CreateBuildOperation(PlanetWorldMetadata planetMetadata, PlanetSaveData saveData)
+        private BuildOperation CreateBuildOperation(string playerId, PlanetWorldMetadata planetMetadata, PlanetSaveData saveData)
         {
             planetMetadata = planetMetadata.WithSeedMetadataDefaults();
             BuildContext build = new();
+            build.PlayerId = playerId;
+            build.SavedPlayerPositionX = saveData != null && saveData.Version >= 18 ? saveData.LastPlayerPositionX : null;
+            build.SavedPlayerPositionY = saveData != null && saveData.Version >= 18 ? saveData.LastPlayerPositionY : null;
+            build.SavedActivatedTissueHubKeys = saveData != null && saveData.Version >= 18 && saveData.ActivatedTissueHubKeys != null
+                ? new List<int>(saveData.ActivatedTissueHubKeys)
+                : null;
             build.ApplyGeneratedLiquidPlacements = saveData == null;
             build.ApplyGeneratedSandPlacements = saveData == null;
             bool hasWorldSnapshot = saveData?.WorldTileSnapshot != null && saveData.WorldTileSnapshot.Length > 0;
@@ -421,7 +428,7 @@ namespace Nyvorn.Source.Game.States
 
         private void LoadPlayerProgress(BuildContext build, PlanetWorldMetadata planetMetadata)
         {
-            build.PlayerSaveData = playerSaveService.Load(planetMetadata.WorldId);
+            build.PlayerSaveData = playerSaveService.Load(build.PlayerId);
         }
 
         private static void LoadWorldSnapshot(BuildContext build, PlanetSaveData saveData)
@@ -496,6 +503,11 @@ namespace Nyvorn.Source.Game.States
             build.FurnaceTexture = content.Load<Texture2D>("objects/furnace-Sheet");
             build.DoorTexture = content.Load<Texture2D>("objects/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
+            build.TissueRevealIconTexture = content.Load<Texture2D>("ui/tissue_reveal-Sheet");
+            build.BackgroundFarTexture = content.Load<Texture2D>("ui/background_parallax/background1");
+            build.BackgroundMidTexture = content.Load<Texture2D>("ui/background_parallax/background2");
+            build.BackgroundNearTexture = content.Load<Texture2D>("ui/background_parallax/background3");
+            build.LifeBarTexture = content.Load<Texture2D>("ui/lifebar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
             build.SunRaysEffect = content.Load<Effect>("effects/SunRays");
@@ -582,6 +594,7 @@ namespace Nyvorn.Source.Game.States
                 build.PlayerDownTexture,
                 build.PlayerUpTexture,
                 build.PlayerConfig);
+            ApplyPlayerHealth(build.PlayerSaveData, player);
 
             List<Enemy> enemies = new();
             EnemyRespawnController enemyRespawnController = new(
@@ -644,7 +657,7 @@ namespace Nyvorn.Source.Game.States
                 tissueQueries,
                 tissuePropagation,
                 tissueEnvironmentSensor);
-            HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.PlayerSaveData);
+            HashSet<int> activatedTissueHubKeys = CreateActivatedTissueHubSet(build.SavedActivatedTissueHubKeys);
             PlayingSessionTissueSystem tissueSystem = new PlayingSessionTissueSystem
             {
                 WorldMap = build.WorldMap,
@@ -658,7 +671,7 @@ namespace Nyvorn.Source.Game.States
                 ActivatedTissueHubKeys = activatedTissueHubKeys
             };
             PlayerPowerSystem powerSystem = new PlayerPowerSystem();
-            powerSystem.AddPower(new TissueRevealPower(tissueSystem));
+            powerSystem.AddPower(new TissueRevealPower(tissueSystem, build.TissueRevealIconTexture));
             PlayingSessionBlockInteractionSystem blockInteractionSystem = new PlayingSessionBlockInteractionSystem
             {
                 WorldMap = build.WorldMap,
@@ -726,9 +739,15 @@ namespace Nyvorn.Source.Game.States
                 Camera = runtimeContext.Camera,
                 DebugPixel = CreateDebugPixelTexture(),
                 HealthBarRenderer = new WorldHealthBarRenderer(graphicsDevice),
-                HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.UiFont, build.ItemTextures),
+                HudRenderer = new HudRenderer(graphicsDevice, build.ToolbarTexture, build.LifeBarTexture, build.UiFont, build.ItemTextures),
                 WorldMinimapRenderer = new WorldMinimapRenderer(graphicsDevice),
-                ElyraSkyRenderer = new ElyraSkyRenderer(graphicsDevice, build.SunRaysEffect, build.MoonPhaseEffect),
+                ElyraSkyRenderer = new ElyraSkyRenderer(
+                    graphicsDevice,
+                    build.SunRaysEffect,
+                    build.MoonPhaseEffect,
+                    build.BackgroundFarTexture,
+                    build.BackgroundMidTexture,
+                    build.BackgroundNearTexture),
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
@@ -767,6 +786,7 @@ namespace Nyvorn.Source.Game.States
             PlayingSession session = new PlayingSession
             {
                 PlanetMetadata = planetMetadata,
+                PlayerId = build.PlayerId,
                 RuntimeContext = runtimeContext,
                 WorldItemRuntimeSystem = worldItemRuntimeSystem,
                 EntityRuntimeSystem = entityRuntimeSystem,
@@ -984,12 +1004,11 @@ namespace Nyvorn.Source.Game.States
 
         private static Vector2 ResolvePlayerSpawn(BuildContext build, Vector2 fallbackPosition)
         {
-            PlayerSaveData playerSaveData = build.PlayerSaveData;
-            if (playerSaveData == null)
+            if (build.SavedPlayerPositionX == null || build.SavedPlayerPositionY == null)
                 return fallbackPosition;
 
-            float x = playerSaveData.PositionX;
-            float y = playerSaveData.PositionY;
+            float x = build.SavedPlayerPositionX.Value;
+            float y = build.SavedPlayerPositionY.Value;
             if (float.IsNaN(x) || float.IsInfinity(x) || float.IsNaN(y) || float.IsInfinity(y))
                 return fallbackPosition;
 
@@ -1016,15 +1035,23 @@ namespace Nyvorn.Source.Game.States
             selectedHotbarIndex = Math.Clamp(playerSaveData.SelectedHotbarIndex, 0, hotbar.Capacity - 1);
         }
 
-        private static HashSet<int> CreateActivatedTissueHubSet(PlayerSaveData playerSaveData)
+        private static void ApplyPlayerHealth(PlayerSaveData playerSaveData, Player player)
+        {
+            if (playerSaveData == null || playerSaveData.CurrentHealth < 0)
+                return;
+
+            player.SetHealth(playerSaveData.CurrentHealth);
+        }
+
+        private static HashSet<int> CreateActivatedTissueHubSet(List<int> savedActivatedTissueHubKeys)
         {
             HashSet<int> activatedHubKeys = new();
 
-            if (playerSaveData?.ActivatedTissueHubKeys == null)
+            if (savedActivatedTissueHubKeys == null)
                 return activatedHubKeys;
 
-            for (int i = 0; i < playerSaveData.ActivatedTissueHubKeys.Count; i++)
-                activatedHubKeys.Add(playerSaveData.ActivatedTissueHubKeys[i]);
+            for (int i = 0; i < savedActivatedTissueHubKeys.Count; i++)
+                activatedHubKeys.Add(savedActivatedTissueHubKeys[i]);
 
             return activatedHubKeys;
         }
@@ -1174,6 +1201,11 @@ namespace Nyvorn.Source.Game.States
             public Texture2D FurnaceTexture { get; set; }
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
+            public Texture2D LifeBarTexture { get; set; }
+            public Texture2D TissueRevealIconTexture { get; set; }
+            public Texture2D BackgroundFarTexture { get; set; }
+            public Texture2D BackgroundMidTexture { get; set; }
+            public Texture2D BackgroundNearTexture { get; set; }
             public Texture2D EnemyTexture { get; set; }
             public Effect SunRaysEffect { get; set; }
             public Effect MoonPhaseEffect { get; set; }
@@ -1187,7 +1219,11 @@ namespace Nyvorn.Source.Game.States
             public int ItemSpawnTileX { get; set; }
             public TissueNetwork TissueNetwork { get; set; }
             public TissueGenerationResult TissueGeneration { get; set; }
+            public string PlayerId { get; set; }
             public PlayerSaveData PlayerSaveData { get; set; }
+            public float? SavedPlayerPositionX { get; set; }
+            public float? SavedPlayerPositionY { get; set; }
+            public List<int> SavedActivatedTissueHubKeys { get; set; }
             public bool ApplyGeneratedLiquidPlacements { get; set; }
             public bool ApplyGeneratedSandPlacements { get; set; }
             public byte[] SavedSandSnapshot { get; set; }

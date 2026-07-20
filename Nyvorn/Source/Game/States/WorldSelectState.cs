@@ -20,6 +20,7 @@ namespace Nyvorn.Source.Game.States
         private readonly ContentManager content;
         private readonly StateMachine stateMachine;
         private readonly PlanetSaveService saveService = new();
+        private readonly PlayerSaveService playerSaveService = new();
         private readonly SpriteFont font;
         private readonly Texture2D pixel;
         private readonly Texture2D backgroundTexture;
@@ -31,6 +32,8 @@ namespace Nyvorn.Source.Game.States
         private KeyboardState previousKeyboard;
         private IReadOnlyList<PlanetSaveSummary> worlds = new List<PlanetSaveSummary>();
         private int listScrollOffset;
+        private string currentPlayerId;
+        private string currentPlayerName;
 
         public WorldSelectState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
         {
@@ -48,6 +51,7 @@ namespace Nyvorn.Source.Game.States
             previousMouse = Mouse.GetState();
             previousKeyboard = Keyboard.GetState();
             RefreshWorlds();
+            RefreshCurrentPlayer();
         }
 
         public void OnExit()
@@ -73,8 +77,17 @@ namespace Nyvorn.Source.Game.States
                     listScrollOffset = Math.Clamp(listScrollOffset - Math.Sign(wheelDelta) * 40, 0, GetMaxScrollOffset());
             }
 
-            if ((leftClickPressed && GetNewWorldButtonBounds().Contains(mouse.Position)) ||
-                (keyboard.IsKeyDown(Keys.N) && !previousKeyboard.IsKeyDown(Keys.N)))
+            if (leftClickPressed && GetPlayerButtonBounds().Contains(mouse.Position))
+            {
+                stateMachine.ReplaceState(new PlayerSelectState(graphicsDevice, content, stateMachine));
+                previousMouse = mouse;
+                previousKeyboard = keyboard;
+                return;
+            }
+
+            if (((leftClickPressed && GetNewWorldButtonBounds().Contains(mouse.Position)) ||
+                (keyboard.IsKeyDown(Keys.N) && !previousKeyboard.IsKeyDown(Keys.N))) &&
+                !string.IsNullOrWhiteSpace(currentPlayerId))
             {
                 stateMachine.ReplaceState(new WorldCreationState(graphicsDevice, content, stateMachine));
                 previousMouse = mouse;
@@ -109,13 +122,16 @@ namespace Nyvorn.Source.Game.States
                     if (!bounds.Contains(mouse.Position))
                         continue;
 
+                    if (string.IsNullOrWhiteSpace(currentPlayerId))
+                        break;
+
                     PlanetSaveData saveData = saveService.Load(summary.FilePath);
                     PlayingSessionFactory factory = new PlayingSessionFactory(graphicsDevice, content);
                     stateMachine.ReplaceState(new LoadingWorldState(
                         graphicsDevice,
                         content,
                         stateMachine,
-                        factory.CreateBuildOperation(saveData),
+                        factory.CreateBuildOperation(currentPlayerId, saveData),
                         "Carregando Planeta"));
                     break;
                 }
@@ -141,6 +157,14 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.DrawString(font, "Mundos", new Vector2(panel.X + 28, panel.Y + 24), new Color(255, 241, 193));
             string wrappedSubtitle = TextLayout.WrapText(font, "Continue um planeta salvo ou crie um novo.", panel.Width - 56);
             spriteBatch.DrawString(font, wrappedSubtitle, new Vector2(panel.X + 28, panel.Y + 50), new Color(168, 230, 207));
+
+            DrawPlayerButton(spriteBatch);
+            if (string.IsNullOrWhiteSpace(currentPlayerId))
+            {
+                Rectangle playerButton = GetPlayerButtonBounds();
+                string hint = TextLayout.WrapText(font, "Escolha um jogador antes de entrar num mundo.", 200);
+                spriteBatch.DrawString(font, hint, new Vector2(playerButton.X, playerButton.Bottom + 6), new Color(255, 180, 180));
+            }
 
             spriteBatch.Draw(pixel, listBounds, new Color(18, 34, 40, 210));
 
@@ -227,6 +251,37 @@ namespace Nyvorn.Source.Game.States
         {
             worlds = saveService.ListWorlds();
             listScrollOffset = Math.Clamp(listScrollOffset, 0, GetMaxScrollOffset());
+        }
+
+        private void RefreshCurrentPlayer()
+        {
+            currentPlayerId = playerSaveService.GetLastSelectedPlayerId();
+            PlayerSaveData playerSaveData = string.IsNullOrWhiteSpace(currentPlayerId) ? null : playerSaveService.Load(currentPlayerId);
+            if (playerSaveData == null)
+            {
+                currentPlayerId = null;
+                currentPlayerName = null;
+                return;
+            }
+
+            currentPlayerName = playerSaveData.Name;
+        }
+
+        private void DrawPlayerButton(SpriteBatch spriteBatch)
+        {
+            Rectangle bounds = GetPlayerButtonBounds();
+            bool hovered = bounds.Contains(Mouse.GetState().Position);
+            Color fill = hovered ? new Color(255, 241, 193) : new Color(28, 50, 58);
+            Color textColor = hovered ? new Color(16, 31, 36) : new Color(168, 230, 207);
+
+            spriteBatch.Draw(pixel, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), new Color(143, 211, 255, 150));
+            spriteBatch.Draw(pixel, bounds, fill);
+
+            string label = string.IsNullOrWhiteSpace(currentPlayerName) ? "Selecionar Jogador" : $"Jogador: {currentPlayerName}";
+            string wrappedLabel = TextLayout.WrapText(font, label, bounds.Width - 20);
+            Vector2 labelSize = font.MeasureString(wrappedLabel);
+            Vector2 labelPos = new Vector2(bounds.X + (bounds.Width - labelSize.X) * 0.5f, bounds.Y + (bounds.Height - labelSize.Y) * 0.5f);
+            spriteBatch.DrawString(font, wrappedLabel, labelPos, textColor);
         }
 
         private IEnumerable<(PlanetSaveSummary Summary, Rectangle Bounds)> GetWorldEntryBounds()
@@ -349,6 +404,12 @@ namespace Nyvorn.Source.Game.States
         {
             Rectangle panel = GetPanelBounds();
             return new Rectangle(panel.X + 28, panel.Bottom - 92, panel.Width - 56, 48);
+        }
+
+        private Rectangle GetPlayerButtonBounds()
+        {
+            Rectangle panel = GetPanelBounds();
+            return new Rectangle(panel.Right - 228, panel.Y + 20, 200, 36);
         }
     }
 }

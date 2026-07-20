@@ -6,11 +6,18 @@ namespace Nyvorn.Source.World.Persistence
 {
     public sealed class PlanetSaveData
     {
-        public int Version { get; init; } = 17;
+        public int Version { get; init; } = 18;
         public required PlanetWorldMetadata Metadata { get; set; }
         public DateTime SavedAtUtc { get; init; } = DateTime.UtcNow;
         public float TimeOfDay01 { get; init; } = 0.25f;
         public int CycleIndex { get; init; }
+
+        // World-scoped, not tied to whichever character is currently playing: any player entering
+        // this world resumes from the same spot and sees the same tissue hubs already activated,
+        // the same way the terrain/trees/etc. are shared regardless of who's playing.
+        public float LastPlayerPositionX { get; init; }
+        public float LastPlayerPositionY { get; init; }
+        public List<int> ActivatedTissueHubKeys { get; init; } = new();
         public WorldEnvironmentSaveData Environment { get; init; } = new();
         public List<WorldTileChange> TileChanges { get; init; } = new();
         public List<WorldItemSaveData> WorldItems { get; init; } = new();
