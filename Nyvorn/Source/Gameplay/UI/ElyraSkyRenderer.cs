@@ -40,18 +40,38 @@ namespace Nyvorn.Source.Gameplay.UI
         private const float RayShimmerSpeedValue = 0.06f;   // how fast the ray noise drifts/flickers
         private const float CoreIntensityValue = 0.5f;   // fraction of the disc that blows out white
 
+        // Distant scenery sitting between the sky and the terrain - all three anchor their bottom
+        // edge to the bottom of the screen (their own art already encodes each mountain range's
+        // silhouette/height), so there's never a gap below them regardless of how low the actual
+        // terrain surface happens to sit. They only differ in how much they drift against the
+        // camera pan and which order they layer in.
+        private static readonly ParallaxLayer[] MountainLayers =
+        {
+            new(0.08f),
+            new(0.16f),
+            new(0.28f)
+        };
+
         private readonly Texture2D pixel;
         private readonly Texture2D eclipseOccluderTexture;
         private readonly Effect sunRaysEffect;
         private readonly Effect moonPhaseEffect;
+        private readonly Texture2D[] mountainTextures;
 
-        public ElyraSkyRenderer(GraphicsDevice graphicsDevice, Effect sunRaysEffect = null, Effect moonPhaseEffect = null)
+        public ElyraSkyRenderer(
+            GraphicsDevice graphicsDevice,
+            Effect sunRaysEffect = null,
+            Effect moonPhaseEffect = null,
+            Texture2D backgroundFarTexture = null,
+            Texture2D backgroundMidTexture = null,
+            Texture2D backgroundNearTexture = null)
         {
             pixel = new Texture2D(graphicsDevice, 1, 1);
             pixel.SetData(new[] { Color.White });
             eclipseOccluderTexture = CreateDiscTexture(graphicsDevice, 20, Color.White);
             this.sunRaysEffect = sunRaysEffect;
             this.moonPhaseEffect = moonPhaseEffect;
+            mountainTextures = new[] { backgroundFarTexture, backgroundMidTexture, backgroundNearTexture };
         }
 
         public void Draw(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f)
@@ -75,6 +95,23 @@ namespace Nyvorn.Source.Gameplay.UI
                 return;
 
             DrawRainLayers(spriteBatch, screenWidth, screenHeight, skyState, FrontRainLayers, zoom);
+        }
+
+        // Called after DrawSunGlow/DrawMoons so the mountains (closer than the sky) occlude the
+        // sun/moons instead of sitting behind them.
+        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f, float cameraPanX = 0f)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            for (int i = 0; i < mountainTextures.Length; i++)
+            {
+                Texture2D texture = mountainTextures[i];
+                if (texture == null)
+                    continue;
+
+                DrawParallaxLayer(spriteBatch, texture, screenWidth, screenHeight, MountainLayers[i].ParallaxFactor, cameraPanX, zoom, skyState.AmbientLight);
+            }
         }
 
         // Self-contained Begin/End using the SunRays pixel shader instead of sprite art - called as
@@ -274,6 +311,30 @@ namespace Nyvorn.Source.Gameplay.UI
             spriteBatch.Draw(pixel, fullScreen, Color.White);
             spriteBatch.End();
         }
+
+        private static void DrawParallaxLayer(
+            SpriteBatch spriteBatch,
+            Texture2D texture,
+            int screenWidth,
+            int screenHeight,
+            float parallaxFactor,
+            float cameraPanX,
+            float zoom,
+            Color ambientLight)
+        {
+            int destWidth = (int)(texture.Width * zoom);
+            int destHeight = (int)(texture.Height * zoom);
+            int destY = screenHeight - destHeight;
+
+            float scrollX = -(cameraPanX * parallaxFactor) % destWidth;
+            if (scrollX > 0f)
+                scrollX -= destWidth;
+
+            for (int x = (int)scrollX; x < screenWidth; x += destWidth)
+                spriteBatch.Draw(texture, new Rectangle(x, destY, destWidth, destHeight), ambientLight);
+        }
+
+        private readonly record struct ParallaxLayer(float ParallaxFactor);
 
         private void DrawFog(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
         {

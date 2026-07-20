@@ -6,6 +6,9 @@ namespace Nyvorn.Source.Gameplay.UI
 {
     public sealed class PowerHUD
     {
+        private const int IconFrameCount = 23;
+        private const int IconFrameSize = 22;
+
         private readonly Texture2D pixel;
         private readonly SpriteFont font;
 
@@ -34,26 +37,19 @@ namespace Nyvorn.Source.Gameplay.UI
             int y = screenHeight - size - padding;
             Rectangle bounds = new Rectangle(x, y, size, size);
 
-            float cooldown = MathHelper.Clamp(power.CooldownProgress, 0f, 1f);
-            Color border = power.IsReady ? new Color(128, 235, 191) : new Color(84, 115, 104);
             Color core = power.IsReady ? new Color(38, 154, 112) : new Color(36, 56, 50);
 
             spriteBatch.Draw(pixel, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), Color.Black * 0.75f);
             spriteBatch.Draw(pixel, bounds, new Color(13, 22, 20, 230));
-            spriteBatch.Draw(pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 2), border);
-            spriteBatch.Draw(pixel, new Rectangle(bounds.X, bounds.Bottom - 2, bounds.Width, 2), border * 0.75f);
-            spriteBatch.Draw(pixel, new Rectangle(bounds.X, bounds.Y, 2, bounds.Height), border * 0.75f);
-            spriteBatch.Draw(pixel, new Rectangle(bounds.Right - 2, bounds.Y, 2, bounds.Height), border * 0.75f);
 
-            Rectangle coreBounds = new Rectangle(bounds.X + 11, bounds.Y + 9, 20, 24);
-            spriteBatch.Draw(pixel, coreBounds, core);
-            spriteBatch.Draw(pixel, new Rectangle(coreBounds.X + 4, coreBounds.Y - 4, 12, 32), core * 0.45f);
-            spriteBatch.Draw(pixel, new Rectangle(coreBounds.X - 4, coreBounds.Y + 6, 28, 8), core * 0.35f);
-
-            if (cooldown > 0f)
+            if (power.Icon != null)
+                DrawChargeIcon(spriteBatch, power.Icon, bounds, 1f - power.CooldownProgress);
+            else
             {
-                int coverHeight = (int)(bounds.Height * cooldown);
-                spriteBatch.Draw(pixel, new Rectangle(bounds.X, bounds.Bottom - coverHeight, bounds.Width, coverHeight), Color.Black * 0.45f);
+                Rectangle coreBounds = new Rectangle(bounds.X + 11, bounds.Y + 9, 20, 24);
+                spriteBatch.Draw(pixel, coreBounds, core);
+                spriteBatch.Draw(pixel, new Rectangle(coreBounds.X + 4, coreBounds.Y - 4, 12, 32), core * 0.45f);
+                spriteBatch.Draw(pixel, new Rectangle(coreBounds.X - 4, coreBounds.Y + 6, 28, 8), core * 0.35f);
             }
 
             Vector2 labelPos = new Vector2(bounds.Right + 8, bounds.Y + 4);
@@ -107,6 +103,21 @@ namespace Nyvorn.Source.Gameplay.UI
             Vector2 subLabelPos = labelPos + new Vector2(0f, 17f);
             spriteBatch.DrawString(font, "PAREDES", subLabelPos + new Vector2(1f, 1f), Color.Black * 0.8f);
             spriteBatch.DrawString(font, "PAREDES", subLabelPos, new Color(156, 203, 183));
+        }
+
+        private static void DrawChargeIcon(SpriteBatch spriteBatch, Texture2D iconSheet, Rectangle bounds, float charge01)
+        {
+            int frameIndex = (int)System.MathF.Round(MathHelper.Clamp(charge01, 0f, 1f) * (IconFrameCount - 1));
+            Rectangle sourceRect = new Rectangle(frameIndex * IconFrameSize, 0, IconFrameSize, IconFrameSize);
+
+            int iconSize = bounds.Width - 4;
+            Rectangle iconDest = new Rectangle(
+                bounds.X + ((bounds.Width - iconSize) / 2),
+                bounds.Y + ((bounds.Height - iconSize) / 2),
+                iconSize,
+                iconSize);
+
+            spriteBatch.Draw(iconSheet, iconDest, sourceRect, Color.White);
         }
 
         private void DrawMiniTile(SpriteBatch spriteBatch, int x, int y, Color fill, Color highlight)
