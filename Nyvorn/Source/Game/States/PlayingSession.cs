@@ -4,6 +4,7 @@ using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.Combat;
 using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
@@ -56,6 +57,7 @@ namespace Nyvorn.Source.Game.States
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
+        public required DamageNumberSystem DamageNumberSystem { get; init; }
         public required PlayerPowerSystem PowerSystem { get; init; }
         public required List<string> ConsoleCommandHistory { get; init; }
         public int SelectedHotbarIndex => InputRouter.SelectedHotbarIndex;
@@ -437,6 +439,7 @@ namespace Nyvorn.Source.Game.States
             BlockParticleSystem.Update(dt);
 
             CombatCoordinator.ResolveCombat();
+            DamageNumberSystem.Update(dt);
         }
 
         private void AdvanceWorldTicks(float dt)

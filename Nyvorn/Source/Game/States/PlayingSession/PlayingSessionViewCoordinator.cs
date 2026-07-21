@@ -4,6 +4,7 @@ using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.Combat;
 using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Entities.Enemies;
 using Nyvorn.Source.Gameplay.Entities.Player;
@@ -83,6 +84,7 @@ namespace Nyvorn.Source.Game.States
         public required IReadOnlySet<int> ActivatedTissueHubKeys { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
+        public required DamageNumberSystem DamageNumberSystem { get; init; }
         public WorkbenchRuntimeSystem WorkbenchRuntimeSystem { get; init; }
         public FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
         public TorchRuntimeSystem TorchRuntimeSystem { get; init; }
@@ -456,6 +458,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
+            DamageNumberSystem.Draw(spriteBatch, HudRenderer.Font);
             WorkbenchRuntimeSystem?.Draw(spriteBatch);
             FurnaceRuntimeSystem?.Draw(spriteBatch);
             TorchRuntimeSystem?.Draw(spriteBatch);

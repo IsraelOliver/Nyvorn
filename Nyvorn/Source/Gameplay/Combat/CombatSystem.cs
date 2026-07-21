@@ -8,9 +8,11 @@ namespace Nyvorn.Source.Gameplay.Combat
     {
         private readonly PlayerAttackResolver playerAttackResolver;
         private readonly EnemyContactResolver enemyContactResolver;
+        private readonly DamageNumberSystem damageNumbers;
 
-        public CombatSystem()
+        public CombatSystem(DamageNumberSystem damageNumbers)
         {
+            this.damageNumbers = damageNumbers;
             playerAttackResolver = new PlayerAttackResolver();
             enemyContactResolver = new EnemyContactResolver();
         }
@@ -22,8 +24,8 @@ namespace Nyvorn.Source.Gameplay.Combat
             for (int i = enemies.Count - 1; i >= 0; i--)
             {
                 TEnemy enemy = enemies[i];
-                playerAttackResolver.Resolve(player, enemy);
-                enemyContactResolver.Resolve(enemy, player);
+                playerAttackResolver.Resolve(player, enemy, damageNumbers);
+                enemyContactResolver.Resolve(enemy, player, damageNumbers);
 
                 if (!enemy.IsAlive)
                     enemies.RemoveAt(i);

@@ -734,6 +734,7 @@ namespace Nyvorn.Source.Game.States
                 WorldMap = build.WorldMap
             };
             blockInteractionSystem.BlockParticleSystem = blockParticleSystem;
+            DamageNumberSystem damageNumberSystem = new DamageNumberSystem();
             PlayingSessionInputRouter inputRouter = new PlayingSessionInputRouter
             {
                 Hotbar = hotbar
@@ -768,6 +769,7 @@ namespace Nyvorn.Source.Game.States
                 ActivatedTissueHubKeys = activatedTissueHubKeys,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
+                DamageNumberSystem = damageNumberSystem,
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 FurnaceRuntimeSystem = furnaceRuntimeSystem,
                 TorchRuntimeSystem = torchRuntimeSystem,
@@ -796,7 +798,7 @@ namespace Nyvorn.Source.Game.States
             {
                 RuntimeContext = runtimeContext,
                 Weapons = build.Weapons,
-                CombatSystem = new CombatSystem()
+                CombatSystem = new CombatSystem(damageNumberSystem)
             };
 
             PlayingSession session = new PlayingSession
@@ -826,6 +828,7 @@ namespace Nyvorn.Source.Game.States
                 DoorRuntimeSystem = doorRuntimeSystem,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
+                DamageNumberSystem = damageNumberSystem,
                 PowerSystem = powerSystem,
                 ConsoleCommandHistory = build.SavedConsoleCommandHistory
             };

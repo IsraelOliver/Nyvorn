@@ -4,7 +4,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Resolvers
 {
     public sealed class PlayerAttackResolver
     {
-        public void Resolve<TSource>(TSource source, IDamageable target)
+        public void Resolve<TSource>(TSource source, IDamageable target, DamageNumberSystem damageNumbers)
             where TSource : IDamageable, IHitSource
         {
             if (!source.HasActiveHitbox || !target.IsAlive)
@@ -17,6 +17,7 @@ namespace Nyvorn.Source.Gameplay.Combat.Resolvers
             source.OnHitConnected();
             float dir = target.Position.X >= source.Position.X ? 1f : -1f;
             target.ApplyKnockback(source.HitKnockbackX * dir, source.HitKnockbackY);
+            damageNumbers?.Spawn(target.Position, source.HitDamage, DamageNumberSystem.EnemyHitColor);
         }
     }
 }
