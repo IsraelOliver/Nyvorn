@@ -456,7 +456,7 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
-            ViewCoordinator.DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX, LightingSystem);
+            ViewCoordinator.DrawTerrainBase(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
         public void DrawWater(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -725,6 +725,7 @@ namespace Nyvorn.Source.Game.States
             WorldTickCoordinator.SandSystem = SandSystem;
             WorldTickCoordinator.LiquidSystem = LiquidSystem;
             EntityRuntimeSystem.SandSystem = SandSystem;
+            LightingSystem.SandSystem = SandSystem;
         }
 
         private int ResolveWaterRadiusPixels(int radiusTiles)

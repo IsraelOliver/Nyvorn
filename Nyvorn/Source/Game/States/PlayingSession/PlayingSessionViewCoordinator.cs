@@ -185,7 +185,7 @@ namespace Nyvorn.Source.Game.States
             Camera.Follow(smoothedCameraTarget, screenWidth, screenHeight);
         }
 
-        public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem)
+        public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
 
@@ -194,7 +194,7 @@ namespace Nyvorn.Source.Game.States
             // genuinely open), while every opaque tile pixel still fully occludes the sand as
             // expected. Drawing sand after tiles instead would let its edge bleed visibly paint
             // over legitimate opaque tile pixels (e.g. onto grass at a dune's edge).
-            DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX, lightingSystem);
+            DrawSandPixels(spriteBatch, screenWidth, screenHeight, worldOffsetX);
             WorldMap.Draw(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
@@ -552,7 +552,7 @@ namespace Nyvorn.Source.Game.States
                 System.Math.Max(1, (int)System.MathF.Ceiling(viewHeight)));
         }
 
-        private void DrawSandPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem)
+        private void DrawSandPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             if (SandSystem == null)
                 return;
@@ -564,42 +564,9 @@ namespace Nyvorn.Source.Game.States
             int startPixelY = System.Math.Max(0, (int)System.MathF.Floor(Camera.Position.Y));
             int endPixelY = System.Math.Min(SandSystem.Height - 1, (int)System.MathF.Ceiling(Camera.Position.Y + viewHeight));
 
-            // Same frame-shift correction as DrawWorldLighting: WorldLightingSystem's window is
-            // anchored to the camera's true (unshifted) position once per frame, not once per looped
-            // world-wrap copy like this draw call.
-            int lightingTileOffset = (int)System.MathF.Round(worldOffsetX / WorldMap.TileSize);
-
-            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandPixelColor, lightingSystem, lightingTileOffset, topEdgesOnly: false);
-            DrawWrappedSandHighlights(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandHighlightPixelColor, lightingSystem, lightingTileOffset);
-            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, lightingSystem, lightingTileOffset, topEdgesOnly: true);
-        }
-
-        // Loose sand has no per-pixel sky-exposure check like WorldMap tiles - it's drawn as many
-        // single-row segments per frame, so querying WorldLightingSystem once per segment (not per
-        // pixel) is granular enough without being expensive. WorldLightingSystem.GetLightAt already
-        // combines day/night sky color with occlusion and nearby torches, so sand darkens/lights up
-        // the same way solid ground does - a dune with a dug-out pocket darkens like the rock around
-        // it, and a torch nearby brightens it the same way.
-        private Color ComputeSandSegmentTint(Color baseColor, WorldLightingSystem lightingSystem, int wrappedPixelX, int pixelY, int lightingTileOffset)
-        {
-            if (lightingSystem == null)
-                return baseColor;
-
-            int tileX = (wrappedPixelX / WorldMap.TileSize) + lightingTileOffset;
-            int tileY = pixelY / WorldMap.TileSize;
-            return ApplyColorMultiply(baseColor, lightingSystem.GetLightAt(tileX, tileY));
-        }
-
-        private static Color ApplyColorMultiply(Color baseColor, Color light)
-        {
-            if (light == Color.White)
-                return baseColor;
-
-            return new Color(
-                (baseColor.R * light.R) / 255,
-                (baseColor.G * light.G) / 255,
-                (baseColor.B * light.B) / 255,
-                baseColor.A);
+            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandPixelColor, topEdgesOnly: false);
+            DrawWrappedSandHighlights(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandHighlightPixelColor);
+            DrawWrappedSandRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, SandTopEdgeColor, topEdgesOnly: true);
         }
 
         private void DrawLiquidPixels(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -617,9 +584,21 @@ namespace Nyvorn.Source.Game.States
             DrawWrappedLiquidRange(spriteBatch, startPixelX, endPixelX, startPixelY, endPixelY, WaterPixelColor, surfaceOnly: false);
         }
 
+        // Sand's own shading (day/night, occlusion, torch glow) now comes entirely from
+        // DrawWorldLighting's stretched, bilinear-filtered light texture (see
+        // WorldLightingSystem.CopyLightGridTo, which treats sand as attenuating the same as a solid
+        // tile) drawn on top with a multiply blend after this. That overlay's GPU-side linear sampling
+        // is what fades smoothly across tile boundaries - sand itself just draws its flat base color,
+        // one draw call per unbroken pixel run, same as before any per-tile lighting existed.
+        //
+        // A hand-rolled CPU approach (splitting each run into tile-sized chunks, or worse, 2px slices
+        // with per-pixel interpolation) was tried first to fake this smoothing and tanked the framerate
+        // (2-3fps in a full sand biome) - letting the overlay handle it instead is both cheaper (fewer
+        // draw calls than even the tile-chunked version) and strictly smoother (continuous, not
+        // one-value-per-tile).
         private void DrawWrappedSandRange(
             SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY,
-            Color baseColor, WorldLightingSystem lightingSystem, int lightingTileOffset, bool topEdgesOnly)
+            Color baseColor, bool topEdgesOnly)
         {
             int worldWidth = SandSystem.Width;
             if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
@@ -641,8 +620,7 @@ namespace Nyvorn.Source.Game.States
                 foreach (Rectangle segment in segments)
                 {
                     Rectangle drawBounds = new Rectangle(segment.X + drawOffsetX, segment.Y, segment.Width, segment.Height);
-                    Color tint = ComputeSandSegmentTint(baseColor, lightingSystem, segment.X, segment.Y, lightingTileOffset);
-                    spriteBatch.Draw(DebugPixel, drawBounds, tint);
+                    spriteBatch.Draw(DebugPixel, drawBounds, baseColor);
                 }
 
                 currentRawStartX = currentRawEndX + 1;
@@ -650,8 +628,7 @@ namespace Nyvorn.Source.Game.States
         }
 
         private void DrawWrappedSandHighlights(
-            SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY,
-            Color baseColor, WorldLightingSystem lightingSystem, int lightingTileOffset)
+            SpriteBatch spriteBatch, int rawStartX, int rawEndX, int startPixelY, int endPixelY, Color baseColor)
         {
             int worldWidth = SandSystem.Width;
             if (worldWidth <= 0 || rawStartX > rawEndX || startPixelY > endPixelY)
@@ -666,7 +643,7 @@ namespace Nyvorn.Source.Game.States
                 int wrappedEndX = wrappedStartX + (currentRawEndX - currentRawStartX);
                 int drawOffsetX = currentRawStartX - wrappedStartX;
 
-                DrawSandHighlightRange(spriteBatch, wrappedStartX, wrappedEndX, startPixelY, endPixelY, drawOffsetX, baseColor, lightingSystem, lightingTileOffset);
+                DrawSandHighlightRange(spriteBatch, wrappedStartX, wrappedEndX, startPixelY, endPixelY, drawOffsetX, baseColor);
 
                 currentRawStartX = currentRawEndX + 1;
             }
@@ -674,7 +651,7 @@ namespace Nyvorn.Source.Game.States
 
         private void DrawSandHighlightRange(
             SpriteBatch spriteBatch, int minPixelX, int maxPixelX, int minPixelY, int maxPixelY, int drawOffsetX,
-            Color baseColor, WorldLightingSystem lightingSystem, int lightingTileOffset)
+            Color baseColor)
         {
             int minCellX = minPixelX / SandHighlightCellSize;
             int maxCellX = maxPixelX / SandHighlightCellSize;
@@ -697,8 +674,7 @@ namespace Nyvorn.Source.Game.States
                     if (!IsSandHighlightCandidate(pixelX, pixelY))
                         continue;
 
-                    Color tint = ComputeSandSegmentTint(baseColor, lightingSystem, pixelX, pixelY, lightingTileOffset);
-                    spriteBatch.Draw(DebugPixel, new Rectangle(pixelX + drawOffsetX, pixelY, 1, 1), tint);
+                    spriteBatch.Draw(DebugPixel, new Rectangle(pixelX + drawOffsetX, pixelY, 1, 1), baseColor);
                 }
             }
         }

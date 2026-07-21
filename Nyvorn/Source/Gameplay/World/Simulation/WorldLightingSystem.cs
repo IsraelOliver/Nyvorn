@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.World;
 using System;
 using System.Collections.Generic;
@@ -78,6 +79,14 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         {
             this.worldMap = worldMap;
         }
+
+        // Set once after SandSystem exists (PlayingSession.InitializeSandSystem, mirroring how other
+        // coordinators pick it up). Loose sand occupies tile-grid cells WorldMap considers "open" -
+        // without this, a sand dune read as open air for occlusion purposes, so light never dimmed
+        // going deeper into it and only started fading once it hit actual solid ground underneath,
+        // reading as an odd shadow seam a few tiles below the dune's surface instead of the dune
+        // itself gradually darkening like any other material would.
+        public SandSystem SandSystem { get; set; }
 
         // Called once per frame before Update, with the current world-space position of every
         // active point light (e.g. TorchRuntimeSystem.GetLightSourcePositions()). Point lights use
@@ -161,7 +170,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 return Color.White;
 
             int index = (localY * bufferWidth) + localX;
-            return ToColor(lightR[index], lightG[index], lightB[index]);
+            return ToPerceptualColor(lightR[index], lightG[index], lightB[index]);
         }
 
         // Bounds of the last window computed by Update, in the same raw tile-coordinate space as
@@ -176,13 +185,25 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         // color, for a renderer to upload into a texture and let GPU bilinear sampling smooth the
         // tile-to-tile transitions instead of hard per-tile edges.
         //
-        // Open (non-solid) tiles are forced to full white here regardless of their actual physics
-        // value. Nothing is ever drawn as terrain for an open tile, so once this grid is stretched
-        // into one big rectangle and multiplied over the whole screen, an open tile's texel would
-        // otherwise darken/tint whatever's visible behind it - sky, background, water - even though
-        // there's no terrain there for it to apply to. Only solid tiles (which do have a sprite drawn
-        // under this overlay) show their real, sky- and torch-aware color. Point-light-only glow (see
-        // CopyGlowGridTo) is a separate, additive pass that's exactly what covers open air instead.
+        // Open tiles with nothing physically occupying them are forced to full white here regardless
+        // of their actual physics value. Nothing is ever drawn as terrain for a truly open tile, so
+        // once this grid is stretched into one big rectangle and multiplied over the whole screen, its
+        // texel would otherwise darken/tint whatever's visible behind it - sky, background, water -
+        // even though there's no terrain there for it to apply to. Solid tiles AND loose sand (both
+        // covered by IsAttenuatingAt - either way there's a sprite/pixel drawn under this overlay) show
+        // their real, sky- and torch-aware color instead, which is also what lets sand's shading come
+        // from this same stretched-and-bilinear-filtered texture instead of a separate per-pixel CPU
+        // tint - the tile-to-tile fade is the GPU's linear sampling, not extra draw calls. Point-light-
+        // only glow (see CopyGlowGridTo) is a separate, additive pass that's exactly what covers open
+        // air instead.
+        //
+        // NOTE: letting an open tile bordering a wall keep its own real value (instead of always
+        // forcing white) was tried here to reduce the boundary glow described above - it helped the
+        // night direction (wall brightened by a hard white neighbor) but left the day direction
+        // (wall's own warm color bleeding out into open air) essentially unchanged, since that bleed
+        // comes from the wall's color itself, not from the neighbor's forced value. Reverted; fixing
+        // the day direction for real needs the overlay to never land on open-air pixels at all
+        // (geometry/stencil-based masking), not a change to what value open tiles hold.
         public void CopyLightGridTo(Color[] destination)
         {
             for (int localY = 0; localY < bufferHeight; localY++)
@@ -192,8 +213,8 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 {
                     int tileX = worldMap.WrapTileX(bufferOriginTileX + localX);
                     int index = (localY * bufferWidth) + localX;
-                    destination[index] = worldMap.IsSolidAt(tileX, tileY)
-                        ? ToColor(lightR[index], lightG[index], lightB[index])
+                    destination[index] = IsAttenuatingAt(tileX, tileY)
+                        ? ToPerceptualColor(lightR[index], lightG[index], lightB[index])
                         : Color.White;
                 }
             }
@@ -221,6 +242,25 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                 (byte)255);
         }
 
+        // A tile-by-tile /debug light readout of a sand dune showed a perfectly smooth linear falloff
+        // (8,7,6,5,4,3,2,1,0), yet visually the sand looked fully bright almost all the way down, then
+        // snapped to black - the math was fine, human brightness perception isn't linear (a bright
+        // color barely looks different at 90% strength, but the same-sized numeric drop right near
+        // zero reads as a sudden cutoff). A square-root curve lifts the low-to-mid range so the fade
+        // reads as gradual across the tile's whole depth instead of "unchanged, then suddenly dark".
+        // Only used for the combined (sky+occlusion+torch) pass that solid tiles/sand render with -
+        // the point-light-only glow pass (ToColor, additive) was tuned separately and left linear.
+        private const float PerceptualGamma = 0.5f;
+
+        private static Color ToPerceptualColor(float r, float g, float b)
+        {
+            return new Color(
+                (byte)(MathF.Pow(Math.Clamp(r, 0f, 1f), PerceptualGamma) * 255f),
+                (byte)(MathF.Pow(Math.Clamp(g, 0f, 1f), PerceptualGamma) * 255f),
+                (byte)(MathF.Pow(Math.Clamp(b, 0f, 1f), PerceptualGamma) * 255f),
+                (byte)255);
+        }
+
         // HasOpenSkyAbove scans from a tile all the way up to the true world top (y=0) unless it
         // hits something solid first - fine for an occasional call, but calling it once per tile in
         // this window (thousands of them) meant a full scan-to-the-top for every open-air tile,
@@ -242,7 +282,18 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             for (int localX = 0; localX < bufferWidth; localX++)
             {
                 int tileX = worldMap.WrapTileX(bufferOriginTileX + localX);
-                if (!worldMap.HasOpenSkyAbove(tileX, bufferOriginTileY))
+
+                // Checking HasOpenSkyAbove only at the window's top row assumes that row is itself
+                // open air with nothing above it - true for ordinary terrain, but wrong for a dune/
+                // hill tall enough to reach into or above the window's margin: the window's top row
+                // then sits INSIDE that feature, and the check reads "blocked" even though the
+                // feature's real peak (out of view, further up) is almost certainly exposed to open
+                // sky - there's no such thing as a roof floating above a dune in this game. Treat the
+                // window-top tile already being solid/sand as exposure on its own, short-circuiting
+                // before the (more expensive) HasOpenSkyAbove scan rather than wrongly reading the
+                // whole column below as unlit.
+                bool topRowExposed = IsAttenuatingAt(tileX, bufferOriginTileY) || worldMap.HasOpenSkyAbove(tileX, bufferOriginTileY);
+                if (!topRowExposed)
                     continue;
 
                 for (int localY = 0; localY < bufferHeight; localY++)
@@ -254,10 +305,27 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
                     lightB[index] = skyB;
                     propagationQueue.Enqueue(index);
 
-                    if (worldMap.IsSolidAt(tileX, tileY))
+                    if (IsAttenuatingAt(tileX, tileY))
                         break;
                 }
             }
+        }
+
+        // True for a solid tile OR a tile-grid cell filled with loose sand - either way, something
+        // physically occupies this tile that should absorb/block light like material, rather than the
+        // tile reading as open air just because WorldMap's tile grid alone doesn't know about sand.
+        private bool IsAttenuatingAt(int tileX, int tileY)
+        {
+            if (worldMap.IsSolidAt(tileX, tileY))
+                return true;
+
+            if (SandSystem == null)
+                return false;
+
+            int tileSize = worldMap.TileSize;
+            int centerPixelX = (tileX * tileSize) + (tileSize / 2);
+            int centerPixelY = (tileY * tileSize) + (tileSize / 2);
+            return SandSystem.HasSandAt(centerPixelX, centerPixelY);
         }
 
         private void SeedPointLightsInto(float[] r, float[] g, float[] b, float peakIntensity)
@@ -315,7 +383,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
             int tileX = worldMap.WrapTileX(bufferOriginTileX + localX);
             int tileY = bufferOriginTileY + localY;
-            float decay = worldMap.IsSolidAt(tileX, tileY) ? solidDecay : openDecay;
+            float decay = IsAttenuatingAt(tileX, tileY) ? solidDecay : openDecay;
 
             float candidateR = currentR - decay;
             float candidateG = currentG - decay;
