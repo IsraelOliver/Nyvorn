@@ -431,7 +431,7 @@ namespace Nyvorn.Source.Game.States
             WorldMap.DrawBackground(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem)
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem, float visualTimeSeconds)
         {
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
@@ -461,7 +461,7 @@ namespace Nyvorn.Source.Game.States
             DamageNumberSystem.Draw(spriteBatch, HudRenderer.Font);
             WorkbenchRuntimeSystem?.Draw(spriteBatch);
             FurnaceRuntimeSystem?.Draw(spriteBatch);
-            TorchRuntimeSystem?.Draw(spriteBatch);
+            TorchRuntimeSystem?.Draw(spriteBatch, visualTimeSeconds);
             DoorRuntimeSystem?.Draw(spriteBatch);
         }
 

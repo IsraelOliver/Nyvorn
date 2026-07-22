@@ -140,7 +140,8 @@ namespace Nyvorn.Source.World.Persistence
                     .Select(torch => new TorchSaveData
                     {
                         PositionX = torch.Position.X,
-                        PositionY = torch.Position.Y
+                        PositionY = torch.Position.Y,
+                        PoleFrameIndex = torch.PoleFrameIndex
                     })
                     .ToList(),
                 Doors = session.DoorRuntimeSystem.Doors

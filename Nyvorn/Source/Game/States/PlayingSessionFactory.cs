@@ -504,6 +504,8 @@ namespace Nyvorn.Source.Game.States
                 "entities/player/movesets/player_moveset_pickaxe-Sheet");
             build.WorkbenchTexture = content.Load<Texture2D>("objects/worktable-sheet");
             build.FurnaceTexture = content.Load<Texture2D>("objects/furnace-Sheet");
+            build.TorchPoleTexture = content.Load<Texture2D>("furniture/torch-Sheet");
+            build.TorchFlameTexture = content.Load<Texture2D>("furniture/torch-animation-Sheet-Sheet");
             build.DoorTexture = content.Load<Texture2D>("objects/wood_door");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.TissueRevealIconTexture = content.Load<Texture2D>("ui/tissue_reveal-Sheet");
@@ -703,7 +705,8 @@ namespace Nyvorn.Source.Game.States
                 WorldMap = build.WorldMap,
                 Player = player,
                 Hotbar = hotbar,
-                Texture = build.FurnaceTexture
+                PoleTexture = build.TorchPoleTexture,
+                FlameTexture = build.TorchFlameTexture
             };
             torchRuntimeSystem.Restore(build.SavedTorches);
             DoorRuntimeSystem doorRuntimeSystem = new DoorRuntimeSystem
@@ -1220,6 +1223,8 @@ namespace Nyvorn.Source.Game.States
             public Texture2D PlayerPickaxeMovesetTexture { get; set; }
             public Texture2D WorkbenchTexture { get; set; }
             public Texture2D FurnaceTexture { get; set; }
+            public Texture2D TorchPoleTexture { get; set; }
+            public Texture2D TorchFlameTexture { get; set; }
             public Texture2D DoorTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D LifeBarTexture { get; set; }

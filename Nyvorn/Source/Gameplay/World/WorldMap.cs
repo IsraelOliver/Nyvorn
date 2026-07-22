@@ -634,6 +634,13 @@ namespace Nyvorn.Source.World
             return TryGetTreePartAtTile(tile, out tree, out _);
         }
 
+        public bool TryGetTreePartTypeAtTile(Point tile, out TreePartType partType)
+        {
+            bool found = TryGetTreePartAtTile(tile, out _, out TreePartPlacement part);
+            partType = part.PartType;
+            return found;
+        }
+
         public bool TryChopTreeAtTile(Point tile, out int woodQuantity, out Vector2 dropPosition)
         {
             woodQuantity = 0;
@@ -1654,7 +1661,7 @@ namespace Nyvorn.Source.World
             };
         }
 
-        private bool IsBackgroundSolidAt(int x, int y)
+        public bool IsBackgroundSolidAt(int x, int y)
         {
             return IsSolid(GetBackgroundTile(x, y));
         }
