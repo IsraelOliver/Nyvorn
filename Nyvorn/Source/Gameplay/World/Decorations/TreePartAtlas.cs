@@ -46,11 +46,13 @@ namespace Nyvorn.Source.World.Decorations
             Add(TreePartType.TrunkBareBase, 1, 1, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.TrunkBaseRightRootCutSocket, 1, 4, drawOffsetPixels: TrunkColumnDrawOffset);
 
+            // Canopy is 42px wide, an even split around the trunk's centerline would need 43 -
+            // without this 1px nudge left, the canopy's center sits 1px right of the trunk's.
             parts[TreePartType.Canopy] = new TreePartDefinition(
                 TreePartType.Canopy,
                 new Rectangle(CanopySourceX, CanopySourceY, CanopyPixelWidth, CanopyPixelHeight),
                 new Point(6, 6),
-                NoDrawOffset);
+                new Point(-1, 0));
         }
 
         public TreePartDefinition Get(TreePartType partType)
