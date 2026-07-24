@@ -6,5 +6,6 @@ namespace Nyvorn.Source.World.Persistence
         public int TileY { get; init; }
         public bool IsOpen { get; init; }
         public bool OpensRight { get; init; } = true;
+        public bool FacingLeft { get; init; }
     }
 }

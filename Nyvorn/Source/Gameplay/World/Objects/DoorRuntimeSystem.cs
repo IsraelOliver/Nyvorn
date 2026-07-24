@@ -10,7 +10,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.World.Objects
 {
-    public sealed class DoorRuntimeSystem : IWorldObjectOccupancyProvider, IWorldObjectMovementBlocker, IForegroundTileBreakListener, IWorldObjectMiningProvider
+    public sealed class DoorRuntimeSystem : FurnitureRuntimeSystem<DoorInstance>, IWorldObjectMovementBlocker
     {
         public const int ClosedWidth = 8;
         public const int OpenWidth = 16;
@@ -19,27 +19,15 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1f, 1);
         private static readonly Rectangle ClosedSource = new Rectangle(0, 0, ClosedWidth, DoorHeight);
         private static readonly Rectangle OpenSource = new Rectangle(ClosedWidth, 0, OpenWidth, DoorHeight);
-        private static readonly Color ValidPreviewTint = new Color(92, 255, 128, 140);
-        private static readonly Color InvalidPreviewTint = new Color(255, 64, 64, 140);
 
-        private readonly List<DoorInstance> doors = new();
-        private Rectangle previewBounds;
-        private bool previewVisible;
-        private bool previewValid;
-        private readonly RevisionTracker revisions = new();
-
-        public required WorldMap WorldMap { get; init; }
-        public required Player Player { get; init; }
-        public required Hotbar Hotbar { get; init; }
         public required Texture2D Texture { get; init; }
 
-        public IReadOnlyList<DoorInstance> Doors => doors;
+        public IReadOnlyList<DoorInstance> Doors => FurnitureItems;
         public int Revision => revisions.Revision;
-        public bool HasUnsavedChanges => revisions.HasUnsavedChanges;
 
         public void Restore(IEnumerable<DoorSaveData> savedDoors)
         {
-            doors.Clear();
+            furnitureItems.Clear();
             if (savedDoors != null)
             {
                 foreach (DoorSaveData savedDoor in savedDoors)
@@ -51,7 +39,8 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                     if (!WorldMap.InBounds(tile.X, tile.Y))
                         continue;
 
-                    doors.Add(new DoorInstance(tile, WorldMap.TileSize, savedDoor.IsOpen, savedDoor.OpensRight));
+                    bool facingLeft = savedDoor.FacingLeft;
+                    furnitureItems.Add(new DoorInstance(tile, WorldMap.TileSize, savedDoor.IsOpen, savedDoor.OpensRight, facingLeft));
                 }
             }
 
@@ -59,14 +48,9 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             MarkPersisted();
         }
 
-        public void MarkPersisted()
-        {
-            revisions.MarkPersisted();
-        }
-
         public bool TryInteract(Player player)
         {
-            if (!InteractionFinder.TryGetNearest(doors, player, out DoorInstance door))
+            if (!InteractionFinder.TryGetNearest(furnitureItems, player, out DoorInstance door))
                 return false;
 
             bool toggled = door.TryToggle(player);
@@ -80,54 +64,46 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         {
             UpdatePlacementPreview(selectedHotbarIndex, mouseWorld);
 
-            if (!input.PlacePressed)
-                return false;
-
-            InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.WoodDoor)
-                return false;
-
-            Point baseTile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(baseTile.X, baseTile.Y))
-                return true;
-
-            if (!previewValid)
-                return true;
-
-            doors.Add(new DoorInstance(GetPlacementTopTile(baseTile), WorldMap.TileSize));
-            revisions.MarkChanged();
-            selectedSlot.RemoveOne();
-            return true;
+            return TryPlaceFurniture(input, selectedHotbarIndex, mouseWorld, ItemId.WoodDoor, baseTile =>
+            {
+                furnitureItems.Add(new DoorInstance(baseTile, WorldMap.TileSize, false, true, previewFacingLeft));
+            });
         }
 
         public void Draw(SpriteBatch spriteBatch)
         {
-            for (int i = 0; i < doors.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                DoorInstance door = doors[i];
+                DoorInstance door = furnitureItems[i];
                 Rectangle source = door.IsOpen ? OpenSource : ClosedSource;
                 Rectangle destination = door.DrawBounds;
                 SpriteEffects effects = door.IsOpen && !door.OpensRight
                     ? SpriteEffects.FlipHorizontally
                     : SpriteEffects.None;
+                if (door.FacingLeft)
+                    effects = effects == SpriteEffects.FlipHorizontally ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
 
                 spriteBatch.Draw(Texture, destination, source, Color.White, 0f, Vector2.Zero, effects, 0f);
             }
 
             if (previewVisible)
-                spriteBatch.Draw(Texture, previewBounds, ClosedSource, previewValid ? ValidPreviewTint : InvalidPreviewTint);
-        }
-
-        public bool IsObjectOccupyingTile(int tileX, int tileY)
-        {
-            return TryGetDoorIndexAtTile(new Point(tileX, tileY), out _);
-        }
-
-        public bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
-        {
-            if (TryGetDoorIndexAtTile(tile, out int index))
             {
-                target = new WorldObjectMiningTarget(MiningDefinition, doors[index].Bounds);
+                DoorInstance preview = new DoorInstance(previewBaseTile, WorldMap.TileSize, false, true, previewFacingLeft);
+                SpriteEffects effects = previewFacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                spriteBatch.Draw(Texture, preview.Bounds, ClosedSource, previewValid ? ValidPreviewTint : InvalidPreviewTint, 0f, Vector2.Zero, effects, 0f);
+            }
+        }
+
+        public override bool IsObjectOccupyingTile(int tileX, int tileY)
+        {
+            return TryGetFurnitureIndexAtTile(new Point(tileX, tileY), _ => true, out _);
+        }
+
+        public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
+        {
+            if (TryGetFurnitureIndexAtTile(tile, _ => true, out int index))
+            {
+                target = new WorldObjectMiningTarget(MiningDefinition, furnitureItems[index].Bounds);
                 return true;
             }
 
@@ -135,14 +111,14 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             return false;
         }
 
-        public bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
+        public override bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
         {
-            if (worldItemRuntimeSystem == null || !TryGetDoorIndexAtTile(tile, out int index))
+            if (worldItemRuntimeSystem == null || !TryGetFurnitureIndexAtTile(tile, _ => true, out int index))
                 return false;
 
-            DoorInstance door = doors[index];
+            DoorInstance door = furnitureItems[index];
             worldItemRuntimeSystem.SpawnItemDrops(ItemId.WoodDoor, 1, door.InteractionPosition);
-            doors.RemoveAt(index);
+            furnitureItems.RemoveAt(index);
             revisions.MarkChanged();
             return true;
         }
@@ -153,9 +129,9 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                 return false;
 
             Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tileX), tileY);
-            for (int i = 0; i < doors.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                DoorInstance door = doors[i];
+                DoorInstance door = furnitureItems[i];
                 if (!door.IsOpen && door.Bounds.Intersects(tileBounds))
                     return true;
             }
@@ -163,33 +139,27 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             return false;
         }
 
-        public void RemoveDoorsAffectedByBrokenTile(Point tile, System.Action<DoorInstance> onDoorRemoved)
+        public override void OnForegroundTileBroken(ForegroundTileBrokenContext context)
         {
-            if (!WorldMap.InBounds(tile.X, tile.Y))
+            if (!WorldMap.InBounds(context.Tile.X, context.Tile.Y))
                 return;
 
-            Point wrappedTile = new Point(WorldMap.WrapTileX(tile.X), tile.Y);
+            Point wrappedTile = new Point(WorldMap.WrapTileX(context.Tile.X), context.Tile.Y);
             bool removedAny = false;
 
-            for (int i = doors.Count - 1; i >= 0; i--)
+            for (int i = furnitureItems.Count - 1; i >= 0; i--)
             {
-                DoorInstance door = doors[i];
+                DoorInstance door = furnitureItems[i];
                 if (!door.IsAffectedByBrokenForegroundTile(wrappedTile))
                     continue;
 
-                onDoorRemoved?.Invoke(door);
-                doors.RemoveAt(i);
+                context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.WoodDoor, 1, door.InteractionPosition);
+                furnitureItems.RemoveAt(i);
                 removedAny = true;
             }
 
             if (removedAny)
                 revisions.MarkChanged();
-        }
-
-        public void OnForegroundTileBroken(ForegroundTileBrokenContext context)
-        {
-            RemoveDoorsAffectedByBrokenTile(context.Tile, door =>
-                context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.WoodDoor, 1, door.InteractionPosition));
         }
 
         private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
@@ -205,34 +175,14 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             if (!WorldMap.InBounds(baseTile.X, baseTile.Y))
                 return;
 
-            previewBounds = GetSnappedPlacementBounds(baseTile);
+            previewBaseTile = new Point(WorldMap.WrapTileX(baseTile.X), baseTile.Y);
             previewVisible = true;
-            previewValid = IsValidPlacement(previewBounds);
+
+            DoorInstance preview = new DoorInstance(previewBaseTile, WorldMap.TileSize);
+            previewValid = ValidatePlacement(preview.Bounds);
         }
 
-        private Point GetPlacementTopTile(Point baseTile)
-        {
-            int doorTileHeight = DoorHeight / WorldMap.TileSize;
-            return new Point(
-                WorldMap.WrapTileX(baseTile.X),
-                baseTile.Y - doorTileHeight + 1);
-        }
-
-        private Rectangle GetSnappedPlacementBounds(Point baseTile)
-        {
-            Point topTile = GetPlacementTopTile(baseTile);
-            int x = topTile.X * WorldMap.TileSize;
-            int y = topTile.Y * WorldMap.TileSize;
-            return new Rectangle(x, y, ClosedWidth, DoorHeight);
-        }
-
-        private bool IsValidPlacement(Rectangle bounds)
-        {
-            return WorldObjectPlacementValidator.CanPlaceObject(WorldMap, Player, bounds) &&
-                   HasDoorSupports(bounds);
-        }
-
-        private bool HasDoorSupports(Rectangle bounds)
+        protected override bool ValidateSupport(Rectangle bounds)
         {
             int topSupportTileY = (bounds.Top / WorldMap.TileSize) - 1;
             int tileX = bounds.Left / WorldMap.TileSize;
@@ -240,20 +190,12 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                    WorldMap.IsSolidAt(tileX, topSupportTileY);
         }
 
-        private bool TryGetDoorIndexAtTile(Point tile, out int index)
+        protected override bool IntersectsExisting(Rectangle bounds)
         {
-            index = -1;
-            if (!WorldMap.InBounds(tile.X, tile.Y))
-                return false;
-
-            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tile.X), tile.Y);
-            for (int i = 0; i < doors.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                if (!doors[i].Bounds.Intersects(tileBounds))
-                    continue;
-
-                index = i;
-                return true;
+                if (furnitureItems[i].Bounds.Intersects(bounds))
+                    return true;
             }
 
             return false;

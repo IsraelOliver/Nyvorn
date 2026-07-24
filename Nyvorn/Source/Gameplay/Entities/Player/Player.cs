@@ -39,6 +39,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public float WorldBreakRange => combat.WorldBreakRangeOverride ?? config.WorldInteractionRange;
         public int MiningPower => combat.MiningPower;
         public float MiningSpeed => combat.MiningSpeed;
+        public bool FacingRight => playerAnimator.FacingRight;
         public bool DebugFlyEnabled { get; private set; }
         public bool IsInWater { get; private set; }
         public float WaterSubmergedRatio { get; private set; }

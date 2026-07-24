@@ -11,7 +11,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class WorkbenchRuntimeSystem : IWorldObjectOccupancyProvider, IForegroundTileBreakListener, IWorldObjectMiningProvider
+    public sealed class WorkbenchRuntimeSystem : FurnitureRuntimeSystem<WorkbenchInstance>
     {
         public const int WorkbenchWidth = 24;
         public const int WorkbenchHeight = 16;
@@ -20,33 +20,26 @@ namespace Nyvorn.Source.Gameplay.Crafting
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1.5f, 1);
         private static readonly Rectangle NormalSource = new Rectangle(0, 0, WorkbenchWidth, WorkbenchHeight);
         private static readonly Rectangle SelectedSource = new Rectangle(WorkbenchWidth, 0, WorkbenchWidth, WorkbenchHeight);
-        private static readonly Color ValidPreviewTint = new Color(92, 255, 128, 140);
-        private static readonly Color InvalidPreviewTint = new Color(255, 64, 64, 140);
 
-        private readonly List<WorkbenchInstance> workbenches = new();
         private int hoveredWorkbenchIndex = -1;
-        private Rectangle previewBounds;
-        private bool previewVisible;
-        private bool previewValid;
-        private readonly RevisionTracker revisions = new();
-
-        public required WorldMap WorldMap { get; init; }
-        public required Player Player { get; init; }
-        public required Hotbar Hotbar { get; init; }
         public required Texture2D Texture { get; init; }
 
-        public IReadOnlyList<WorkbenchInstance> Workbenches => workbenches;
-        public bool HasUnsavedChanges => revisions.HasUnsavedChanges;
+        public IReadOnlyList<WorkbenchInstance> Workbenches => FurnitureItems;
 
         public void Restore(IEnumerable<WorkbenchSaveData> savedWorkbenches)
         {
-            workbenches.Clear();
+            furnitureItems.Clear();
             if (savedWorkbenches != null)
             {
                 foreach (WorkbenchSaveData savedWorkbench in savedWorkbenches)
                 {
                     if (savedWorkbench != null)
-                        workbenches.Add(new WorkbenchInstance(new Vector2(savedWorkbench.PositionX, savedWorkbench.PositionY)));
+                    {
+                        Point tile = new Point(WorldMap.WrapTileX((int)(savedWorkbench.PositionX / WorldMap.TileSize)),
+                                               (int)(savedWorkbench.PositionY / WorldMap.TileSize) + 1);
+                        bool facingLeft = savedWorkbench.FacingLeft;
+                        furnitureItems.Add(new WorkbenchInstance(tile, WorldMap.TileSize, facingLeft));
+                    }
                 }
             }
 
@@ -54,18 +47,13 @@ namespace Nyvorn.Source.Gameplay.Crafting
             MarkPersisted();
         }
 
-        public void MarkPersisted()
-        {
-            revisions.MarkPersisted();
-        }
-
         public void UpdateHover(Vector2 mouseWorld)
         {
             hoveredWorkbenchIndex = -1;
 
-            for (int i = 0; i < workbenches.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                Rectangle bounds = workbenches[i].Bounds;
+                Rectangle bounds = furnitureItems[i].Bounds;
                 Rectangle hoverBounds = bounds;
                 hoverBounds.Inflate(HoverPadding, HoverPadding);
                 if (!hoverBounds.Contains(mouseWorld))
@@ -81,14 +69,14 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         public CraftTier GetNearbyCraftTier()
         {
-            return InteractionFinder.TryGetNearest(workbenches, Player, out _)
+            return InteractionFinder.TryGetNearest(furnitureItems, Player, out _)
                 ? CraftTier.Workbench
                 : CraftTier.Basic;
         }
 
         public bool TryInteract(Player player, out InteractionResult result)
         {
-            if (InteractionFinder.TryGetNearest(workbenches, player, out WorkbenchInstance workbench))
+            if (InteractionFinder.TryGetNearest(furnitureItems, player, out WorkbenchInstance workbench))
             {
                 result = workbench.Interact(player);
                 return result != InteractionResult.None;
@@ -101,51 +89,46 @@ namespace Nyvorn.Source.Gameplay.Crafting
         public bool TryPlaceSelectedWorkbench(InputState input, int selectedHotbarIndex, Vector2 mouseWorld)
         {
             UpdatePlacementPreview(selectedHotbarIndex, mouseWorld);
+            return TryPlaceFurniture(input, selectedHotbarIndex, mouseWorld, ItemId.Workbench, tile =>
+            {
+                furnitureItems.Add(new WorkbenchInstance(tile, WorldMap.TileSize, previewFacingLeft));
+            });
+        }
 
-            if (!input.PlacePressed)
-                return false;
-
-            InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.Workbench)
-                return false;
-
-            Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(tile.X, tile.Y))
-                return true;
-
-            Rectangle bounds = previewBounds;
-            if (!previewValid)
-                return true;
-
-            workbenches.Add(new WorkbenchInstance(new Vector2(bounds.X, bounds.Y)));
-            revisions.MarkChanged();
-            selectedSlot.RemoveOne();
-            return true;
+        private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
+        {
+            base.UpdatePlacementPreview(selectedHotbarIndex, mouseWorld, ItemId.Workbench, WorkbenchWidth, WorkbenchHeight);
         }
 
         public void Draw(SpriteBatch spriteBatch)
         {
-            for (int i = 0; i < workbenches.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                Rectangle bounds = workbenches[i].Bounds;
+                WorkbenchInstance workbench = furnitureItems[i];
+                Rectangle bounds = workbench.Bounds;
                 Rectangle source = i == hoveredWorkbenchIndex ? SelectedSource : NormalSource;
-                spriteBatch.Draw(Texture, bounds, source, Color.White);
+                SpriteEffects effects = workbench.FacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                spriteBatch.Draw(Texture, bounds, source, Color.White, 0f, Vector2.Zero, effects, 0f);
             }
 
             if (previewVisible)
-                spriteBatch.Draw(Texture, previewBounds, NormalSource, previewValid ? ValidPreviewTint : InvalidPreviewTint);
-        }
-
-        public bool IsObjectOccupyingTile(int tileX, int tileY)
-        {
-            return TryGetWorkbenchIndexAtTile(new Point(tileX, tileY), out _);
-        }
-
-        public bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
-        {
-            if (TryGetWorkbenchIndexAtTile(tile, out int index))
             {
-                target = new WorldObjectMiningTarget(MiningDefinition, workbenches[index].Bounds);
+                WorkbenchInstance preview = new WorkbenchInstance(previewBaseTile, WorldMap.TileSize, previewFacingLeft);
+                SpriteEffects effects = previewFacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                spriteBatch.Draw(Texture, preview.Bounds, NormalSource, previewValid ? ValidPreviewTint : InvalidPreviewTint, 0f, Vector2.Zero, effects, 0f);
+            }
+        }
+
+        public override bool IsObjectOccupyingTile(int tileX, int tileY)
+        {
+            return TryGetFurnitureIndexAtTile(new Point(tileX, tileY), _ => true, out _);
+        }
+
+        public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
+        {
+            if (TryGetFurnitureIndexAtTile(tile, _ => true, out int index))
+            {
+                target = new WorldObjectMiningTarget(MiningDefinition, furnitureItems[index].Bounds);
                 return true;
             }
 
@@ -153,87 +136,31 @@ namespace Nyvorn.Source.Gameplay.Crafting
             return false;
         }
 
-        public bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
+        public override bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
         {
-            if (worldItemRuntimeSystem == null || !TryGetWorkbenchIndexAtTile(tile, out int index))
+            if (worldItemRuntimeSystem == null || !TryGetFurnitureIndexAtTile(tile, _ => true, out int index))
                 return false;
 
-            WorkbenchInstance workbench = workbenches[index];
+            WorkbenchInstance workbench = furnitureItems[index];
             worldItemRuntimeSystem.SpawnItemDrops(ItemId.Workbench, 1, workbench.InteractionPosition);
-            workbenches.RemoveAt(index);
+            furnitureItems.RemoveAt(index);
             revisions.MarkChanged();
             return true;
         }
 
-        public void RemoveWorkbenchesAffectedByBrokenTile(Point tile, System.Action<WorkbenchInstance> onWorkbenchRemoved)
+        public override void OnForegroundTileBroken(ForegroundTileBrokenContext context)
         {
-            if (WorldObjectSupport.RemoveObjectsWithBrokenBaseSupport(workbenches, tile, WorldMap, onWorkbenchRemoved))
+            if (WorldObjectSupport.RemoveObjectsWithBrokenBaseSupport(furnitureItems, context.Tile, WorldMap, workbench =>
+                context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.Workbench, 1, workbench.InteractionPosition)))
                 revisions.MarkChanged();
         }
 
-        public void OnForegroundTileBroken(ForegroundTileBrokenContext context)
+        protected override bool IntersectsExisting(Rectangle bounds)
         {
-            RemoveWorkbenchesAffectedByBrokenTile(context.Tile, workbench =>
-                context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.Workbench, 1, workbench.InteractionPosition));
-        }
-
-        private Rectangle GetSnappedPlacementBounds(Point tile)
-        {
-            int x = WorldMap.WrapTileX(tile.X) * WorldMap.TileSize;
-            int y = tile.Y * WorldMap.TileSize;
-            return new Rectangle(x, y, WorkbenchWidth, WorkbenchHeight);
-        }
-
-        private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
-        {
-            previewVisible = false;
-            previewValid = false;
-
-            InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.Workbench)
-                return;
-
-            Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(tile.X, tile.Y))
-                return;
-
-            previewBounds = GetSnappedPlacementBounds(tile);
-            previewVisible = true;
-            previewValid = IsValidPlacement(previewBounds);
-        }
-
-        private bool IsValidPlacement(Rectangle bounds)
-        {
-            return WorldObjectPlacementValidator.CanPlaceObject(WorldMap, Player, bounds) &&
-                   WorldObjectSupport.HasFullBaseSupport(WorldMap, bounds) &&
-                   !IntersectsExistingWorkbench(bounds);
-        }
-
-        private bool IntersectsExistingWorkbench(Rectangle bounds)
-        {
-            for (int i = 0; i < workbenches.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                if (workbenches[i].Bounds.Intersects(bounds))
+                if (furnitureItems[i].Bounds.Intersects(bounds))
                     return true;
-            }
-
-            return false;
-        }
-
-        private bool TryGetWorkbenchIndexAtTile(Point tile, out int index)
-        {
-            index = -1;
-            if (!WorldMap.InBounds(tile.X, tile.Y))
-                return false;
-
-            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tile.X), tile.Y);
-            for (int i = 0; i < workbenches.Count; i++)
-            {
-                if (!workbenches[i].Bounds.Intersects(tileBounds))
-                    continue;
-
-                index = i;
-                return true;
             }
 
             return false;

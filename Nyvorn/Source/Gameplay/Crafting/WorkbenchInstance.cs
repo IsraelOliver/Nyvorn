@@ -5,19 +5,35 @@ using Nyvorn.Source.Gameplay.World.Objects;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class WorkbenchInstance : IInteractable, IBaseSupportedWorldObject
+    public sealed class WorkbenchInstance : IInteractable, IBaseSupportedWorldObject, IFurniture
     {
-        public WorkbenchInstance(Vector2 position)
+        private readonly int tileSize;
+
+        public WorkbenchInstance(Point tile, int tileSize, bool facingLeft = false)
         {
-            Position = position;
+            Tile = tile;
+            this.tileSize = tileSize;
+            FacingLeft = facingLeft;
         }
 
-        public Vector2 Position { get; }
+        public Point Tile { get; }
+        public bool FacingLeft { get; }
+
+        public Vector2 Position
+        {
+            get
+            {
+                int x = (Tile.X * tileSize) + ((tileSize - WorkbenchRuntimeSystem.WorkbenchWidth) / 2);
+                int y = ((Tile.Y + 1) * tileSize) - WorkbenchRuntimeSystem.WorkbenchHeight;
+                return new Vector2(x, y);
+            }
+        }
+
         public Vector2 InteractionPosition => Bounds.Center.ToVector2();
 
         public Rectangle Bounds => new Rectangle(
-            (int)System.MathF.Round(Position.X),
-            (int)System.MathF.Round(Position.Y),
+            (int)Position.X,
+            (int)Position.Y,
             WorkbenchRuntimeSystem.WorkbenchWidth,
             WorkbenchRuntimeSystem.WorkbenchHeight);
 

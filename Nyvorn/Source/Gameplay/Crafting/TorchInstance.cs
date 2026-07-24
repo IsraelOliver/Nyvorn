@@ -3,15 +3,30 @@ using Nyvorn.Source.Gameplay.World.Objects;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class TorchInstance : IBaseSupportedWorldObject
+    public sealed class TorchInstance : IBaseSupportedWorldObject, IFurniture
     {
-        public TorchInstance(Vector2 position, int poleFrameIndex)
+        private readonly int tileSize;
+
+        public TorchInstance(Point tile, int poleFrameIndex, int tileSize, bool facingLeft = false)
         {
-            Position = position;
+            Tile = tile;
             PoleFrameIndex = poleFrameIndex;
+            this.tileSize = tileSize;
+            FacingLeft = facingLeft;
         }
 
-        public Vector2 Position { get; }
+        public Point Tile { get; }
+        public bool FacingLeft { get; }
+
+        public Vector2 Position
+        {
+            get
+            {
+                int x = (Tile.X * tileSize) + ((tileSize - TorchRuntimeSystem.TorchWidth) / 2);
+                int y = ((Tile.Y + 1) * tileSize) - TorchRuntimeSystem.TorchHeight;
+                return new Vector2(x, y);
+            }
+        }
 
         // Which 8x8 frame of torch-Sheet this instance uses: 0/1 are the two ground variants, 2/3
         // are wall-mounted (left/right) - only 0/1 are ever placed today since wall mounting isn't
@@ -19,8 +34,8 @@ namespace Nyvorn.Source.Gameplay.Crafting
         public int PoleFrameIndex { get; }
 
         public Rectangle Bounds => new Rectangle(
-            (int)System.MathF.Round(Position.X),
-            (int)System.MathF.Round(Position.Y),
+            (int)Position.X,
+            (int)Position.Y,
             TorchRuntimeSystem.TorchWidth,
             TorchRuntimeSystem.TorchHeight);
 

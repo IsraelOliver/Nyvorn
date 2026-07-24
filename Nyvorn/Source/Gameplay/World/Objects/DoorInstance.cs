@@ -4,19 +4,21 @@ using Nyvorn.Source.Gameplay.Interaction;
 
 namespace Nyvorn.Source.Gameplay.World.Objects
 {
-    public sealed class DoorInstance : IInteractable
+    public sealed class DoorInstance : IInteractable, IFurniture
     {
         private readonly int tileSize;
 
-        public DoorInstance(Point tile, int tileSize, bool isOpen = false, bool opensRight = true)
+        public DoorInstance(Point tile, int tileSize, bool isOpen = false, bool opensRight = true, bool facingLeft = false)
         {
             Tile = tile;
             this.tileSize = tileSize;
             IsOpen = isOpen;
             OpensRight = opensRight;
+            FacingLeft = facingLeft;
         }
 
         public Point Tile { get; }
+        public bool FacingLeft { get; }
         public bool IsOpen { get; private set; }
         public bool OpensRight { get; private set; }
 

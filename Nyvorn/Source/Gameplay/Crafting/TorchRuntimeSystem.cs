@@ -11,7 +11,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class TorchRuntimeSystem : IForegroundTileBreakListener, IWorldObjectMiningProvider
+    public sealed class TorchRuntimeSystem : FurnitureRuntimeSystem<TorchInstance>
     {
         public const int TorchWidth = 8;
         public const int TorchHeight = 8;
@@ -31,44 +31,35 @@ namespace Nyvorn.Source.Gameplay.Crafting
         private static readonly Point FlameAnchor = new Point(3, 5);
 
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 0.5f, 1);
-        private static readonly Color ValidPreviewTint = new Color(92, 255, 128, 140);
-        private static readonly Color InvalidPreviewTint = new Color(255, 64, 64, 140);
 
-        private readonly List<TorchInstance> torches = new();
         private readonly System.Random random = new();
-        private Rectangle previewBounds;
-        private bool previewVisible;
-        private bool previewValid;
         private int previewPoleFrameIndex;
-        private readonly RevisionTracker revisions = new();
 
-        public required WorldMap WorldMap { get; init; }
-        public required Player Player { get; init; }
-        public required Hotbar Hotbar { get; init; }
         public required Texture2D PoleTexture { get; init; }
         public required Texture2D FlameTexture { get; init; }
 
-        public IReadOnlyList<TorchInstance> Torches => torches;
-        public bool HasUnsavedChanges => revisions.HasUnsavedChanges;
+        public IReadOnlyList<TorchInstance> Torches => FurnitureItems;
 
-        // Consumed by WorldLightingSystem each frame - see PlayingSession.UpdateFrame. Falloff is
-        // whatever the normal BFS decay produces from here, same as a sky opening - no separate
-        // radius concept needed.
         public IEnumerable<Vector2> GetLightSourcePositions()
         {
-            for (int i = 0; i < torches.Count; i++)
-                yield return torches[i].LightOrigin;
+            for (int i = 0; i < furnitureItems.Count; i++)
+                yield return furnitureItems[i].LightOrigin;
         }
 
         public void Restore(IEnumerable<TorchSaveData> savedTorches)
         {
-            torches.Clear();
+            furnitureItems.Clear();
             if (savedTorches != null)
             {
                 foreach (TorchSaveData savedTorch in savedTorches)
                 {
                     if (savedTorch != null)
-                        torches.Add(new TorchInstance(new Vector2(savedTorch.PositionX, savedTorch.PositionY), savedTorch.PoleFrameIndex));
+                    {
+                        Point tile = new Point(WorldMap.WrapTileX((int)(savedTorch.PositionX / WorldMap.TileSize)),
+                                               (int)(savedTorch.PositionY / WorldMap.TileSize) + 1);
+                        bool facingLeft = savedTorch.FacingLeft;
+                        furnitureItems.Add(new TorchInstance(tile, savedTorch.PoleFrameIndex, WorldMap.TileSize, facingLeft));
+                    }
                 }
             }
 
@@ -76,42 +67,24 @@ namespace Nyvorn.Source.Gameplay.Crafting
             MarkPersisted();
         }
 
-        public void MarkPersisted()
-        {
-            revisions.MarkPersisted();
-        }
-
         public bool TryPlaceSelectedTorch(InputState input, int selectedHotbarIndex, Vector2 mouseWorld)
         {
-            UpdatePlacementPreview(selectedHotbarIndex, mouseWorld);
+            UpdateTorchPlacementPreview(selectedHotbarIndex, mouseWorld);
 
-            if (!input.PlacePressed)
-                return false;
-
-            InventorySlot selectedSlot = Hotbar.GetSlot(selectedHotbarIndex);
-            if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.Torch)
-                return false;
-
-            Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(tile.X, tile.Y))
-                return true;
-
-            if (!previewValid)
-                return true;
-
-            torches.Add(new TorchInstance(new Vector2(previewBounds.X, previewBounds.Y), previewPoleFrameIndex));
-            revisions.MarkChanged();
-            selectedSlot.RemoveOne();
-            return true;
+            return TryPlaceFurniture(input, selectedHotbarIndex, mouseWorld, ItemId.Torch, tile =>
+            {
+                furnitureItems.Add(new TorchInstance(tile, previewPoleFrameIndex, WorldMap.TileSize, previewFacingLeft));
+            });
         }
 
         public void Draw(SpriteBatch spriteBatch, float visualTimeSeconds)
         {
-            for (int i = 0; i < torches.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                TorchInstance torch = torches[i];
+                TorchInstance torch = furnitureItems[i];
                 Rectangle poleSource = new Rectangle(torch.PoleFrameIndex * PoleFrameSize, 0, PoleFrameSize, PoleFrameSize);
-                spriteBatch.Draw(PoleTexture, torch.Bounds, poleSource, Color.White);
+                SpriteEffects effects = torch.FacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                spriteBatch.Draw(PoleTexture, torch.Bounds, poleSource, Color.White, 0f, Vector2.Zero, effects, 0f);
 
                 Point poleAnchor = PoleAnchors[torch.PoleFrameIndex];
                 int flameFrame = GetFlameFrame(torch, visualTimeSeconds);
@@ -124,8 +97,10 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
             if (previewVisible)
             {
+                TorchInstance preview = new TorchInstance(previewBaseTile, previewPoleFrameIndex, WorldMap.TileSize, previewFacingLeft);
                 Rectangle poleSource = new Rectangle(previewPoleFrameIndex * PoleFrameSize, 0, PoleFrameSize, PoleFrameSize);
-                spriteBatch.Draw(PoleTexture, previewBounds, poleSource, previewValid ? ValidPreviewTint : InvalidPreviewTint);
+                SpriteEffects effects = previewFacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                spriteBatch.Draw(PoleTexture, preview.Bounds, poleSource, previewValid ? ValidPreviewTint : InvalidPreviewTint, 0f, Vector2.Zero, effects, 0f);
             }
         }
 
@@ -142,11 +117,11 @@ namespace Nyvorn.Source.Gameplay.Crafting
             return (int)(t / FlameFrameDuration);
         }
 
-        public bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
+        public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
         {
-            if (TryGetTorchIndexAtTile(tile, out int index))
+            if (TryGetFurnitureIndexAtTile(tile, _ => true, out int index))
             {
-                target = new WorldObjectMiningTarget(MiningDefinition, torches[index].Bounds);
+                target = new WorldObjectMiningTarget(MiningDefinition, furnitureItems[index].Bounds);
                 return true;
             }
 
@@ -154,34 +129,31 @@ namespace Nyvorn.Source.Gameplay.Crafting
             return false;
         }
 
-        public bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
+        public override bool TryMineObjectAtTile(Point tile, WorldItemRuntimeSystem worldItemRuntimeSystem)
         {
-            if (worldItemRuntimeSystem == null || !TryGetTorchIndexAtTile(tile, out int index))
+            if (worldItemRuntimeSystem == null || !TryGetFurnitureIndexAtTile(tile, _ => true, out int index))
                 return false;
 
-            TorchInstance torch = torches[index];
+            TorchInstance torch = furnitureItems[index];
             worldItemRuntimeSystem.SpawnItemDrops(ItemId.Torch, 1, torch.Bounds.Center.ToVector2());
-            torches.RemoveAt(index);
+            furnitureItems.RemoveAt(index);
             revisions.MarkChanged();
             return true;
         }
 
-        // Ground-mounted torches use the generic base-support check; wall-mounted ones aren't
-        // resting on anything below, so breaking their side wall has to be checked separately -
-        // otherwise a torch would keep floating in mid-air after its mount is mined out.
-        public void OnForegroundTileBroken(ForegroundTileBrokenContext context)
+        public override void OnForegroundTileBroken(ForegroundTileBrokenContext context)
         {
             Point wrappedBrokenTile = new Point(WorldMap.WrapTileX(context.Tile.X), context.Tile.Y);
             bool removedAny = false;
 
-            for (int i = torches.Count - 1; i >= 0; i--)
+            for (int i = furnitureItems.Count - 1; i >= 0; i--)
             {
-                TorchInstance torch = torches[i];
+                TorchInstance torch = furnitureItems[i];
                 if (!IsSupportTile(torch, wrappedBrokenTile))
                     continue;
 
                 context.WorldItemRuntimeSystem.SpawnItemDrops(ItemId.Torch, 1, torch.Bounds.Center.ToVector2());
-                torches.RemoveAt(i);
+                furnitureItems.RemoveAt(i);
                 removedAny = true;
             }
 
@@ -205,14 +177,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
             }
         }
 
-        private Rectangle GetSnappedPlacementBounds(Point tile)
-        {
-            int x = (WorldMap.WrapTileX(tile.X) * WorldMap.TileSize) + ((WorldMap.TileSize - TorchWidth) / 2);
-            int y = ((tile.Y + 1) * WorldMap.TileSize) - TorchHeight;
-            return new Rectangle(x, y, TorchWidth, TorchHeight);
-        }
-
-        private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
+        private void UpdateTorchPlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
         {
             previewVisible = false;
             previewValid = false;
@@ -222,15 +187,28 @@ namespace Nyvorn.Source.Gameplay.Crafting
             if (selectedSlot.IsEmpty || selectedSlot.ItemId != ItemId.Torch)
                 return;
 
-            Point tile = WorldMap.WorldToTile(mouseWorld);
-            if (!WorldMap.InBounds(tile.X, tile.Y))
+            Point baseTile = WorldMap.WorldToTile(mouseWorld);
+            if (!WorldMap.InBounds(baseTile.X, baseTile.Y))
                 return;
 
-            previewBounds = GetSnappedPlacementBounds(tile);
+            previewBaseTile = new Point(WorldMap.WrapTileX(baseTile.X), baseTile.Y);
             previewVisible = true;
-            previewValid = WorldObjectPlacementValidator.CanPlaceObject(WorldMap, Player, previewBounds) &&
-                            TryResolvePoleFrame(previewBounds, out previewPoleFrameIndex) &&
-                            !IntersectsExistingTorch(previewBounds);
+
+            TorchInstance preview = new TorchInstance(previewBaseTile, 0, WorldMap.TileSize);
+            Rectangle previewBounds = preview.Bounds;
+            previewValid = ValidateTorchPlacement(previewBounds);
+        }
+
+        private bool ValidateTorchPlacement(Rectangle bounds)
+        {
+            return WorldObjectPlacementValidator.CanPlaceObject(WorldMap, Player, bounds) &&
+                   TryResolvePoleFrame(bounds, out previewPoleFrameIndex) &&
+                   !IntersectsExisting(bounds);
+        }
+
+        protected override bool ValidateSupport(Rectangle bounds)
+        {
+            return TryResolvePoleFrame(bounds, out _);
         }
 
         // Priority: standing on solid floor (frame 0/1) -> a solid foreground tile or tree trunk to
@@ -300,33 +278,19 @@ namespace Nyvorn.Source.Gameplay.Crafting
             }
         }
 
-        private bool IntersectsExistingTorch(Rectangle bounds)
+        protected override bool IntersectsExisting(Rectangle bounds)
         {
-            for (int i = 0; i < torches.Count; i++)
+            for (int i = 0; i < furnitureItems.Count; i++)
             {
-                if (torches[i].Bounds.Intersects(bounds))
+                if (furnitureItems[i].Bounds.Intersects(bounds))
                     return true;
             }
 
             return false;
         }
 
-        private bool TryGetTorchIndexAtTile(Point tile, out int index)
+        public override bool IsObjectOccupyingTile(int tileX, int tileY)
         {
-            index = -1;
-            if (!WorldMap.InBounds(tile.X, tile.Y))
-                return false;
-
-            Rectangle tileBounds = WorldMap.GetTileBounds(WorldMap.WrapTileX(tile.X), tile.Y);
-            for (int i = 0; i < torches.Count; i++)
-            {
-                if (!torches[i].Bounds.Intersects(tileBounds))
-                    continue;
-
-                index = i;
-                return true;
-            }
-
             return false;
         }
     }
