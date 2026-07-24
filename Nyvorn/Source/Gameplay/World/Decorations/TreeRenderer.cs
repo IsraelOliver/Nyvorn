@@ -65,7 +65,7 @@ namespace Nyvorn.Source.World.Decorations
             {
                 TreePartPlacement placement = tree.Parts[i];
                 TreePartDefinition definition = atlas.Get(placement.PartType);
-                Rectangle source = atlas.GetSourceRectangle(tree, placement.PartType, i);
+                Rectangle source = atlas.GetSourceRectangle(tree, placement.PartType, -placement.OffsetTiles.Y);
 
                 Rectangle destination = GetPixelPerfectDestination(
                     worldMap,
@@ -103,7 +103,7 @@ namespace Nyvorn.Source.World.Decorations
             {
                 TreePartPlacement placement = tree.Parts[i];
                 TreePartDefinition definition = atlas.Get(placement.PartType);
-                Rectangle source = atlas.GetSourceRectangle(tree, placement.PartType, i);
+                Rectangle source = atlas.GetSourceRectangle(tree, placement.PartType, -placement.OffsetTiles.Y);
                 Rectangle destination = GetPixelPerfectDestination(
                     worldMap,
                     tree.BaseTile,

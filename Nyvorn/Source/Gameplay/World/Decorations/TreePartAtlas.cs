@@ -65,13 +65,13 @@ namespace Nyvorn.Source.World.Decorations
             return parts[partType].SourceRectangle;
         }
 
-        public Rectangle GetSourceRectangle(TreeInstance tree, TreePartType partType, int placementIndex)
+        public Rectangle GetSourceRectangle(TreeInstance tree, TreePartType partType, int trunkRowFromBase)
         {
             int rootLine = tree.RootStyleRow == 4 ? 4 : 3;
 
             return partType switch
             {
-                TreePartType.TrunkStraight => GetStraightTrunkSource(tree.Seed, placementIndex),
+                TreePartType.TrunkStraight => GetStraightTrunkSource(tree.Seed, trunkRowFromBase),
                 TreePartType.TrunkBaseRightRootSocket => GetSmallCell(1, rootLine),
                 TreePartType.TrunkBaseLeftRootSocket => GetSmallCell(4, rootLine),
                 TreePartType.RootLeft => GetSmallCell(3, rootLine),
@@ -106,15 +106,15 @@ namespace Nyvorn.Source.World.Decorations
             return new Rectangle(x, y, SmallPartPixelSize, SmallPartPixelSize);
         }
 
-        private static Rectangle GetStraightTrunkSource(int seed, int placementIndex)
+        private static Rectangle GetStraightTrunkSource(int seed, int trunkRowFromBase)
         {
-            if (placementIndex == 0)
+            if (trunkRowFromBase == 0)
             {
                 int baseLine = 1 + (System.Math.Abs(seed) % 2);
                 return GetSmallCell(1, baseLine);
             }
 
-            int variant = System.Math.Abs(seed + (placementIndex * 37)) % 6;
+            int variant = System.Math.Abs(seed + (trunkRowFromBase * 37)) % 6;
             int column = 1 + (variant % 3);
             int line = 1 + (variant / 3);
             return GetSmallCell(column, line);

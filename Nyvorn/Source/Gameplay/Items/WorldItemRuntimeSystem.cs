@@ -9,7 +9,7 @@ namespace Nyvorn.Source.Gameplay.Items
 {
     public sealed class WorldItemRuntimeSystem
     {
-        private const float ItemPullRangeInTiles = 1f;
+        private const float ItemPullRangeInTiles = 2f;
         private const float ItemPullStrength = 900f;
 
         public required WorldMap WorldMap { get; init; }

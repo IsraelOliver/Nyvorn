@@ -13,6 +13,9 @@ namespace Nyvorn.Source.Gameplay.Items
         private float velocityX;
         private float velocityY;
         private float pickupDelayTimer;
+        // Set by PullToward each frame; while magnetized the item flies straight to the player,
+        // ignoring gravity and tile collision (Terraria-style pickup pull through walls).
+        private bool isMagnetized;
 
         public WorldItem(
             ItemDefinition definition,
@@ -54,12 +57,21 @@ namespace Nyvorn.Source.Gameplay.Items
 
         public void Update(float dt, WorldMap worldMap)
         {
-            WorldCollisionQuery collision = WorldCollisionQuery.SolidTiles(worldMap);
-
             if (pickupDelayTimer > 0f)
                 pickupDelayTimer -= dt;
 
-            position.X += velocityX * dt;
+            if (isMagnetized)
+            {
+                position.X += velocityX * dt;
+                position.Y += velocityY * dt;
+                kinematicMotor.Position = position;
+                isMagnetized = false;
+                return;
+            }
+
+            WorldCollisionQuery collision = WorldCollisionQuery.SolidTiles(worldMap);
+
+            MoveHorizontally(collision, velocityX * dt);
             velocityX *= 0.88f;
 
             velocityY += PhysicsSettings.WorldGravity * Definition.GravityScale * dt;
@@ -78,6 +90,17 @@ namespace Nyvorn.Source.Gameplay.Items
             offset.Normalize();
             velocityX += offset.X * pullStrength * dt;
             velocityY += offset.Y * pullStrength * dt;
+
+            const float maxPullSpeed = 280f;
+            Vector2 velocity = new(velocityX, velocityY);
+            if (velocity.LengthSquared() > maxPullSpeed * maxPullSpeed)
+            {
+                velocity = Vector2.Normalize(velocity) * maxPullSpeed;
+                velocityX = velocity.X;
+                velocityY = velocity.Y;
+            }
+
+            isMagnetized = true;
         }
 
         public void ShiftX(float deltaX)
@@ -97,6 +120,37 @@ namespace Nyvorn.Source.Gameplay.Items
                 topLeft,
                 Definition.SourceRectangle,
                 tint);
+        }
+
+        private void MoveHorizontally(WorldCollisionQuery collision, float amount)
+        {
+            kinematicMotor.Position = position;
+
+            kinematicMotor.MoveX(
+                amount,
+                (candidatePosition, axis, direction) => HasHorizontalSolidCollisionAt(collision, candidatePosition, direction),
+                hit =>
+                {
+                    velocityX = 0f;
+                    return false;
+                });
+
+            position = kinematicMotor.Position;
+        }
+
+        private bool HasHorizontalSolidCollisionAt(WorldCollisionQuery collision, Vector2 candidatePosition, int direction)
+        {
+            int ts = collision.TileSize;
+            float top = GetTop(candidatePosition) + 1f;
+            float bottom = GetBottom(candidatePosition) - 2f;
+            int tileYTop = (int)System.MathF.Floor(top / ts);
+            int tileYBottom = (int)System.MathF.Floor(bottom / ts);
+            float edge = direction > 0
+                ? GetRight(candidatePosition)
+                : GetLeft(candidatePosition);
+            int tileX = (int)System.MathF.Floor(edge / ts);
+
+            return collision.IsBlockedAt(tileX, tileYTop) || collision.IsBlockedAt(tileX, tileYBottom);
         }
 
         private void MoveVertically(WorldCollisionQuery collision, float amount)
