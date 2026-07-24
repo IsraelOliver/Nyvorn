@@ -26,6 +26,7 @@ namespace Nyvorn.Source.World.Persistence
         public List<TorchSaveData> Torches { get; init; } = new();
         public List<DoorSaveData> Doors { get; init; } = new();
         public List<TreeSaveData> Trees { get; init; } = new();
+        public List<SurfaceDecorationSaveData> SurfaceDecorations { get; init; } = new();
         public List<string> ConsoleCommandHistory { get; init; } = new();
         public byte[] WorldTileSnapshot { get; init; }
         public byte[] BackgroundTileSnapshot { get; init; }

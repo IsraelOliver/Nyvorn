@@ -161,6 +161,18 @@
     "worldCollisionRect": [1, 8, 10, 3]
   },
   {
+    "id": "Mushroom",
+    "name": "Mushroom",
+    "texturePath": "trees/mushroom",
+    "stackable": true,
+    "maxStack": 999,
+    "gravityScale": 1.0,
+    "worldSize": [8, 8],
+    "worldPivot": [4, 8],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [1, 2, 6, 6]
+  },
+  {
     "id": "Workbench",
     "name": "Workbench",
     "texturePath": "objects/worktable-sheet",

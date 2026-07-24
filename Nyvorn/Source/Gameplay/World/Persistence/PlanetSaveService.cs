@@ -111,6 +111,9 @@ namespace Nyvorn.Source.World.Persistence
                 Trees = session.WorldMap.Trees
                     .Select(TreeSaveData.FromTree)
                     .ToList(),
+                SurfaceDecorations = session.WorldMap.SurfaceDecorations
+                    .Select(SurfaceDecorationSaveData.FromDecoration)
+                    .ToList(),
                 WorldItems = session.WorldItems
                     .Select(item => new WorldItemSaveData
                     {
@@ -239,6 +242,7 @@ namespace Nyvorn.Source.World.Persistence
                 Torches = saveData.Torches ?? new List<TorchSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
+                SurfaceDecorations = saveData.SurfaceDecorations ?? new List<SurfaceDecorationSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
                 WorldTileSnapshot = CompressBytes(saveData.WorldTileSnapshot),
                 BackgroundTileSnapshot = CompressBytes(saveData.BackgroundTileSnapshot),
@@ -270,6 +274,7 @@ namespace Nyvorn.Source.World.Persistence
                 Torches = saveData.Torches ?? new List<TorchSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
+                SurfaceDecorations = saveData.SurfaceDecorations ?? new List<SurfaceDecorationSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
                 WorldTileSnapshot = DecompressBytes(saveData.WorldTileSnapshot),
                 BackgroundTileSnapshot = DecompressBytes(saveData.BackgroundTileSnapshot),

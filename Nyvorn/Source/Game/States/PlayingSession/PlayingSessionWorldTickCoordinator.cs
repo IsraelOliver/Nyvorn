@@ -24,6 +24,10 @@ namespace Nyvorn.Source.Game.States
         // fed) tracked-puddle dictionary directly rather than the random chunk sampler, so it can
         // afford a bigger per-tick batch without re-sweeping the whole active area.
         private const int MaxRainPuddleEvaporationsPerTick = 32;
+        // Mushroom regrowth is a rare, world-wide trickle: the slow tick (1/s) samples a handful
+        // of random tiles across the whole map, and most samples fail the ground/theme checks -
+        // that scarcity IS the growth pacing, no timer needed.
+        private const int MaxMushroomGrowthSamplesPerTick = 48;
 
         private readonly Random randomTileUpdateRandom = new();
         private float liquidTickAccumulator;
@@ -46,6 +50,7 @@ namespace Nyvorn.Source.Game.States
 
         public int LastRandomTileSampleCount { get; private set; }
         public int LastGrassGrowthCount { get; private set; }
+        public int LastMushroomGrowthCount { get; private set; }
         public float WorldTickTimeScale => WorldTickSystem.TimeScale;
         public bool WorldTicksPaused => WorldTickSystem.IsPaused;
         public long FastTickCount => WorldTickSystem.FastTickCount;
@@ -304,6 +309,24 @@ namespace Nyvorn.Source.Game.States
 
         private void OnSlowTick()
         {
+            RunMushroomGrowthUpdates();
+        }
+
+        private void RunMushroomGrowthUpdates()
+        {
+            int grownCount = 0;
+            RandomTileUpdateHelper.VisitRandomTilesGlobal(
+                WorldMap,
+                1,
+                MaxMushroomGrowthSamplesPerTick,
+                randomTileUpdateRandom,
+                tile =>
+                {
+                    if (SurfaceDecorationGrowthSimulation.TryRandomUpdate(WorldMap, LiquidSystem, tile.X, tile.Y, randomTileUpdateRandom))
+                        grownCount++;
+                });
+
+            LastMushroomGrowthCount = grownCount;
         }
 
         private int RunGrassRandomUpdates(int samplesPerChunk, int maxSamples)

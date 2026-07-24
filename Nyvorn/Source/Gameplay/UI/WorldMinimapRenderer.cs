@@ -430,6 +430,7 @@ namespace Nyvorn.Source.Gameplay.UI
             }
 
             DrawTreesOnMinimapTexture(worldMap, targetWidth, targetHeight);
+            DrawSurfaceDecorationsOnMinimapTexture(worldMap, targetWidth, targetHeight);
 
             minimapTexture.SetData(minimapPixels);
             cachedTileRevision = worldMap.TileRevision;
@@ -469,6 +470,28 @@ namespace Nyvorn.Source.Gameplay.UI
                     SetMinimapPixel(tileX, tileY, GetTreeCanopyMinimapColor(x, y), targetWidth, targetHeight);
                 }
             }
+        }
+
+        private void DrawSurfaceDecorationsOnMinimapTexture(WorldMap worldMap, int targetWidth, int targetHeight)
+        {
+            for (int i = 0; i < worldMap.SurfaceDecorations.Count; i++)
+            {
+                SurfaceDecorationInstance decoration = worldMap.SurfaceDecorations[i];
+                SetMinimapPixel(
+                    worldMap.WrapTileX(decoration.Tile.X),
+                    decoration.Tile.Y,
+                    GetSurfaceDecorationMinimapColor(decoration.Type),
+                    targetWidth,
+                    targetHeight);
+            }
+        }
+
+        private static Color GetSurfaceDecorationMinimapColor(SurfaceDecorationType decorationType)
+        {
+            return decorationType switch
+            {
+                _ => new Color(202, 58, 48)
+            };
         }
 
         private void SetMinimapPixel(int x, int y, Color color, int targetWidth, int targetHeight)

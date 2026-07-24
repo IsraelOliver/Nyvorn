@@ -31,6 +31,7 @@ namespace Nyvorn.Source.World
         public int ChunkCountX => (Width + ChunkTileSize - 1) / ChunkTileSize;
         public int ChunkCountY => (Height + ChunkTileSize - 1) / ChunkTileSize;
         public IReadOnlyList<TreeInstance> Trees => _trees;
+        public IReadOnlyList<SurfaceDecorationInstance> SurfaceDecorations => _surfaceDecorations;
 
         internal event Action<TissueChangedEvent> TissueChanged;
 
@@ -42,6 +43,7 @@ namespace Nyvorn.Source.World
         private Texture2D _wood;
         private Texture2D _ironOre;
         private Texture2D _treeTexture;
+        private Texture2D _mushroomTexture;
         private TissueField _tissueField;
         private int _persistedTileRevision;
         private SpriteBatch _chunkRenderSpriteBatch;
@@ -52,6 +54,7 @@ namespace Nyvorn.Source.World
         private readonly byte[,] _autoTileVariants;
         private readonly byte[,] _backgroundAutoTileVariants;
         private readonly List<TreeInstance> _trees = new();
+        private readonly List<SurfaceDecorationInstance> _surfaceDecorations = new();
         private readonly TreeRenderer _treeRenderer = new();
         private readonly Dictionary<WorldChunkCoord, ChunkRenderCache> _chunkCaches = new();
         private readonly Dictionary<long, TileType> _trackedTileBaselines = new();
@@ -95,6 +98,7 @@ namespace Nyvorn.Source.World
             TrackTileChange(wrappedX, y, currentTile, type);
             _tiles[wrappedX, y] = type;
             HandleTissueTileTransition(wrappedX, y, currentTile, type);
+            HandleSurfaceDecorationTileTransition(wrappedX, y, currentTile, type);
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
@@ -257,6 +261,23 @@ namespace Nyvorn.Source.World
 
             if (IsSolid(previousTile) && !IsSolid(nextTile))
                 _tissueField.Clear(x, y);
+        }
+
+        // Decorations are 1-tile props standing on the tile below them. Losing that support pops
+        // them, and placing a solid tile into their cell buries them - either way they just
+        // disappear (no drops in part 1).
+        private void HandleSurfaceDecorationTileTransition(int x, int y, TileType previousTile, TileType nextTile)
+        {
+            if (_surfaceDecorations.Count == 0 || IsSolid(previousTile) == IsSolid(nextTile))
+                return;
+
+            int decorationY = IsSolid(nextTile) ? y : y - 1;
+            for (int i = _surfaceDecorations.Count - 1; i >= 0; i--)
+            {
+                Point tile = _surfaceDecorations[i].Tile;
+                if (tile.Y == decorationY && WrapTileX(tile.X) == x)
+                    _surfaceDecorations.RemoveAt(i);
+            }
         }
 
         private void HandleTissueFieldChanged(TissueFieldChange change)
@@ -429,6 +450,7 @@ namespace Nyvorn.Source.World
             TrackTileChange(wrappedX, y, currentTile, TileType.Empty);
             _tiles[wrappedX, y] = TileType.Empty;
             HandleTissueTileTransition(wrappedX, y, currentTile, TileType.Empty);
+            HandleSurfaceDecorationTileTransition(wrappedX, y, currentTile, TileType.Empty);
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
@@ -461,6 +483,7 @@ namespace Nyvorn.Source.World
             TrackTileChange(wrappedX, y, TileType.Empty, tileType);
             _tiles[wrappedX, y] = tileType;
             HandleTissueTileTransition(wrappedX, y, TileType.Empty, tileType);
+            HandleSurfaceDecorationTileTransition(wrappedX, y, TileType.Empty, tileType);
             RefreshAutoTileNeighborhood(wrappedX, y);
             MarkChunkNeighborhoodDirty(wrappedX, y);
             TileRevision++;
@@ -627,6 +650,60 @@ namespace Nyvorn.Source.World
             _trees.Clear();
             if (trees != null)
                 _trees.AddRange(trees);
+        }
+
+        public void SetSurfaceDecorationTexture(Texture2D mushroomTexture)
+        {
+            _mushroomTexture = mushroomTexture;
+        }
+
+        public void SetSurfaceDecorations(IEnumerable<SurfaceDecorationInstance> decorations)
+        {
+            _surfaceDecorations.Clear();
+            if (decorations != null)
+                _surfaceDecorations.AddRange(decorations);
+        }
+
+        public bool TryGetSurfaceDecorationAt(Point tile, out SurfaceDecorationInstance decoration)
+        {
+            int wrappedX = WrapTileX(tile.X);
+            for (int i = 0; i < _surfaceDecorations.Count; i++)
+            {
+                Point decorationTile = _surfaceDecorations[i].Tile;
+                if (decorationTile.Y == tile.Y && WrapTileX(decorationTile.X) == wrappedX)
+                {
+                    decoration = _surfaceDecorations[i];
+                    return true;
+                }
+            }
+
+            decoration = null;
+            return false;
+        }
+
+        public bool TryRemoveSurfaceDecoration(SurfaceDecorationInstance decoration)
+        {
+            if (!_surfaceDecorations.Remove(decoration))
+                return false;
+
+            TileRevision++;
+            return true;
+        }
+
+        public bool TryAddSurfaceDecoration(SurfaceDecorationInstance decoration)
+        {
+            if (decoration == null)
+                return false;
+
+            if (IsSolidAt(decoration.Tile.X, decoration.Tile.Y) || !IsSolidAt(decoration.Tile.X, decoration.Tile.Y + 1))
+                return false;
+
+            if (TryGetSurfaceDecorationAt(decoration.Tile, out _))
+                return false;
+
+            _surfaceDecorations.Add(decoration);
+            TileRevision++;
+            return true;
         }
 
         public bool TryGetTreeAtTile(Point tile, out TreeInstance tree)
@@ -881,6 +958,32 @@ namespace Nyvorn.Source.World
             // Trees only ever grow at the surface in this game, so they always take the ambient
             // tint unconditionally - no HasOpenSkyAbove gate needed like tiles/entities.
             _treeRenderer.Draw(spriteBatch, _treeTexture, this, startTileX, endTileX, startTileY, endTileY, layer, ambientLight);
+
+            if (layer == TreeRenderLayer.Back)
+                DrawSurfaceDecorations(spriteBatch, startTileX, endTileX, startTileY, endTileY, ambientLight);
+        }
+
+        private void DrawSurfaceDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, Color ambientLight)
+        {
+            if (_mushroomTexture == null || _surfaceDecorations.Count == 0)
+                return;
+
+            Rectangle visibleTiles = new(
+                System.Math.Min(startTileX, endTileX) - 2,
+                System.Math.Min(startTileY, endTileY) - 2,
+                System.Math.Abs(endTileX - startTileX) + 5,
+                System.Math.Abs(endTileY - startTileY) + 5);
+
+            for (int i = 0; i < _surfaceDecorations.Count; i++)
+            {
+                SurfaceDecorationInstance decoration = _surfaceDecorations[i];
+                if (!visibleTiles.Contains(decoration.Tile))
+                    continue;
+
+                Rectangle destination = GetTileBounds(decoration.Tile.X, decoration.Tile.Y);
+                SpriteEffects effects = (decoration.Seed & 1) == 0 ? SpriteEffects.None : SpriteEffects.FlipHorizontally;
+                spriteBatch.Draw(_mushroomTexture, destination, null, ambientLight, 0f, Vector2.Zero, effects, 0f);
+            }
         }
 
         public void PrepareVisibleChunkCache(GraphicsDevice graphicsDevice, int startTileX, int endTileX, int startTileY, int endTileY)

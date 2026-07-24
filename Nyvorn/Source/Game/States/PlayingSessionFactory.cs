@@ -407,11 +407,13 @@ namespace Nyvorn.Source.Game.States
             build.WoodTexture = content.Load<Texture2D>("tiles/wood_spritesheet");
             build.IronOreTexture = content.Load<Texture2D>("tiles/iron-ore_spritesheet");
             build.TreeTexture = content.Load<Texture2D>("trees/tree_modular_spritesheet");
+            build.MushroomTexture = content.Load<Texture2D>("trees/mushroom");
 
             build.WorldGenConfig = WorldGenConfig.CreatePreset(planetMetadata.SizePreset, planetMetadata.CreateSeedSet());
             build.WorldMap = new WorldMap(build.WorldGenConfig.WorldWidth, build.WorldGenConfig.WorldHeight, build.WorldGenConfig.TileSize);
             build.WorldMap.SetTextures(build.DirtTexture, build.GrassTexture, build.SandTexture, build.StoneTexture, build.WoodTexture, build.IronOreTexture);
             build.WorldMap.SetTreeTexture(build.TreeTexture);
+            build.WorldMap.SetSurfaceDecorationTexture(build.MushroomTexture);
             build.WorldGenerator = new WorldGenerator();
             build.GenerationContext = build.WorldGenerator.CreateGenerationContext(build.WorldMap, build.WorldGenConfig);
             build.GenerationProgress = new WorldGenProgressReporter(WorldGenerator.GetOrderedPasses());
@@ -439,6 +441,7 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap.ImportTileSnapshot(saveData.WorldTileSnapshot);
             build.WorldMap.ImportBackgroundTileSnapshot(build.SavedBackgroundTileSnapshot);
             RestoreTrees(build, saveData.Trees);
+            RestoreSurfaceDecorations(build, saveData.SurfaceDecorations);
         }
 
         private static int WrapTileX(int tileX, int worldWidth)
@@ -464,6 +467,21 @@ namespace Nyvorn.Source.Game.States
             }
 
             build.WorldMap.SetTrees(trees);
+        }
+
+        private static void RestoreSurfaceDecorations(BuildContext build, IReadOnlyList<SurfaceDecorationSaveData> savedDecorations)
+        {
+            if (savedDecorations == null || savedDecorations.Count == 0)
+                return;
+
+            List<SurfaceDecorationInstance> decorations = new(savedDecorations.Count);
+            for (int i = 0; i < savedDecorations.Count; i++)
+            {
+                if (savedDecorations[i] != null)
+                    decorations.Add(savedDecorations[i].ToDecoration());
+            }
+
+            build.WorldMap.SetSurfaceDecorations(decorations);
         }
 
         private static TreeInstance MigrateLegacyTreeBase(WorldMap worldMap, TreeSaveData savedTree, TreeInstance tree)
@@ -1218,6 +1236,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D WoodTexture { get; set; }
             public Texture2D IronOreTexture { get; set; }
             public Texture2D TreeTexture { get; set; }
+            public Texture2D MushroomTexture { get; set; }
             public Texture2D PlayerDownTexture { get; set; }
             public Texture2D PlayerUpTexture { get; set; }
             public Texture2D PlayerPickaxeMovesetTexture { get; set; }

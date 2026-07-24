@@ -17,6 +17,7 @@ namespace Nyvorn.Source.Gameplay.Items
         IronOreBlock = 13,
         Furnace = 14,
         IronBar = 15,
-        Torch = 16
+        Torch = 16,
+        Mushroom = 17
     }
 }

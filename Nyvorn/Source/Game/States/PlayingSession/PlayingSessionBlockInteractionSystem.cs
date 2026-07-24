@@ -320,6 +320,9 @@ namespace Nyvorn.Source.Game.States
                 return;
             }
 
+            if (TryHarvestSurfaceDecoration(tile))
+                return;
+
             if (TryMineTargetWorldObject(dt, toolItemId, tile))
                 return;
 
@@ -359,6 +362,7 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             bool supportsTree = TryGetSupportedTree(tile, out TreeInstance supportedTree);
+            bool supportsDecoration = WorldMap.TryGetSurfaceDecorationAt(new Point(tile.X, tile.Y - 1), out SurfaceDecorationInstance supportedDecoration);
             if (!WorldMap.TryBreakTile(tile.X, tile.Y, out TileType removedTile))
             {
                 ResetMiningProgress();
@@ -371,6 +375,10 @@ namespace Nyvorn.Source.Game.States
             WorldItemRuntimeSystem.SpawnBrokenBlockDrop(removedTile, tileCenter);
             if (supportsTree && WorldMap.TryRemoveTree(supportedTree))
                 WorldItemRuntimeSystem.SpawnItemDrops(ItemId.RawWood, System.Math.Max(1, supportedTree.Height), WorldMap.GetTileCenter(supportedTree.BaseTile.X, supportedTree.BaseTile.Y));
+            // Breaking the support tile already popped the decoration via WorldMap's transition
+            // hook - here it only converts into a drop instead of vanishing silently.
+            if (supportsDecoration)
+                WorldItemRuntimeSystem.SpawnItemDrops(GetSurfaceDecorationDropItem(supportedDecoration.Type), 1, WorldMap.GetTileCenter(supportedDecoration.Tile.X, supportedDecoration.Tile.Y));
             WorldObjectRegistry?.NotifyForegroundTileBroken(new ForegroundTileBrokenContext(
                 tile,
                 WorldItemRuntimeSystem));
@@ -508,6 +516,37 @@ namespace Nyvorn.Source.Game.States
 
             ResetTreeChopProgress();
             return true;
+        }
+
+        // Decorations are soft props: any tool, weapon or the bare hand pops them in a single
+        // swing - no mining progress bar involved. Waiting for the active hitbox frames keeps the
+        // pop in sync with the swing animation instead of firing on the exact click.
+        private bool TryHarvestSurfaceDecoration(Point tile)
+        {
+            if (!WorldMap.TryGetSurfaceDecorationAt(tile, out SurfaceDecorationInstance decoration))
+                return false;
+
+            if (!Player.HasActiveAttackHitbox)
+                return false;
+
+            Vector2 tileCenter = WorldMap.GetTileCenter(tile.X, tile.Y);
+            if (Vector2.Distance(Player.Position, tileCenter) > Player.WorldBreakRange)
+                return false;
+
+            if (!WorldMap.TryRemoveSurfaceDecoration(decoration))
+                return false;
+
+            WorldItemRuntimeSystem.SpawnItemDrops(GetSurfaceDecorationDropItem(decoration.Type), 1, tileCenter);
+            ResetMiningProgress();
+            return true;
+        }
+
+        private static ItemId GetSurfaceDecorationDropItem(SurfaceDecorationType decorationType)
+        {
+            return decorationType switch
+            {
+                _ => ItemId.Mushroom
+            };
         }
 
         private static bool CanUseSelectedSlotForMining(InventorySlot slot)

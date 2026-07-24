@@ -24,6 +24,7 @@ namespace Nyvorn.Source.World.Generation
             new WorldGenPhaseDefinition("IronOreVein", "Semeando veios de minerio de ferro", 6f),
             new WorldGenPhaseDefinition("Tissue", "Tecendo rede organica", 20f),
             new WorldGenPhaseDefinition("TreeGeneration", "Plantando arvores modulares", 4f),
+            new WorldGenPhaseDefinition("SurfaceDecoration", "Espalhando cogumelos", 2f),
             new WorldGenPhaseDefinition("WorldBounds", "Selando limites do mundo", 2f)
         };
 
@@ -49,6 +50,7 @@ namespace Nyvorn.Source.World.Generation
                 new IronOreVeinPass(),
                 new TissuePass(),
                 new TreeGenerationPass(),
+                new SurfaceDecorationPass(),
                 new WorldBoundsPass()
             };
         }
