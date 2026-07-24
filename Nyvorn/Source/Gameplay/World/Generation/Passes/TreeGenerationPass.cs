@@ -11,7 +11,14 @@ namespace Nyvorn.Source.World.Generation.Passes
         public void Apply(WorldGenContext context)
         {
             context.ProgressReporter?.Begin(Name, "Plantando arvores modulares");
-            context.WorldMap.SetTrees(generator.Generate(context));
+            try
+            {
+                context.WorldMap.SetTrees(generator.GenerateWithGroups(context));
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Tree generation error: {ex}");
+            }
             context.ProgressReporter?.Complete(Name, "Arvores modulares prontas");
         }
     }

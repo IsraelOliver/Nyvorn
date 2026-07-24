@@ -6,7 +6,7 @@ namespace Nyvorn.Source.World.Decorations
     public sealed class TreeInstance
     {
         public Point BaseTile { get; init; }
-        public int Height { get; init; }
+        public int Height { get; set; }
         public TreeVariant Variant { get; init; }
         public int RootStyleRow { get; init; }
         public int BranchHeight { get; init; } = -1;
@@ -15,5 +15,6 @@ namespace Nyvorn.Source.World.Decorations
         public List<TreePartPlacement> Parts { get; init; } = new();
         public TreePartPlacement Canopy { get; init; }
         public bool HasCanopy { get; set; } = true;
+        public List<TreeBranch> Branches { get; init; } = new();
     }
 }

@@ -24,6 +24,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool HasActiveAttackHitbox => combat.HasActiveAttackHitbox;
         public Rectangle AttackHitbox => combat.AttackHitbox;
         public int AttackSequence => combat.AttackSequence;
+        public int HitDamage => combat.HitDamage;
         bool IHitSource.HasActiveHitbox => HasActiveAttackHitbox;
         Rectangle IHitSource.ActiveHitbox => AttackHitbox;
         int IHitSource.HitSequence => AttackSequence;

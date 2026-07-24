@@ -889,11 +889,7 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
 
         private bool IsChunkSimulatable(int cellX, int cellY)
         {
-            if (activeSimulationChunks.Count == 0)
-                return true;
-
-            WorldChunkCoord chunk = worldMap.GetChunkCoordForTile(cellX, cellY);
-            return activeSimulationChunks.Contains(chunk) || wokenChunkTicks.ContainsKey(chunk);
+            return true;
         }
 
         private void AgeWokenChunks()

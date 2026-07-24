@@ -42,5 +42,40 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
             return visited;
         }
+
+        public static int VisitRandomTilesGlobal(
+            WorldMap worldMap,
+            int samplesPerChunk,
+            int maxSamples,
+            Random random,
+            Action<Point> visitTile)
+        {
+            if (worldMap == null)
+                throw new ArgumentNullException(nameof(worldMap));
+            if (samplesPerChunk <= 0 || maxSamples <= 0 || worldMap.Width <= 0 || worldMap.Height <= 0)
+                return 0;
+            if (random == null)
+                throw new ArgumentNullException(nameof(random));
+            if (visitTile == null)
+                throw new ArgumentNullException(nameof(visitTile));
+
+            int visited = 0;
+            for (int i = 0; i < maxSamples; i++)
+            {
+                try
+                {
+                    int tileX = random.Next(worldMap.Width);
+                    int tileY = random.Next(worldMap.Height);
+                    visitTile(new Point(worldMap.WrapTileX(tileX), tileY));
+                    visited++;
+                }
+                catch
+                {
+                    // Silently continue if a single tile visitation fails
+                }
+            }
+
+            return visited;
+        }
     }
 }

@@ -15,6 +15,151 @@ namespace Nyvorn.Source.World.Decorations
             this.settings = settings ?? TreeGenerationSettings.Default;
         }
 
+        public List<TreeInstance> GenerateWithGroups(WorldGenContext context)
+        {
+            if (context == null)
+                throw new ArgumentNullException(nameof(context));
+
+            List<TreeInstance> trees = new();
+            WorldMap worldMap = context.WorldMap;
+            Random random = context.CreateRandom(context.Seeds.DecorationSeed);
+
+            int minX = Math.Max(context.Config.BorderThickness + 2, 2);
+            int maxX = worldMap.Width - Math.Max(context.Config.BorderThickness + 3, 3);
+
+            TreeGroup[] groups = GenerateGroups(random, minX, maxX);
+
+            foreach (var group in groups)
+            {
+                BiomeDefinition biome = context.SampleBiome(group.CenterX).PrimaryDefinition;
+                if (biome.TreeSpawnMultiplier <= 0f)
+                    continue;
+
+                GenerateTreesInGroup(context, worldMap, random, group, trees);
+            }
+
+            GenerateIsolatedTrees(context, worldMap, random, trees);
+
+            return trees;
+        }
+
+        private TreeGroup[] GenerateGroups(Random random, int minX, int maxX)
+        {
+            int worldWidth = maxX - minX;
+            int groupCount = random.Next(15, 50);
+
+            List<TreeGroup> groupsList = new();
+
+            for (int i = 0; i < groupCount; i++)
+            {
+                int centerX = random.Next(minX + 1, maxX);
+                int groupRadius = random.Next(settings.MinGroupRadius, settings.MaxGroupRadius + 1);
+                int minHeight = random.Next(settings.MinTreeHeight, settings.MaxTreeHeight - 5);
+                int maxHeight = random.Next(minHeight + 3, settings.MaxTreeHeight + 1);
+                minHeight = Math.Clamp(minHeight, settings.MinTreeHeight, maxHeight - 2);
+
+                groupsList.Add(new TreeGroup
+                {
+                    CenterX = centerX,
+                    MinHeight = minHeight,
+                    MaxHeight = maxHeight,
+                    GroupRadius = groupRadius
+                });
+            }
+
+            return groupsList.ToArray();
+        }
+
+        private void GenerateTreesInGroup(
+            WorldGenContext context,
+            WorldMap worldMap,
+            Random random,
+            TreeGroup group,
+            List<TreeInstance> trees)
+        {
+            int minGroupX = Math.Max(group.CenterX - group.GroupRadius, 0);
+            int maxGroupX = Math.Min(group.CenterX + group.GroupRadius, worldMap.Width - 1);
+
+            int treesPerGroup = random.Next(settings.MinTreesPerGroup, settings.MaxTreesPerGroup + 1);
+            int attempts = 0;
+            int maxAttempts = treesPerGroup * 3;
+
+            const int HeightVariationRange = 6;
+
+            while (attempts < maxAttempts && CountTreesInGroup(trees, group) < treesPerGroup)
+            {
+                int x = random.Next(minGroupX, maxGroupX + 1);
+                int groundY = FindSurfaceGrassY(worldMap, context.SurfaceHeights, x);
+                if (groundY < 0)
+                {
+                    attempts++;
+                    continue;
+                }
+
+                int baseY = groundY - 1;
+                int baseHeight = random.Next(group.MinHeight, group.MaxHeight + 1);
+                int heightVariation = random.Next(-HeightVariationRange, HeightVariationRange + 1);
+                int height = Math.Clamp(baseHeight + heightVariation, settings.MinTreeHeight, settings.MaxTreeHeight);
+
+                TreeVariant variant = PickVariant(random);
+                int rootStyleRow = random.Next(0, 2) == 0 ? 3 : 4;
+                int branchDirection = random.Next(0, 2) == 0 ? -1 : 1;
+                int branchHeight = variant == TreeVariant.Branch ? random.Next(1, Math.Max(2, height - 1)) : -1;
+
+                if (!CanPlaceTree(worldMap, x, groundY, baseY, height, variant, branchDirection, branchHeight, settings.IntraGroupSpacing, trees))
+                {
+                    attempts++;
+                    continue;
+                }
+
+                trees.Add(CreateTree(x, baseY, height, variant, rootStyleRow, branchDirection, branchHeight, random.Next()));
+            }
+        }
+
+        private void GenerateIsolatedTrees(WorldGenContext context, WorldMap worldMap, Random random, List<TreeInstance> trees)
+        {
+            int minX = Math.Max(context.Config.BorderThickness + 2, 2);
+            int maxX = worldMap.Width - Math.Max(context.Config.BorderThickness + 3, 3);
+
+            for (int x = minX; x <= maxX; x++)
+            {
+                if (random.NextDouble() > settings.IsolatedTreeSpawnChance)
+                    continue;
+
+                BiomeDefinition biome = context.SampleBiome(x).PrimaryDefinition;
+                if (biome.TreeSpawnMultiplier <= 0f)
+                    continue;
+
+                int groundY = FindSurfaceGrassY(worldMap, context.SurfaceHeights, x);
+                if (groundY < 0)
+                    continue;
+
+                int baseY = groundY - 1;
+                int height = random.Next(settings.MinTreeHeight, settings.MaxTreeHeight + 1);
+
+                TreeVariant variant = PickVariant(random);
+                int rootStyleRow = random.Next(0, 2) == 0 ? 3 : 4;
+                int branchDirection = random.Next(0, 2) == 0 ? -1 : 1;
+                int branchHeight = variant == TreeVariant.Branch ? random.Next(1, Math.Max(2, height - 1)) : -1;
+
+                if (!CanPlaceTree(worldMap, x, groundY, baseY, height, variant, branchDirection, branchHeight, settings.IntraGroupSpacing, trees))
+                    continue;
+
+                trees.Add(CreateTree(x, baseY, height, variant, rootStyleRow, branchDirection, branchHeight, random.Next()));
+            }
+        }
+
+        private int CountTreesInGroup(List<TreeInstance> trees, TreeGroup group)
+        {
+            int count = 0;
+            for (int i = 0; i < trees.Count; i++)
+            {
+                if (Math.Abs(trees[i].BaseTile.X - group.CenterX) <= group.GroupRadius)
+                    count++;
+            }
+            return count;
+        }
+
         public List<TreeInstance> Generate(WorldGenContext context)
         {
             if (context == null)
@@ -172,17 +317,17 @@ namespace Nyvorn.Source.World.Decorations
         private static TreeVariant PickVariant(Random random)
         {
             int roll = random.Next(0, 100);
-            if (roll < 38)
+            if (roll < 35)
                 return TreeVariant.Simple;
-            if (roll < 68)
+            if (roll < 60)
                 return TreeVariant.SingleRoot;
-            if (roll < 88)
+            if (roll < 80)
                 return TreeVariant.DoubleRoot;
 
             return TreeVariant.Branch;
         }
 
-        private static TreeInstance CreateTree(
+        private TreeInstance CreateTree(
             int baseX,
             int groundY,
             int height,
@@ -192,7 +337,10 @@ namespace Nyvorn.Source.World.Decorations
             int branchHeight,
             int seed)
         {
+            Random branchRandom = new(seed);
             List<TreePartPlacement> parts = new();
+            List<TreeBranch> branches = new();
+
             // For SingleRoot, branchDirection is the root side: -1 places the root left, +1 places it right.
             TreePartType basePart = variant switch
             {
@@ -217,21 +365,45 @@ namespace Nyvorn.Source.World.Decorations
 
             for (int trunkOffset = 1; trunkOffset < height; trunkOffset++)
             {
-                TreePartType trunkType = TreePartType.TrunkStraight;
-                if (variant == TreeVariant.Branch && trunkOffset == branchHeight)
-                {
-                    trunkType = branchDirection > 0
-                        ? TreePartType.BranchSocketRight
-                        : TreePartType.BranchSocketLeft;
-                }
-
-                parts.Add(new TreePartPlacement(trunkType, new Point(0, -trunkOffset)));
+                parts.Add(new TreePartPlacement(TreePartType.TrunkStraight, new Point(0, -trunkOffset)));
             }
 
             if (variant == TreeVariant.Branch && branchHeight > 0)
             {
                 TreePartType branchPart = branchDirection > 0 ? TreePartType.BranchRight : TreePartType.BranchLeft;
                 parts.Add(new TreePartPlacement(branchPart, new Point(branchDirection, -branchHeight)));
+                branches.Add(new TreeBranch { Height = branchHeight, Direction = branchDirection });
+            }
+
+            if (height >= settings.MinHeightForBranches)
+            {
+                int branchCount = Math.Min(settings.MaxBranchesPerTree, 1 + (height - settings.MinHeightForBranches) / 5);
+                const int MinBranchSpacing = 4;
+                const int MaxBranchSpacing = 7;
+
+                for (int i = 0; i < branchCount * 3; i++)
+                {
+                    int branchH = branchRandom.Next(Math.Max(1, height / 4), Math.Max(2, height - 2));
+                    int branchDir = branchRandom.Next(0, 2) == 0 ? -1 : 1;
+
+                    if (branches.Exists(b => b.Height == branchH))
+                        continue;
+
+                    int minSpacing = branchRandom.Next(MinBranchSpacing, MaxBranchSpacing + 1);
+                    bool tooClose = branches.Exists(b => Math.Abs(b.Height - branchH) < minSpacing);
+                    if (tooClose)
+                        continue;
+
+                    if (branches.Count >= branchCount)
+                        break;
+
+                    TreePartType sockType = branchDir > 0 ? TreePartType.BranchSocketRight : TreePartType.BranchSocketLeft;
+                    TreePartType branchPart = branchDir > 0 ? TreePartType.BranchRight : TreePartType.BranchLeft;
+
+                    parts.Add(new TreePartPlacement(sockType, new Point(0, -branchH)));
+                    parts.Add(new TreePartPlacement(branchPart, new Point(branchDir, -branchH)));
+                    branches.Add(new TreeBranch { Height = branchH, Direction = branchDir });
+                }
             }
 
             return new TreeInstance
@@ -244,7 +416,8 @@ namespace Nyvorn.Source.World.Decorations
                 BranchHeight = branchHeight,
                 Seed = seed,
                 Parts = parts,
-                Canopy = new TreePartPlacement(TreePartType.Canopy, new Point(-2, -height - 4))
+                Canopy = new TreePartPlacement(TreePartType.Canopy, new Point(-2, -height - 4)),
+                Branches = branches
             };
         }
     }

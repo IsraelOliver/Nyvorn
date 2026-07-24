@@ -3,6 +3,7 @@ using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
+using Nyvorn.Source.World.Decorations;
 using System;
 using System.Collections.Generic;
 
@@ -106,7 +107,6 @@ namespace Nyvorn.Source.Game.States
 
         private void OnFastTick()
         {
-            LiquidSystem?.SetActiveSimulationChunks(ViewCoordinator.ActiveSimulationChunks);
             WakeOpenSandInActiveChunks();
             SandSystem?.ProcessPendingSandWakes();
             SandSystem?.TickFast();
@@ -309,9 +309,8 @@ namespace Nyvorn.Source.Game.States
         private int RunGrassRandomUpdates(int samplesPerChunk, int maxSamples)
         {
             int grassGrowthCount = 0;
-            LastRandomTileSampleCount = RandomTileUpdateHelper.VisitRandomTiles(
+            LastRandomTileSampleCount = RandomTileUpdateHelper.VisitRandomTilesGlobal(
                 WorldMap,
-                ViewCoordinator.ActiveSimulationChunks,
                 samplesPerChunk,
                 maxSamples,
                 randomTileUpdateRandom,

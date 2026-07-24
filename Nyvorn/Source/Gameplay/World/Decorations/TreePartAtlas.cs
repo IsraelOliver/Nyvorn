@@ -32,13 +32,13 @@ namespace Nyvorn.Source.World.Decorations
             // SocketRight/Left describe the side of the trunk socket. RootLeft/Right describe placement around the trunk.
             Add(TreePartType.TrunkBaseRightRootSocket, 1, 3, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.TrunkBaseLeftRootSocket, 4, 3, drawOffsetPixels: TrunkColumnDrawOffset);
-            Add(TreePartType.RootLeft, 3, 3);
-            Add(TreePartType.RootRight, 2, 3);
+            Add(TreePartType.RootLeft, 3, 3, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.RootRight, 2, 3, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.RootBothSocket, 5, 3, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.BranchSocketRight, 5, 1, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.BranchSocketLeft, 5, 2, drawOffsetPixels: TrunkColumnDrawOffset);
-            Add(TreePartType.BranchRight, 6, 1);
-            Add(TreePartType.BranchLeft, 6, 2);
+            Add(TreePartType.BranchRight, 6, 1, drawOffsetPixels: TrunkColumnDrawOffset);
+            Add(TreePartType.BranchLeft, 6, 2, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.TrunkCutSupport, 4, 1, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.TrunkContinuation, 6, 3, drawOffsetPixels: TrunkColumnDrawOffset);
             Add(TreePartType.TrunkBaseCut, 4, 1, drawOffsetPixels: TrunkColumnDrawOffset);

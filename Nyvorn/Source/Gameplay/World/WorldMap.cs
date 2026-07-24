@@ -658,6 +658,15 @@ namespace Nyvorn.Source.World
                 return true;
             }
 
+            if (IsBranchPart(cutPart.PartType))
+            {
+                ChopTreeBranch(tree, cutPart);
+                woodQuantity = 1;
+                dropPosition = GetTileCenter(tile.X, tile.Y);
+                TileRevision++;
+                return true;
+            }
+
             int cutOffsetY = System.Math.Min(0, cutPart.OffsetTiles.Y);
             if (cutOffsetY == 0)
             {
@@ -676,6 +685,7 @@ namespace Nyvorn.Source.World
                 tree.Parts.Clear();
                 tree.Parts.Add(new TreePartPlacement(TreePartType.TrunkBaseCut, Point.Zero));
                 tree.HasCanopy = false;
+                tree.Height = 0;
                 TileRevision++;
                 return true;
             }
@@ -700,6 +710,7 @@ namespace Nyvorn.Source.World
             tree.Parts.Clear();
             tree.Parts.AddRange(remainingParts);
             tree.HasCanopy = false;
+            tree.Height = -cutOffsetY;
             TileRevision++;
             return true;
         }
@@ -711,9 +722,7 @@ namespace Nyvorn.Source.World
                 tree,
                 cuttingLeftRoot ? TreePartType.RootRight : TreePartType.RootLeft);
 
-            tree.Parts.RemoveAll(part =>
-                part.PartType == rootPartType ||
-                part.OffsetTiles == Point.Zero);
+            tree.Parts.RemoveAll(part => part.PartType == rootPartType);
 
             TreePartType basePartType = TreePartType.TrunkBareBase;
             if (hasOtherRoot)
@@ -723,8 +732,37 @@ namespace Nyvorn.Source.World
                     : TreePartType.TrunkBaseLeftRootSocket;
             }
 
+            for (int i = 0; i < tree.Parts.Count; i++)
+            {
+                if (tree.Parts[i].OffsetTiles == Point.Zero)
+                {
+                    tree.Parts[i] = new TreePartPlacement(basePartType, Point.Zero);
+                    return;
+                }
+            }
+
             tree.Parts.Add(new TreePartPlacement(basePartType, Point.Zero));
             tree.Parts.Sort(CompareTreePartPlacementForRendering);
+        }
+
+        private static void ChopTreeBranch(TreeInstance tree, TreePartPlacement branchPart)
+        {
+            int branchHeight = -branchPart.OffsetTiles.Y;
+            tree.Parts.RemoveAll(part =>
+                (part.PartType == TreePartType.BranchLeft || part.PartType == TreePartType.BranchRight) &&
+                part.OffsetTiles.Y == branchPart.OffsetTiles.Y);
+
+            tree.Parts.RemoveAll(part =>
+                (part.PartType == TreePartType.BranchSocketLeft || part.PartType == TreePartType.BranchSocketRight) &&
+                part.OffsetTiles.Y == branchPart.OffsetTiles.Y);
+
+            tree.Parts.Add(new TreePartPlacement(TreePartType.TrunkStraight, new Point(0, branchPart.OffsetTiles.Y)));
+            tree.Parts.Sort(CompareTreePartPlacementForRendering);
+        }
+
+        private static bool IsBranchPart(TreePartType partType)
+        {
+            return partType == TreePartType.BranchLeft || partType == TreePartType.BranchRight;
         }
 
         public bool TryRemoveTree(TreeInstance tree)
@@ -1509,15 +1547,23 @@ namespace Nyvorn.Source.World
             if (!IsSolid(tile))
                 return NeighborState.Empty;
 
-            if (tile == self)
+            TileType normalizedTile = NormalizeForAutoTile(tile);
+            TileType normalizedSelf = NormalizeForAutoTile(self);
+
+            if (normalizedTile == normalizedSelf)
                 return NeighborState.Self;
 
-            if (mixPartner.HasValue && tile == mixPartner.Value)
+            if (mixPartner.HasValue && normalizedTile == NormalizeForAutoTile(mixPartner.Value))
                 return NeighborState.Other;
 
             // Solid neighbor we don't have mix art for (no declared mix partner, or a third
             // material entirely): render as a normal connected edge instead of guessing.
             return NeighborState.Self;
+        }
+
+        private static TileType NormalizeForAutoTile(TileType tile)
+        {
+            return tile == TileType.Grass ? TileType.Dirt : tile;
         }
 
         private static bool MatchesNeighborState(NeighborState expected, NeighborState actual)
