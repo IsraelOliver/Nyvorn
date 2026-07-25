@@ -1,0 +1,93 @@
+[
+  {
+    "id": "workbench",
+    "result": "Workbench",
+    "resultQuantity": 1,
+    "requiredTier": "Basic",
+    "displayName": "Workbench",
+    "displayCost": "10 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 10 }
+    ]
+  },
+  {
+    "id": "wood_pickaxe",
+    "result": "WoodPickaxe",
+    "resultQuantity": 1,
+    "requiredTier": "Basic",
+    "displayName": "Wood Pickaxe",
+    "displayCost": "10 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 10 }
+    ]
+  },
+  {
+    "id": "wood_axe",
+    "result": "WoodAxe",
+    "resultQuantity": 1,
+    "requiredTier": "Basic",
+    "displayName": "Wood Axe",
+    "displayCost": "6 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 6 }
+    ]
+  },
+  {
+    "id": "stone_pickaxe",
+    "result": "StonePickaxe",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Stone Pickaxe",
+    "displayCost": "7 Raw Wood + 4 Stone",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 7 },
+      { "item": "StoneBlock", "quantity": 4 }
+    ]
+  },
+  {
+    "id": "wood_door",
+    "result": "WoodDoor",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Wood Door",
+    "displayCost": "12 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 12 }
+    ]
+  },
+  {
+    "id": "furnace",
+    "result": "Furnace",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Furnace",
+    "displayCost": "15 Stone + 5 Raw Wood",
+    "ingredients": [
+      { "item": "StoneBlock", "quantity": 15 },
+      { "item": "RawWood", "quantity": 5 }
+    ]
+  },
+  {
+    "id": "iron_pickaxe",
+    "result": "IronPickaxe",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Iron Pickaxe",
+    "displayCost": "6 Iron Bar + 2 Raw Wood",
+    "ingredients": [
+      { "item": "IronBar", "quantity": 6 },
+      { "item": "RawWood", "quantity": 2 }
+    ]
+  },
+  {
+    "id": "iron_bar",
+    "result": "IronBar",
+    "resultQuantity": 1,
+    "requiredTier": "Furnace",
+    "displayName": "Iron Bar",
+    "displayCost": "2 Iron Ore",
+    "ingredients": [
+      { "item": "IronOreBlock", "quantity": 2 }
+    ]
+  }
+]

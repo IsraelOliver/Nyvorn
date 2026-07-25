@@ -55,6 +55,8 @@ namespace Nyvorn.Source.Game.States
         public required FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
         public required TorchRuntimeSystem TorchRuntimeSystem { get; init; }
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
+        public required ChairRuntimeSystem ChairRuntimeSystem { get; init; }
+        public required TableRuntimeSystem TableRuntimeSystem { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
         public required DamageNumberSystem DamageNumberSystem { get; init; }
@@ -397,6 +399,8 @@ namespace Nyvorn.Source.Game.States
             BlockInteractionSystem.Update(dt);
             WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
             FurnaceRuntimeSystem.UpdateHover(mouseWorld);
+            ChairRuntimeSystem.UpdateHover(mouseWorld);
+            TableRuntimeSystem.UpdateHover(mouseWorld);
             InputState worldInput = InputRouter.RouteFrameInput(input);
 
             CombatCoordinator.SyncEquippedWeapon(SelectedHotbarIndex);
@@ -413,7 +417,9 @@ namespace Nyvorn.Source.Game.States
                 WorkbenchRuntimeSystem.TryPlaceSelectedWorkbench(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 FurnaceRuntimeSystem.TryPlaceSelectedFurnace(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 TorchRuntimeSystem.TryPlaceSelectedTorch(worldInput, SelectedHotbarIndex, mouseWorld) ||
-                DoorRuntimeSystem.TryPlaceSelectedDoor(worldInput, SelectedHotbarIndex, mouseWorld);
+                DoorRuntimeSystem.TryPlaceSelectedDoor(worldInput, SelectedHotbarIndex, mouseWorld) ||
+                ChairRuntimeSystem.TryPlaceSelectedChair(worldInput, SelectedHotbarIndex, mouseWorld) ||
+                TableRuntimeSystem.TryPlaceSelectedTable(worldInput, SelectedHotbarIndex, mouseWorld);
             if (objectPlacementHandled)
             {
                 worldInput = worldInput.ConsumeWorldMouseInput();

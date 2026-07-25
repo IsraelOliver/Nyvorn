@@ -18,6 +18,8 @@ namespace Nyvorn.Source.Gameplay.Items
         Furnace = 14,
         IronBar = 15,
         Torch = 16,
-        Mushroom = 17
+        Mushroom = 17,
+        Chair = 18,
+        Table = 19
     }
 }

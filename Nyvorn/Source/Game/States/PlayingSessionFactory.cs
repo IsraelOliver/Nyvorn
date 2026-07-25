@@ -308,6 +308,12 @@ namespace Nyvorn.Source.Game.States
             build.SavedDoors = saveData != null && saveData.Version >= 9 && saveData.Doors != null
                 ? new List<DoorSaveData>(saveData.Doors)
                 : null;
+            build.SavedChairs = saveData != null && saveData.Version >= 20 && saveData.Chairs != null
+                ? new List<ChairSaveData>(saveData.Chairs)
+                : null;
+            build.SavedTables = saveData != null && saveData.Version >= 20 && saveData.Tables != null
+                ? new List<TableSaveData>(saveData.Tables)
+                : null;
 
             BuildOperation operation = null;
             List<BuildOperation.BuildStep> steps = new()
@@ -525,6 +531,8 @@ namespace Nyvorn.Source.Game.States
             build.TorchPoleTexture = content.Load<Texture2D>("furniture/torch-Sheet");
             build.TorchFlameTexture = content.Load<Texture2D>("furniture/torch-animation-Sheet-Sheet");
             build.DoorTexture = content.Load<Texture2D>("objects/wood_door");
+            build.ChairTexture = content.Load<Texture2D>("furniture/chair-Sheet");
+            build.TableTexture = content.Load<Texture2D>("furniture/table-Sheet");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.TissueRevealIconTexture = content.Load<Texture2D>("ui/tissue_reveal-Sheet");
             build.BackgroundFarTexture = content.Load<Texture2D>("ui/background_parallax/background1");
@@ -735,11 +743,29 @@ namespace Nyvorn.Source.Game.States
                 Texture = build.DoorTexture
             };
             doorRuntimeSystem.Restore(build.SavedDoors);
+            ChairRuntimeSystem chairRuntimeSystem = new ChairRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.ChairTexture
+            };
+            chairRuntimeSystem.Restore(build.SavedChairs);
+            TableRuntimeSystem tableRuntimeSystem = new TableRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.TableTexture
+            };
+            tableRuntimeSystem.Restore(build.SavedTables);
             WorldObjectRegistry worldObjectRegistry = new();
             worldObjectRegistry.Register(workbenchRuntimeSystem);
             worldObjectRegistry.Register(furnaceRuntimeSystem);
             worldObjectRegistry.Register(torchRuntimeSystem);
             worldObjectRegistry.Register(doorRuntimeSystem);
+            worldObjectRegistry.Register(chairRuntimeSystem);
+            worldObjectRegistry.Register(tableRuntimeSystem);
             blockInteractionSystem.WorldObjectRegistry = worldObjectRegistry;
             build.WorldMap.SetObjectCollisionQueries(
                 worldObjectRegistry.IsObjectOccupyingTile,
@@ -794,7 +820,9 @@ namespace Nyvorn.Source.Game.States
                 WorkbenchRuntimeSystem = workbenchRuntimeSystem,
                 FurnaceRuntimeSystem = furnaceRuntimeSystem,
                 TorchRuntimeSystem = torchRuntimeSystem,
-                DoorRuntimeSystem = doorRuntimeSystem
+                DoorRuntimeSystem = doorRuntimeSystem,
+                ChairRuntimeSystem = chairRuntimeSystem,
+                TableRuntimeSystem = tableRuntimeSystem
             };
             WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
             WorldEnvironmentSystem environmentSystem = new(
@@ -847,6 +875,8 @@ namespace Nyvorn.Source.Game.States
                 FurnaceRuntimeSystem = furnaceRuntimeSystem,
                 TorchRuntimeSystem = torchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem,
+                ChairRuntimeSystem = chairRuntimeSystem,
+                TableRuntimeSystem = tableRuntimeSystem,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
                 DamageNumberSystem = damageNumberSystem,
@@ -1245,6 +1275,8 @@ namespace Nyvorn.Source.Game.States
             public Texture2D TorchPoleTexture { get; set; }
             public Texture2D TorchFlameTexture { get; set; }
             public Texture2D DoorTexture { get; set; }
+            public Texture2D ChairTexture { get; set; }
+            public Texture2D TableTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D LifeBarTexture { get; set; }
             public Texture2D TissueRevealIconTexture { get; set; }
@@ -1284,6 +1316,8 @@ namespace Nyvorn.Source.Game.States
             public List<FurnaceSaveData> SavedFurnaces { get; set; }
             public List<TorchSaveData> SavedTorches { get; set; }
             public List<DoorSaveData> SavedDoors { get; set; }
+            public List<ChairSaveData> SavedChairs { get; set; }
+            public List<TableSaveData> SavedTables { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
             public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;

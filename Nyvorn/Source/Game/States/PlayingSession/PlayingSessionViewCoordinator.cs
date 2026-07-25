@@ -89,6 +89,8 @@ namespace Nyvorn.Source.Game.States
         public FurnaceRuntimeSystem FurnaceRuntimeSystem { get; init; }
         public TorchRuntimeSystem TorchRuntimeSystem { get; init; }
         public DoorRuntimeSystem DoorRuntimeSystem { get; init; }
+        public ChairRuntimeSystem ChairRuntimeSystem { get; init; }
+        public TableRuntimeSystem TableRuntimeSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
 
@@ -463,6 +465,8 @@ namespace Nyvorn.Source.Game.States
             FurnaceRuntimeSystem?.Draw(spriteBatch);
             TorchRuntimeSystem?.Draw(spriteBatch, visualTimeSeconds);
             DoorRuntimeSystem?.Draw(spriteBatch);
+            ChairRuntimeSystem?.Draw(spriteBatch);
+            TableRuntimeSystem?.Draw(spriteBatch);
         }
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)

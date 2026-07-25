@@ -6,7 +6,7 @@ namespace Nyvorn.Source.World.Persistence
 {
     public sealed class PlanetSaveData
     {
-        public int Version { get; init; } = 19;
+        public int Version { get; init; } = 20;
         public required PlanetWorldMetadata Metadata { get; set; }
         public DateTime SavedAtUtc { get; init; } = DateTime.UtcNow;
         public float TimeOfDay01 { get; init; } = 0.25f;
@@ -25,6 +25,8 @@ namespace Nyvorn.Source.World.Persistence
         public List<FurnaceSaveData> Furnaces { get; init; } = new();
         public List<TorchSaveData> Torches { get; init; } = new();
         public List<DoorSaveData> Doors { get; init; } = new();
+        public List<ChairSaveData> Chairs { get; init; } = new();
+        public List<TableSaveData> Tables { get; init; } = new();
         public List<TreeSaveData> Trees { get; init; } = new();
         public List<SurfaceDecorationSaveData> SurfaceDecorations { get; init; } = new();
         public List<string> ConsoleCommandHistory { get; init; } = new();

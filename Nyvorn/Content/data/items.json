@@ -219,5 +219,29 @@
     "worldPivot": [3, 12],
     "spriteSheetCell": [0, 0],
     "worldCollisionRect": [0, 0, 6, 12]
+  },
+  {
+    "id": "Chair",
+    "name": "Chair",
+    "texturePath": "furniture/chair-Sheet",
+    "stackable": true,
+    "maxStack": 99,
+    "gravityScale": 1.0,
+    "worldSize": [8, 16],
+    "worldPivot": [4, 16],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [0, 8, 8, 8]
+  },
+  {
+    "id": "Table",
+    "name": "Table",
+    "texturePath": "furniture/table-Sheet",
+    "stackable": true,
+    "maxStack": 99,
+    "gravityScale": 1.0,
+    "worldSize": [24, 16],
+    "worldPivot": [12, 16],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [0, 8, 24, 8]
   }
 ]

@@ -156,6 +156,22 @@ namespace Nyvorn.Source.World.Persistence
                         OpensRight = door.OpensRight
                     })
                     .ToList(),
+                Chairs = session.ChairRuntimeSystem.Chairs
+                    .Select(chair => new ChairSaveData
+                    {
+                        PositionX = chair.Position.X,
+                        PositionY = chair.Position.Y,
+                        FacingLeft = chair.FacingLeft
+                    })
+                    .ToList(),
+                Tables = session.TableRuntimeSystem.Tables
+                    .Select(table => new TableSaveData
+                    {
+                        PositionX = table.Position.X,
+                        PositionY = table.Position.Y,
+                        FacingLeft = table.FacingLeft
+                    })
+                    .ToList(),
                 ConsoleCommandHistory = session.ConsoleCommandHistory.ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 BackgroundTileSnapshot = session.WorldMap.ExportBackgroundTileSnapshot(),
@@ -241,6 +257,8 @@ namespace Nyvorn.Source.World.Persistence
                 Furnaces = saveData.Furnaces ?? new List<FurnaceSaveData>(),
                 Torches = saveData.Torches ?? new List<TorchSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
+                Chairs = saveData.Chairs ?? new List<ChairSaveData>(),
+                Tables = saveData.Tables ?? new List<TableSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 SurfaceDecorations = saveData.SurfaceDecorations ?? new List<SurfaceDecorationSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
@@ -273,6 +291,8 @@ namespace Nyvorn.Source.World.Persistence
                 Furnaces = saveData.Furnaces ?? new List<FurnaceSaveData>(),
                 Torches = saveData.Torches ?? new List<TorchSaveData>(),
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
+                Chairs = saveData.Chairs ?? new List<ChairSaveData>(),
+                Tables = saveData.Tables ?? new List<TableSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 SurfaceDecorations = saveData.SurfaceDecorations ?? new List<SurfaceDecorationSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
