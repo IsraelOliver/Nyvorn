@@ -24,7 +24,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
             get
             {
                 int x = (Tile.X * tileSize) + ((tileSize - 24) / 2);
-                int y = ((Tile.Y + 1) * tileSize) - 16;
+                int y = ((Tile.Y + 1) * tileSize) - 8;
                 return new Vector2(x, y);
             }
         }
@@ -35,7 +35,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
             (int)Position.X,
             (int)Position.Y,
             24,
-            16);
+            8);
 
         public bool CanInteract(Player player)
         {
