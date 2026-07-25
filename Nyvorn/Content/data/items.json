@@ -239,9 +239,9 @@
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,
-    "worldSize": [24, 8],
-    "worldPivot": [12, 8],
+    "worldSize": [24, 16],
+    "worldPivot": [12, 16],
     "spriteSheetCell": [0, 0],
-    "worldCollisionRect": [0, 0, 24, 8]
+    "worldCollisionRect": [0, 8, 24, 8]
   }
 ]

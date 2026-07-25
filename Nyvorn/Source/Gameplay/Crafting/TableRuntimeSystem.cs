@@ -14,7 +14,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
     public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IWorldObjectMovementBlocker
     {
         private const int TableWidth = 24;
-        private const int TableHeight = 8;
+        private const int TableHeight = 16;
         private const int HoverPadding = 8;
 
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1.5f, 1);
