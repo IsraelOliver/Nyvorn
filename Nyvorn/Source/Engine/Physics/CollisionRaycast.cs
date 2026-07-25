@@ -19,6 +19,7 @@ namespace Nyvorn.Source.Engine.Physics
 
         /// <summary>
         /// Test if a movement ray intersects a rectangle (AABB).
+        /// Only blocks downward movement (landing on top of furniture).
         /// </summary>
         public static CollisionRaycast TestMovement(
             Vector2 previousPosition,
@@ -29,16 +30,12 @@ namespace Nyvorn.Source.Engine.Physics
             if (movement.LengthSquared() < 0.001f)
                 return new CollisionRaycast(false, 0f, Vector2.Zero, Vector2.Zero);
 
-            // Expand rect by player size to do circle vs rect
-            const int PlayerHalfWidth = 7;  // Half of 13px hurtbox width
-            Rectangle expandedBounds = new Rectangle(
-                targetBounds.X - PlayerHalfWidth,
-                targetBounds.Y - 12,  // Player height ~23px
-                targetBounds.Width + (PlayerHalfWidth * 2),
-                targetBounds.Height + 24);
+            // Only detect collision if moving downward
+            if (movement.Y < 0.001f)
+                return new CollisionRaycast(false, 0f, Vector2.Zero, Vector2.Zero);
 
-            // Test ray against expanded rectangle
-            if (TryRayVsAABB(previousPosition, movement, expandedBounds, out float t, out Vector2 normal))
+            // Test ray against the furniture bounds directly (no expansion)
+            if (TryRayVsAABB(previousPosition, movement, targetBounds, out float t, out Vector2 normal))
             {
                 Vector2 collisionPoint = previousPosition + (movement * t);
                 return new CollisionRaycast(true, t, collisionPoint, normal);
