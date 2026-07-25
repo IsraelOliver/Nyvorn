@@ -14,7 +14,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
     public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IWorldObjectMovementBlocker
     {
         private const int TableWidth = 24;
-        private const int TableHeight = 16;
+        private const int TableHeight = 32;
         private const int HoverPadding = 8;
 
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1.5f, 1);
@@ -78,7 +78,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
         {
-            base.UpdatePlacementPreview(selectedHotbarIndex, mouseWorld, ItemId.Table, TableWidth, TableHeight);
+            base.UpdatePlacementPreview(selectedHotbarIndex, mouseWorld, ItemId.Table, TableWidth, 32);
         }
 
         public void Draw(SpriteBatch spriteBatch)
@@ -110,8 +110,16 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         public bool IsMovementBlockingTile(int tileX, int tileY)
         {
-            Point topTile = new Point(tileX, tileY - 1);
-            return TryGetFurnitureIndexAtTile(topTile, _ => true, out _);
+            // Only block downward movement on top of the table
+            // Check if there's a table one tile above this position
+            Point tileAbove = new Point(tileX, tileY - 1);
+            if (!TryGetFurnitureIndexAtTile(tileAbove, _ => true, out int index))
+                return false;
+
+            // Only block if player is within table's horizontal bounds
+            TableInstance table = furnitureItems[index];
+            return tileX * WorldMap.TileSize >= table.Bounds.Left &&
+                   tileX * WorldMap.TileSize + WorldMap.TileSize <= table.Bounds.Right;
         }
 
         public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
