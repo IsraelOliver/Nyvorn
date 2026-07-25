@@ -223,7 +223,7 @@
   {
     "id": "Chair",
     "name": "Chair",
-    "texturePath": "furniture/chair-Sheet",
+    "texturePath": "furniture/wood_chair",
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,
@@ -235,7 +235,7 @@
   {
     "id": "Table",
     "name": "Table",
-    "texturePath": "furniture/table-Sheet",
+    "texturePath": "furniture/wood_table",
     "stackable": true,
     "maxStack": 99,
     "gravityScale": 1.0,

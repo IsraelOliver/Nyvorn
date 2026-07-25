@@ -89,5 +89,27 @@
     "ingredients": [
       { "item": "IronOreBlock", "quantity": 2 }
     ]
+  },
+  {
+    "id": "wood_chair",
+    "result": "Chair",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Wood Chair",
+    "displayCost": "5 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 5 }
+    ]
+  },
+  {
+    "id": "wood_table",
+    "result": "Table",
+    "resultQuantity": 1,
+    "requiredTier": "Workbench",
+    "displayName": "Wood Table",
+    "displayCost": "10 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 10 }
+    ]
   }
 ]
