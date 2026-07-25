@@ -55,8 +55,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 {
                     if (savedTorch != null)
                     {
-                        Point tile = new Point(WorldMap.WrapTileX((int)(savedTorch.PositionX / WorldMap.TileSize)),
-                                               (int)(savedTorch.PositionY / WorldMap.TileSize) + 1);
+                        int offset = (WorldMap.TileSize - TorchWidth) / 2;
+                        Point tile = new Point(WorldMap.WrapTileX((int)System.Math.Round((savedTorch.PositionX - offset) / WorldMap.TileSize)),
+                                               (int)System.Math.Round(((savedTorch.PositionY + TorchHeight) / WorldMap.TileSize) - 1));
                         bool facingLeft = savedTorch.FacingLeft;
                         furnitureItems.Add(new TorchInstance(tile, savedTorch.PoleFrameIndex, WorldMap.TileSize, facingLeft));
                     }

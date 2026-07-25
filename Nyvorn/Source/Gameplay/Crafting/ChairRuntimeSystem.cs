@@ -35,8 +35,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 {
                     if (savedChair != null)
                     {
-                        Point tile = new Point(WorldMap.WrapTileX((int)(savedChair.PositionX / WorldMap.TileSize)),
-                                               (int)(savedChair.PositionY / WorldMap.TileSize) + 1);
+                        int offset = (WorldMap.TileSize - 8) / 2;
+                        Point tile = new Point(WorldMap.WrapTileX((int)System.Math.Round((savedChair.PositionX - offset) / WorldMap.TileSize)),
+                                               (int)System.Math.Round(((savedChair.PositionY + 16) / WorldMap.TileSize) - 1));
                         bool facingLeft = savedChair.FacingLeft;
                         furnitureItems.Add(new ChairInstance(tile, WorldMap.TileSize, facingLeft));
                     }

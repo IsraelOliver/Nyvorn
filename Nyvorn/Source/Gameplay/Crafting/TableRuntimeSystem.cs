@@ -35,8 +35,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 {
                     if (savedTable != null)
                     {
-                        Point tile = new Point(WorldMap.WrapTileX((int)(savedTable.PositionX / WorldMap.TileSize)),
-                                               (int)(savedTable.PositionY / WorldMap.TileSize) + 1);
+                        int offset = (WorldMap.TileSize - 24) / 2;
+                        Point tile = new Point(WorldMap.WrapTileX((int)System.Math.Round((savedTable.PositionX - offset) / WorldMap.TileSize)),
+                                               (int)System.Math.Round(((savedTable.PositionY + 16) / WorldMap.TileSize) - 1));
                         bool facingLeft = savedTable.FacingLeft;
                         furnitureItems.Add(new TableInstance(tile, WorldMap.TileSize, facingLeft));
                     }

@@ -35,8 +35,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 {
                     if (savedWorkbench != null)
                     {
-                        Point tile = new Point(WorldMap.WrapTileX((int)(savedWorkbench.PositionX / WorldMap.TileSize)),
-                                               (int)(savedWorkbench.PositionY / WorldMap.TileSize) + 1);
+                        int offset = (WorldMap.TileSize - WorkbenchWidth) / 2;
+                        Point tile = new Point(WorldMap.WrapTileX((int)System.Math.Round((savedWorkbench.PositionX - offset) / WorldMap.TileSize)),
+                                               (int)System.Math.Round(((savedWorkbench.PositionY + WorkbenchHeight) / WorldMap.TileSize) - 1));
                         bool facingLeft = savedWorkbench.FacingLeft;
                         furnitureItems.Add(new WorkbenchInstance(tile, WorldMap.TileSize, facingLeft));
                     }

@@ -35,8 +35,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 {
                     if (savedFurnace != null)
                     {
-                        Point tile = new Point(WorldMap.WrapTileX((int)(savedFurnace.PositionX / WorldMap.TileSize)),
-                                               (int)(savedFurnace.PositionY / WorldMap.TileSize) + 1);
+                        int offset = (WorldMap.TileSize - FurnaceWidth) / 2;
+                        Point tile = new Point(WorldMap.WrapTileX((int)System.Math.Round((savedFurnace.PositionX - offset) / WorldMap.TileSize)),
+                                               (int)System.Math.Round(((savedFurnace.PositionY + FurnaceHeight) / WorldMap.TileSize) - 1));
                         bool facingLeft = savedFurnace.FacingLeft;
                         furnitureItems.Add(new FurnaceInstance(tile, WorldMap.TileSize, facingLeft));
                     }
