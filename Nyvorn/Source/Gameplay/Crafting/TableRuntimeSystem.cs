@@ -14,7 +14,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
     public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IWorldObjectMovementBlocker
     {
         private const int TableWidth = 24;
-        private const int TableHeight = 32;
+        private const int TableHeight = 16;
         private const int HoverPadding = 8;
 
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1.5f, 1);
@@ -78,7 +78,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         private void UpdatePlacementPreview(int selectedHotbarIndex, Vector2 mouseWorld)
         {
-            base.UpdatePlacementPreview(selectedHotbarIndex, mouseWorld, ItemId.Table, TableWidth, 32);
+            base.UpdatePlacementPreview(selectedHotbarIndex, mouseWorld, ItemId.Table, TableWidth, TableHeight);
         }
 
         public void Draw(SpriteBatch spriteBatch)
