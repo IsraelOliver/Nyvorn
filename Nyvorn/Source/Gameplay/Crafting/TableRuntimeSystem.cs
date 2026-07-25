@@ -98,13 +98,8 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 TableInstance table = furnitureItems[i];
                 Rectangle tableBounds = table.Bounds;
 
-                // Check if player is above the table and falling onto it
-                if (playerBounds.Bottom > tableBounds.Top &&
-                    playerBounds.Bottom <= tableBounds.Bottom &&
-                    playerBounds.Intersects(tableBounds))
-                {
+                if (playerBounds.Intersects(tableBounds))
                     return true;
-                }
             }
 
             return false;
