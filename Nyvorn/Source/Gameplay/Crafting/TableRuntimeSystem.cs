@@ -111,15 +111,16 @@ namespace Nyvorn.Source.Gameplay.Crafting
         public bool IsMovementBlockingTile(int tileX, int tileY)
         {
             // Only block downward movement on top of the table
-            // Check if there's a table one tile above this position
-            Point tileAbove = new Point(tileX, tileY - 1);
-            if (!TryGetFurnitureIndexAtTile(tileAbove, _ => true, out int index))
-                return false;
+            // Check if there's a table in this position or one below
+            if (TryGetFurnitureIndexAtTile(new Point(tileX, tileY), _ => true, out int index))
+            {
+                TableInstance table = furnitureItems[index];
+                // Only block if player is within table's horizontal bounds
+                return tileX * WorldMap.TileSize >= table.Bounds.Left &&
+                       tileX * WorldMap.TileSize + WorldMap.TileSize <= table.Bounds.Right;
+            }
 
-            // Only block if player is within table's horizontal bounds
-            TableInstance table = furnitureItems[index];
-            return tileX * WorldMap.TileSize >= table.Bounds.Left &&
-                   tileX * WorldMap.TileSize + WorldMap.TileSize <= table.Bounds.Right;
+            return false;
         }
 
         public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
