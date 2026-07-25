@@ -19,6 +19,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly PlayerAnimator playerAnimator;
 
         public Vector2 Position => motor.Position;
+        public PlayerMotor Motor => motor;
         private Vector2 VisualPosition => motor.VisualPosition;
         Vector2 IDamageable.Position => Position;
         public bool HasActiveAttackHitbox => combat.HasActiveAttackHitbox;

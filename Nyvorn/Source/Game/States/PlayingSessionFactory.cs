@@ -822,7 +822,8 @@ namespace Nyvorn.Source.Game.States
                 TorchRuntimeSystem = torchRuntimeSystem,
                 DoorRuntimeSystem = doorRuntimeSystem,
                 ChairRuntimeSystem = chairRuntimeSystem,
-                TableRuntimeSystem = tableRuntimeSystem
+                TableRuntimeSystem = tableRuntimeSystem,
+                WorldObjectRegistry = worldObjectRegistry
             };
             WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
             WorldEnvironmentSystem environmentSystem = new(

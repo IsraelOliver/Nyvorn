@@ -11,7 +11,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>
+    public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IPlatform
     {
         private const int TableWidth = 24;
         private const int TableHeight = 16;
@@ -106,6 +106,30 @@ namespace Nyvorn.Source.Gameplay.Crafting
         public override bool IsObjectOccupyingTile(int tileX, int tileY)
         {
             return TryGetFurnitureIndexAtTile(new Point(tileX, tileY), _ => true, out _);
+        }
+
+        public bool IsPlatformBlockingMovement(Rectangle playerBounds, Vector2 playerVelocity)
+        {
+            // Only block downward movement (falling)
+            if (playerVelocity.Y <= 0f)
+                return false;
+
+            // Check if player overlaps with any table
+            for (int i = 0; i < furnitureItems.Count; i++)
+            {
+                TableInstance table = furnitureItems[i];
+                Rectangle tableBounds = table.Bounds;
+
+                // Check if player is above the table and falling onto it
+                if (playerBounds.Bottom > tableBounds.Top &&
+                    playerBounds.Bottom <= tableBounds.Bottom &&
+                    playerBounds.Intersects(tableBounds))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)

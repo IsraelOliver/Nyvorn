@@ -91,6 +91,7 @@ namespace Nyvorn.Source.Game.States
         public DoorRuntimeSystem DoorRuntimeSystem { get; init; }
         public ChairRuntimeSystem ChairRuntimeSystem { get; init; }
         public TableRuntimeSystem TableRuntimeSystem { get; init; }
+        public WorldObjectRegistry WorldObjectRegistry { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
 

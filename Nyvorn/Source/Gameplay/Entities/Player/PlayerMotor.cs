@@ -3,6 +3,7 @@ using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
+using System;
 
 namespace Nyvorn.Source.Gameplay.Entities.Player
 {
@@ -14,6 +15,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private const int SandSurfaceHeightTolerance = 1;
         private readonly PlayerConfig config;
         private readonly KinematicBodyMotor kinematicMotor;
+        private Func<Rectangle, Vector2, bool> platformCollisionCheck;
 
         private Vector2 position;
         private Vector2 velocity;
@@ -46,6 +48,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public Vector2 VisualPosition => position + new Vector2(0f, stepVisualOffsetY);
         public bool IsGrounded { get; private set; }
         public float LastLandingImpactVelocity { get; private set; }
+
+        public void SetPlatformCollisionCheck(Func<Rectangle, Vector2, bool> check)
+        {
+            platformCollisionCheck = check;
+        }
 
         private float HitLeft => position.X - (currentHurtboxSize.X * 0.5f);
         private float HitRight => HitLeft + currentHurtboxSize.X - 1f;
@@ -317,6 +324,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 velocity.Y = 0f;
                 IsGrounded = true;
                 kinematicMotor.ClearRemainderY();
+            }
+
+            // Check platform collision (one-way platforms that only block downward movement)
+            if (!IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null)
+            {
+                Rectangle playerBounds = Hurtbox;
+                if (platformCollisionCheck(playerBounds, velocity))
+                {
+                    LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
+                    velocity.Y = 0f;
+                    IsGrounded = true;
+                }
             }
         }
 

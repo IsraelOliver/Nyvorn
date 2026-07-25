@@ -10,6 +10,7 @@ namespace Nyvorn.Source.Gameplay.World.Objects
         private readonly List<IWorldObjectMovementBlocker> movementBlockers = new();
         private readonly List<IForegroundTileBreakListener> foregroundTileBreakListeners = new();
         private readonly List<IWorldObjectMiningProvider> miningProviders = new();
+        private readonly List<IPlatform> platforms = new();
 
         public void Register(object worldObjectSystem)
         {
@@ -38,6 +39,12 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                 !miningProviders.Contains(miningProvider))
             {
                 miningProviders.Add(miningProvider);
+            }
+
+            if (worldObjectSystem is IPlatform platform &&
+                !platforms.Contains(platform))
+            {
+                platforms.Add(platform);
             }
         }
 
@@ -86,6 +93,17 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             for (int i = 0; i < miningProviders.Count; i++)
             {
                 if (miningProviders[i].TryMineObjectAtTile(tile, worldItemRuntimeSystem))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public bool IsPlatformBlockingMovement(Rectangle playerBounds, Vector2 playerVelocity)
+        {
+            for (int i = 0; i < platforms.Count; i++)
+            {
+                if (platforms[i].IsPlatformBlockingMovement(playerBounds, playerVelocity))
                     return true;
             }
 

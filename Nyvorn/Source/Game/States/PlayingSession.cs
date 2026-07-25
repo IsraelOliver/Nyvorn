@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
+using System;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
@@ -113,6 +114,14 @@ namespace Nyvorn.Source.Game.States
         public void InitializeRuntimeState()
         {
             TissueSystem.InitializeRuntimeState();
+
+            // Setup platform collision for player
+            // Player's motor will check this callback during vertical movement
+            Func<Rectangle, Vector2, bool> platformCheck = (playerBounds, velocity) =>
+                ViewCoordinator.WorldObjectRegistry != null &&
+                ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(playerBounds, velocity);
+
+            Player.Motor.SetPlatformCollisionCheck(platformCheck);
         }
 
         public void AddConsoleCommand(string command)
