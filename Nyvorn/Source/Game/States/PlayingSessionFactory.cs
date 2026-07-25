@@ -531,8 +531,8 @@ namespace Nyvorn.Source.Game.States
             build.TorchPoleTexture = content.Load<Texture2D>("furniture/torch-Sheet");
             build.TorchFlameTexture = content.Load<Texture2D>("furniture/torch-animation-Sheet-Sheet");
             build.DoorTexture = content.Load<Texture2D>("objects/wood_door");
-            build.ChairTexture = null; // TODO: Load chair texture when asset is created
-            build.TableTexture = null; // TODO: Load table texture when asset is created
+            build.ChairTexture = content.Load<Texture2D>("furniture/wood_chair");
+            build.TableTexture = content.Load<Texture2D>("furniture/wood_table");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.TissueRevealIconTexture = content.Load<Texture2D>("ui/tissue_reveal-Sheet");
             build.BackgroundFarTexture = content.Load<Texture2D>("ui/background_parallax/background1");
