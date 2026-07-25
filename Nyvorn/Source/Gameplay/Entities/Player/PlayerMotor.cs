@@ -63,10 +63,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public Rectangle GetFootSensor()
         {
-            const float SensorHeight = 2f;
-            float sensorWidth = currentHurtboxSize.X * 0.6f;
+            const float SensorHeight = 4f;
+            float sensorWidth = currentHurtboxSize.X * 0.8f;
             float sensorLeft = position.X - (sensorWidth * 0.5f);
-            float sensorTop = HitBottom - SensorHeight;
+            float sensorTop = HitBottom;
 
             return new Rectangle(
                 (int)sensorLeft,
