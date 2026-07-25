@@ -15,13 +15,10 @@ namespace Nyvorn.Source.Gameplay.Crafting
     {
         private const int ChairWidth = 8;
         private const int ChairHeight = 16;
-        private const int HoverPadding = 8;
 
         private static readonly WorldObjectMiningDefinition MiningDefinition = new(true, 1.5f, 1);
         private static readonly Rectangle NormalSource = new Rectangle(0, 0, ChairWidth, ChairHeight);
-        private static readonly Rectangle SelectedSource = new Rectangle(ChairWidth, 0, ChairWidth, ChairHeight);
 
-        private int hoveredChairIndex = -1;
         public required Texture2D Texture { get; init; }
 
         public IReadOnlyList<ChairInstance> Chairs => FurnitureItems;
@@ -48,25 +45,6 @@ namespace Nyvorn.Source.Gameplay.Crafting
             MarkPersisted();
         }
 
-        public void UpdateHover(Vector2 mouseWorld)
-        {
-            hoveredChairIndex = -1;
-
-            for (int i = 0; i < furnitureItems.Count; i++)
-            {
-                Rectangle bounds = furnitureItems[i].Bounds;
-                Rectangle hoverBounds = bounds;
-                hoverBounds.Inflate(HoverPadding, HoverPadding);
-                if (!hoverBounds.Contains(mouseWorld))
-                    continue;
-
-                if (Vector2.Distance(Player.Position, bounds.Center.ToVector2()) > Player.WorldInteractionRange)
-                    continue;
-
-                hoveredChairIndex = i;
-                return;
-            }
-        }
 
         public bool TryPlaceSelectedChair(InputState input, int selectedHotbarIndex, Vector2 mouseWorld)
         {
@@ -91,9 +69,8 @@ namespace Nyvorn.Source.Gameplay.Crafting
             {
                 ChairInstance chair = furnitureItems[i];
                 Rectangle bounds = chair.Bounds;
-                Rectangle source = i == hoveredChairIndex ? SelectedSource : NormalSource;
                 SpriteEffects effects = chair.FacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
-                spriteBatch.Draw(Texture, bounds, source, Color.White, 0f, Vector2.Zero, effects, 0f);
+                spriteBatch.Draw(Texture, bounds, NormalSource, Color.White, 0f, Vector2.Zero, effects, 0f);
             }
 
             if (previewVisible)

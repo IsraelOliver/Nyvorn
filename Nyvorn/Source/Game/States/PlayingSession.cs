@@ -408,8 +408,6 @@ namespace Nyvorn.Source.Game.States
             BlockInteractionSystem.Update(dt);
             WorkbenchRuntimeSystem.UpdateHover(mouseWorld);
             FurnaceRuntimeSystem.UpdateHover(mouseWorld);
-            ChairRuntimeSystem.UpdateHover(mouseWorld);
-            TableRuntimeSystem.UpdateHover(mouseWorld);
             InputState worldInput = InputRouter.RouteFrameInput(input);
 
             CombatCoordinator.SyncEquippedWeapon(SelectedHotbarIndex);
