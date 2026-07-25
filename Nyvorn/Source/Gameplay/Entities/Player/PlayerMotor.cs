@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.Engine.Physics.Sand;
+using Nyvorn.Source.Gameplay.World.Objects;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World;
 using System;
@@ -16,6 +17,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private readonly PlayerConfig config;
         private readonly KinematicBodyMotor kinematicMotor;
         private Func<Rectangle, Vector2, bool> platformCollisionCheck;
+        private Func<Vector2, Vector2, bool> furnitureRaycastCheck;
 
         private Vector2 position;
         private Vector2 velocity;
@@ -54,28 +56,17 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             platformCollisionCheck = check;
         }
 
+        public void SetFurnitureRaycastCheck(Func<Vector2, Vector2, bool> check)
+        {
+            furnitureRaycastCheck = check;
+        }
+
         private float HitLeft => position.X - (currentHurtboxSize.X * 0.5f);
         private float HitRight => HitLeft + currentHurtboxSize.X - 1f;
         private float HitBottom => position.Y;
         private float HitTop => HitBottom - currentHurtboxSize.Y + 1f;
 
         public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, currentHurtboxSize.X, currentHurtboxSize.Y);
-
-        public Rectangle GetFootSensor()
-        {
-            // Extended sensor that covers from feet upward to catch furniture even if player
-            // is already partially inside it (e.g., walking from platform directly onto table)
-            const float SensorHeight = 20f;  // Cover significant vertical space
-            float sensorWidth = currentHurtboxSize.X * 0.9f;
-            float sensorLeft = position.X - (sensorWidth * 0.5f);
-            float sensorTop = HitBottom - SensorHeight;  // Extend upward from feet
-
-            return new Rectangle(
-                (int)sensorLeft,
-                (int)sensorTop,
-                (int)sensorWidth,
-                (int)SensorHeight);
-        }
 
         public void Update(
             float dt,
@@ -340,6 +331,18 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 velocity.Y = 0f;
                 IsGrounded = true;
                 kinematicMotor.ClearRemainderY();
+            }
+
+            // Check furniture collision via raycasting (detects penetration)
+            if (!IsGrounded && velocity.Y >= 0f && furnitureRaycastCheck != null)
+            {
+                Vector2 nextPosition = position + (velocity * (1f / 60f));  // Predict next frame
+                if (furnitureRaycastCheck(position, nextPosition))
+                {
+                    LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
+                    velocity.Y = 0f;
+                    IsGrounded = true;
+                }
             }
 
             // Check platform collision (one-way platforms that only block downward movement)

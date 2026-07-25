@@ -770,6 +770,8 @@ namespace Nyvorn.Source.Game.States
             build.WorldMap.SetObjectCollisionQueries(
                 worldObjectRegistry.IsObjectOccupyingTile,
                 worldObjectRegistry.IsMovementBlockingTile);
+            FurnitureCollisionSystem furnitureCollisionSystem = new();
+            furnitureCollisionSystem.Register(tableRuntimeSystem);
             InteriorFocusSystem interiorFocusSystem = new InteriorFocusSystem
             {
                 WorldMap = build.WorldMap,
@@ -823,7 +825,8 @@ namespace Nyvorn.Source.Game.States
                 DoorRuntimeSystem = doorRuntimeSystem,
                 ChairRuntimeSystem = chairRuntimeSystem,
                 TableRuntimeSystem = tableRuntimeSystem,
-                WorldObjectRegistry = worldObjectRegistry
+                WorldObjectRegistry = worldObjectRegistry,
+                FurnitureCollisionSystem = furnitureCollisionSystem
             };
             WorldDayNightCycle dayNightCycle = new(build.SavedTimeOfDay01, cycleIndex: build.SavedCycleIndex);
             WorldEnvironmentSystem environmentSystem = new(

@@ -92,6 +92,7 @@ namespace Nyvorn.Source.Game.States
         public ChairRuntimeSystem ChairRuntimeSystem { get; init; }
         public TableRuntimeSystem TableRuntimeSystem { get; init; }
         public WorldObjectRegistry WorldObjectRegistry { get; init; }
+        public FurnitureCollisionSystem FurnitureCollisionSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
 

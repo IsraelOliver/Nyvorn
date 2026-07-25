@@ -115,13 +115,18 @@ namespace Nyvorn.Source.Game.States
         {
             TissueSystem.InitializeRuntimeState();
 
-            // Setup platform collision for player
+            // Setup furniture raycasting collision
+            Func<Vector2, Vector2, bool> furnitureCheck = (previousPos, currentPos) =>
+                ViewCoordinator.FurnitureCollisionSystem != null &&
+                ViewCoordinator.FurnitureCollisionSystem.TryGetNearestCollision(previousPos, currentPos, out _);
+
+            Player.Motor.SetFurnitureRaycastCheck(furnitureCheck);
+
+            // Setup platform collision for player (for workbench, etc)
             // Player's motor will check this callback during vertical movement
             Func<Rectangle, Vector2, bool> platformCheck = (playerBounds, velocity) =>
                 ViewCoordinator.WorldObjectRegistry != null &&
-                ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(
-                    Player.Motor.GetFootSensor(),
-                    velocity);
+                ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(playerBounds, velocity);
 
             Player.Motor.SetPlatformCollisionCheck(platformCheck);
         }

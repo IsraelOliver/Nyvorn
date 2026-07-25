@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
+using Nyvorn.Source.Engine.Physics;
 using Nyvorn.Source.Gameplay.Entities.Player;
 using Nyvorn.Source.Gameplay.Interaction;
 using Nyvorn.Source.Gameplay.Items;
@@ -11,7 +12,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>
+    public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IRaycastCollider
     {
         private const int TableWidth = 24;
         private const int TableHeight = 16;
@@ -84,6 +85,28 @@ namespace Nyvorn.Source.Gameplay.Crafting
         public override bool IsObjectOccupyingTile(int tileX, int tileY)
         {
             return TryGetFurnitureIndexAtTile(new Point(tileX, tileY), _ => true, out _);
+        }
+
+        public bool TryGetCollision(Vector2 previousPosition, Vector2 currentPosition, out CollisionRaycast collision)
+        {
+            collision = default;
+
+            // Check collision against all tables
+            for (int i = 0; i < furnitureItems.Count; i++)
+            {
+                CollisionRaycast tableCollision = CollisionRaycast.TestMovement(
+                    previousPosition,
+                    currentPosition,
+                    furnitureItems[i].Bounds);
+
+                if (tableCollision.Intersects)
+                {
+                    collision = tableCollision;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public override bool TryGetMiningTargetAtTile(Point tile, out WorldObjectMiningTarget target)
