@@ -83,6 +83,9 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
         public void Draw(SpriteBatch spriteBatch)
         {
+            if (Texture == null)
+                return;
+
             for (int i = 0; i < furnitureItems.Count; i++)
             {
                 TableInstance table = furnitureItems[i];
