@@ -63,10 +63,12 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public Rectangle GetFootSensor()
         {
-            const float SensorHeight = 4f;
-            float sensorWidth = currentHurtboxSize.X * 0.8f;
+            // Extended sensor that covers from feet upward to catch furniture even if player
+            // is already partially inside it (e.g., walking from platform directly onto table)
+            const float SensorHeight = 20f;  // Cover significant vertical space
+            float sensorWidth = currentHurtboxSize.X * 0.9f;
             float sensorLeft = position.X - (sensorWidth * 0.5f);
-            float sensorTop = HitBottom;
+            float sensorTop = HitBottom - SensorHeight;  // Extend upward from feet
 
             return new Rectangle(
                 (int)sensorLeft,
