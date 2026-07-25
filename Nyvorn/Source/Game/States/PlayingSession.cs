@@ -119,7 +119,9 @@ namespace Nyvorn.Source.Game.States
             // Player's motor will check this callback during vertical movement
             Func<Rectangle, Vector2, bool> platformCheck = (playerBounds, velocity) =>
                 ViewCoordinator.WorldObjectRegistry != null &&
-                ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(playerBounds, velocity);
+                ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(
+                    Player.Motor.GetFootSensor(),
+                    velocity);
 
             Player.Motor.SetPlatformCollisionCheck(platformCheck);
         }

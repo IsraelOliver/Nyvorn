@@ -99,11 +99,11 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             return false;
         }
 
-        public bool IsPlatformBlockingMovement(Rectangle playerBounds, Vector2 playerVelocity)
+        public bool IsPlatformBlockingMovement(Rectangle footSensor, Vector2 playerVelocity)
         {
             for (int i = 0; i < platforms.Count; i++)
             {
-                if (platforms[i].IsPlatformBlockingMovement(playerBounds, playerVelocity))
+                if (platforms[i].IsPlatformBlockingMovement(footSensor, playerVelocity))
                     return true;
             }
 

@@ -61,6 +61,20 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         public Rectangle Hurtbox => new Rectangle((int)HitLeft, (int)HitTop, currentHurtboxSize.X, currentHurtboxSize.Y);
 
+        public Rectangle GetFootSensor()
+        {
+            const float SensorHeight = 2f;
+            float sensorWidth = currentHurtboxSize.X * 0.6f;
+            float sensorLeft = position.X - (sensorWidth * 0.5f);
+            float sensorTop = HitBottom - SensorHeight;
+
+            return new Rectangle(
+                (int)sensorLeft,
+                (int)sensorTop,
+                (int)sensorWidth,
+                (int)SensorHeight);
+        }
+
         public void Update(
             float dt,
             WorldMap worldMap,

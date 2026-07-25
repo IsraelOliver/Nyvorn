@@ -86,19 +86,16 @@ namespace Nyvorn.Source.Gameplay.Crafting
             return TryGetFurnitureIndexAtTile(new Point(tileX, tileY), _ => true, out _);
         }
 
-        public bool IsPlatformBlockingMovement(Rectangle playerBounds, Vector2 playerVelocity)
+        public bool IsPlatformBlockingMovement(Rectangle footSensor, Vector2 playerVelocity)
         {
             // Only block downward movement (falling)
             if (playerVelocity.Y <= 0f)
                 return false;
 
-            // Check if player overlaps with any table
+            // Check if player's feet touch any table
             for (int i = 0; i < furnitureItems.Count; i++)
             {
-                TableInstance table = furnitureItems[i];
-                Rectangle tableBounds = table.Bounds;
-
-                if (playerBounds.Intersects(tableBounds))
+                if (footSensor.Intersects(furnitureItems[i].Bounds))
                     return true;
             }
 
