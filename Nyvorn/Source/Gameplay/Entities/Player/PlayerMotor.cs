@@ -302,6 +302,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
         private void MoveVertically(WorldCollisionQuery collision, SandSystem sandSystem, float amount)
         {
+            bool wasGrounded = IsGrounded;
             IsGrounded = false;
             pendingVerticalLandingY = 0f;
 
@@ -325,6 +326,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             position = kinematicMotor.Position;
 
+            // Check ground support at current position (tiles or sand)
             if (!IsGrounded && velocity.Y >= 0f && HasGroundSupportAtCurrentPosition(collision, sandSystem))
             {
                 LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
@@ -334,12 +336,26 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             }
 
             // Check platform collision (one-way platforms like mesa, cadeira, workbench)
+            // This applies both when falling AND when already standing on platform
             if (!IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null)
             {
                 Rectangle playerBounds = Hurtbox;
                 if (platformCollisionCheck(playerBounds, velocity))
                 {
                     LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
+                    velocity.Y = 0f;
+                    IsGrounded = true;
+                }
+            }
+
+            // Validate continuous platform support: if was grounded, check if still in contact
+            // This prevents player from sinking through platform when velocity is low
+            if (wasGrounded && !IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null)
+            {
+                Rectangle playerBounds = Hurtbox;
+                if (platformCollisionCheck(playerBounds, velocity))
+                {
+                    // Still in contact with platform, maintain ground state
                     velocity.Y = 0f;
                     IsGrounded = true;
                 }
