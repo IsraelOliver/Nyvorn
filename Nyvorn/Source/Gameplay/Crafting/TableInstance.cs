@@ -37,6 +37,15 @@ namespace Nyvorn.Source.Gameplay.Crafting
             24,
             16);
 
+        /// <summary>
+        /// Surface of the table - only the top 2 pixels where player stands
+        /// </summary>
+        public Rectangle SurfaceBounds => new Rectangle(
+            (int)Position.X,
+            (int)Position.Y,
+            24,
+            2);
+
         public bool CanInteract(Player player)
         {
             return false;

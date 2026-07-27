@@ -154,10 +154,10 @@ namespace Nyvorn.Source.Gameplay.Crafting
             if (playerVelocity.Y <= 0f)
                 return false;
 
-            // Check if player foot sensor intersects any table
+            // Check if player intersects table SURFACE (top 2 pixels only)
             for (int i = 0; i < furnitureItems.Count; i++)
             {
-                if (furnitureItems[i].Bounds.Intersects(footSensor))
+                if (furnitureItems[i].SurfaceBounds.Intersects(footSensor))
                     return true;
             }
 
