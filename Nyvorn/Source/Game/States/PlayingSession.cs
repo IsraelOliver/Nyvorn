@@ -115,8 +115,7 @@ namespace Nyvorn.Source.Game.States
         {
             TissueSystem.InitializeRuntimeState();
 
-            // Setup platform collision for player (mesa, cadeira, workbench, etc)
-            // Player's motor will check this callback during vertical movement
+            // Setup platform collision for movable furniture (mesa, cadeira, workbench, etc)
             Func<Rectangle, Vector2, bool> platformCheck = (playerBounds, velocity) =>
                 ViewCoordinator.WorldObjectRegistry != null &&
                 ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(playerBounds, velocity);

@@ -8,7 +8,8 @@ namespace Nyvorn.Source.World
         Sand  = 3,
         Grass = 4,
         Wood = 5,
-        IronOre = 6
+        IronOre = 6,
+        Platform = 7  // One-way platform (4px collision height instead of 8px)
     }
 
     public readonly struct TileMiningDefinition
@@ -37,6 +38,7 @@ namespace Nyvorn.Source.World
                 TileType.Stone => new TileMiningDefinition(isMineable: true, hardness: 3f, requiredMiningPower: 1),
                 TileType.Wood => new TileMiningDefinition(isMineable: true, hardness: 1.2f, requiredMiningPower: 0),
                 TileType.IronOre => new TileMiningDefinition(isMineable: true, hardness: 4f, requiredMiningPower: 2),
+                TileType.Platform => new TileMiningDefinition(isMineable: false, hardness: 0f, requiredMiningPower: 0),
                 _ => new TileMiningDefinition(isMineable: false, hardness: 0f, requiredMiningPower: 0)
             };
         }

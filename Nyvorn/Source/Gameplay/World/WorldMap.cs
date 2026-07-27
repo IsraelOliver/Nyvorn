@@ -312,7 +312,8 @@ namespace Nyvorn.Source.World
                 || tileType == TileType.Stone
                 || tileType == TileType.Sand
                 || tileType == TileType.Wood
-                || tileType == TileType.IronOre;
+                || tileType == TileType.IronOre
+                || tileType == TileType.Platform;
         }
 
         public bool IsSolidAt(int x, int y) => IsSolid(GetTile(x, y));
@@ -569,6 +570,7 @@ namespace Nyvorn.Source.World
                 TileType.Sand => background ? GetBackgroundAutoTileSourceRectangle(x, y) : GetAutoTileSourceRectangle(x, y),
                 TileType.Wood => GetDirtAutoTileSourceRectangle(x, y, background),
                 TileType.IronOre => GetIronOreAutoTileSourceRectangle(x, y, background),
+                TileType.Platform => GetDirtAutoTileSourceRectangle(x, y, background),  // Placeholder
                 _ => Rectangle.Empty
             };
 
@@ -1210,6 +1212,7 @@ namespace Nyvorn.Source.World
                 TileType.Stone => _stone,
                 TileType.Wood => _wood,
                 TileType.IronOre => _ironOre,
+                TileType.Platform => _wood,  // Placeholder: using wood texture
                 _ => null
             };
         }

@@ -16,7 +16,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private const int SandSurfaceHeightTolerance = 1;
         private readonly PlayerConfig config;
         private readonly KinematicBodyMotor kinematicMotor;
-        private Func<Rectangle, Vector2, bool> platformCollisionCheck;
+        private Func<Rectangle, Vector2, bool> platformCollisionCheck;  // For movable platforms (mesa, etc)
         private Func<Vector2, Vector2, bool> furnitureRaycastCheck;
 
         private Vector2 position;
@@ -25,6 +25,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private float stepVisualOffsetY;
         private Point currentHurtboxSize;
         private float pendingVerticalLandingY;
+        private bool fallThroughPlatforms;  // True when player presses S to drop through platforms
 
         public PlayerMotor(Vector2 startPosition, PlayerConfig config)
         {
@@ -51,14 +52,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         public bool IsGrounded { get; private set; }
         public float LastLandingImpactVelocity { get; private set; }
 
-        public void SetPlatformCollisionCheck(Func<Rectangle, Vector2, bool> check)
-        {
-            platformCollisionCheck = check;
-        }
 
         public void SetFurnitureRaycastCheck(Func<Vector2, Vector2, bool> check)
         {
             furnitureRaycastCheck = check;
+        }
+
+        public void SetPlatformCollisionCheck(Func<Rectangle, Vector2, bool> check)
+        {
+            platformCollisionCheck = check;
         }
 
         private float HitLeft => position.X - (currentHurtboxSize.X * 0.5f);
@@ -78,9 +80,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             float waterSubmergedRatio = 0f,
             Vector2 waterMoveInput = default,
             bool waterSurfaceJumpRequested = false,
-            TileWetnessField wetnessField = null)
+            TileWetnessField wetnessField = null,
+            Engine.Input.InputState? input = null)
         {
             LastLandingImpactVelocity = 0f;
+
+            // Update fallthrough state: press S to drop through platforms
+            fallThroughPlatforms = input != null && input.Value.VerticalMoveDir > 0;  // S key pressed
+
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
             UpdateHurtboxSize(collision, useDodgeHurtbox);
 
@@ -312,10 +319,23 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             {
                 kinematicMotor.Position = new Vector2(kinematicMotor.Position.X, pendingVerticalLandingY);
                 position = kinematicMotor.Position;
+
+                // Prevent penetration by snapping to exact landing position
                 if (hit.Direction > 0)
+                {
+                    // Falling: ensure we're at the exact top, not inside
+                    position.Y = pendingVerticalLandingY;
+                    kinematicMotor.Position = position;
                     LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
+                    IsGrounded = true;
+                }
+                else
+                {
+                    // Moving up: keep position as calculated
+                    IsGrounded = false;
+                }
+
                 velocity.Y = 0f;
-                IsGrounded = hit.Direction > 0;
                 return false;
             }
 
@@ -335,9 +355,9 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 kinematicMotor.ClearRemainderY();
             }
 
-            // Check platform collision (one-way platforms like mesa, cadeira, workbench)
-            // This applies both when falling AND when already standing on platform
-            if (!IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null)
+            // Check platform collision for movable furniture (mesa, cadeira, etc)
+            // Ignore when fallthrough is active (holding S)
+            if (!IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null && !fallThroughPlatforms)
             {
                 Rectangle playerBounds = Hurtbox;
                 if (platformCollisionCheck(playerBounds, velocity))
@@ -345,19 +365,15 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
                     velocity.Y = 0f;
                     IsGrounded = true;
-                }
-            }
+                    kinematicMotor.ClearRemainderY();
 
-            // Validate continuous platform support: if was grounded, check if still in contact
-            // This prevents player from sinking through platform when velocity is low
-            if (wasGrounded && !IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null)
-            {
-                Rectangle playerBounds = Hurtbox;
-                if (platformCollisionCheck(playerBounds, velocity))
-                {
-                    // Still in contact with platform, maintain ground state
-                    velocity.Y = 0f;
-                    IsGrounded = true;
+                    // Prevent penetration: snap player to top of platform
+                    // by checking if still colliding and pushing up
+                    while (platformCollisionCheck(Hurtbox, Vector2.Zero))
+                    {
+                        position.Y -= 1f;
+                        kinematicMotor.Position = position;
+                    }
                 }
             }
         }
@@ -440,14 +456,44 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 : GetHitTop(candidatePosition);
             int tileY = (int)System.MathF.Floor(edge / ts);
 
-            if (!collision.HasBlockedInRow(tileY, tileXLeft, tileXRight))
-                return false;
+            // Terraria-style: Check each tile in the collision row
+            for (int x = tileXLeft; x <= tileXRight; x++)
+            {
+                TileType tileType = collision.GetTileType(x, tileY);
+                TileCollisionType collType = TileCollisionTypeExtensions.GetCollisionType(tileType);
 
-            landingY = direction > 0
-                ? tileY * ts
-                : (tileY * ts) + ts + currentHurtboxSize.Y - 1f;
+                if (collType == TileCollisionType.Empty)
+                    continue;
 
-            return true;
+                // Ignore platforms when fallthrough is active (holding S)
+                if (fallThroughPlatforms && collType == TileCollisionType.Platform)
+                    continue;
+
+                // Found a collision
+                if (direction > 0)  // Falling downward
+                {
+                    // Can only land on platforms from above
+                    if (collType == TileCollisionType.Platform)
+                    {
+                        landingY = tileY * ts;  // Surface at top of tile (4px collision)
+                    }
+                    else if (collType == TileCollisionType.Solid)
+                    {
+                        landingY = tileY * ts;  // Top of solid block
+                    }
+                    return true;
+                }
+                else  // Moving upward
+                {
+                    if (collType == TileCollisionType.Solid)
+                    {
+                        landingY = (tileY * ts) + ts + currentHurtboxSize.Y - 1f;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private bool TryGetSandLandingY(SandSystem sandSystem, Vector2 previousPosition, Vector2 candidatePosition, out float landingY)

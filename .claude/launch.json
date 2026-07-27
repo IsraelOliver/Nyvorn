@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Nyvorn Debug",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--configuration", "Debug", "--project", "Nyvorn"],
+      "port": 0
+    }
+  ]
+}

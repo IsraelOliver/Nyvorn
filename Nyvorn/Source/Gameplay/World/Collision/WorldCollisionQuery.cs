@@ -26,6 +26,8 @@ namespace Nyvorn.Source.World
                 : worldMap.IsSolidAt(tileX, tileY);
         }
 
+        public TileType GetTileType(int tileX, int tileY) => worldMap.GetTile(tileX, tileY);
+
         public bool HasBlockedInColumn(int tileX, int tileYTop, int tileYBottom)
         {
             for (int y = tileYTop; y <= tileYBottom; y++)

@@ -116,7 +116,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     WaterSubmergedRatio,
                     waterMoveInput,
                     waterSurfaceJumpRequested,
-                    wetnessField);
+                    wetnessField,
+                    input);
 
                 if (!IsInWater)
                     ApplyFallDamage(motor.LastLandingImpactVelocity);
