@@ -12,7 +12,7 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Gameplay.Crafting
 {
-    public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IRaycastCollider
+    public sealed class TableRuntimeSystem : FurnitureRuntimeSystem<TableInstance>, IRaycastCollider, IPlatform
     {
         private const int TableWidth = 24;
         private const int TableHeight = 16;
@@ -142,6 +142,22 @@ namespace Nyvorn.Source.Gameplay.Crafting
             for (int i = 0; i < furnitureItems.Count; i++)
             {
                 if (furnitureItems[i].Bounds.Intersects(bounds))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public bool IsPlatformBlockingMovement(Rectangle footSensor, Vector2 playerVelocity)
+        {
+            // Only block if player is moving downward (falling/landing on mesa)
+            if (playerVelocity.Y <= 0f)
+                return false;
+
+            // Check if player foot sensor intersects any table
+            for (int i = 0; i < furnitureItems.Count; i++)
+            {
+                if (furnitureItems[i].Bounds.Intersects(footSensor))
                     return true;
             }
 

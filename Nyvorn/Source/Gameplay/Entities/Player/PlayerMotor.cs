@@ -333,19 +333,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                 kinematicMotor.ClearRemainderY();
             }
 
-            // Check furniture collision via raycasting (detects penetration)
-            if (!IsGrounded && velocity.Y >= 0f && furnitureRaycastCheck != null)
-            {
-                Vector2 nextPosition = position + (velocity * (1f / 60f));  // Predict next frame
-                if (furnitureRaycastCheck(position, nextPosition))
-                {
-                    LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
-                    velocity.Y = 0f;
-                    IsGrounded = true;
-                }
-            }
-
-            // Check platform collision (one-way platforms that only block downward movement)
+            // Check platform collision (one-way platforms like mesa, cadeira, workbench)
             if (!IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null)
             {
                 Rectangle playerBounds = Hurtbox;
