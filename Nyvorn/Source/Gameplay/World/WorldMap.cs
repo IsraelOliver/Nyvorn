@@ -16,7 +16,7 @@ namespace Nyvorn.Source.World
         private const int AutoTileSheetSpacing = 1;
         private const int DefaultChunkTileSize = 32;
         private const int MaxCachedChunks = 96;
-        private static readonly Color BackgroundTileTint = new Color(104, 104, 104, 210);
+        private static readonly Color BackgroundTileTint = new Color(104, 104, 104, 255);
 
         public int Width { get; }
         public int Height { get; }
