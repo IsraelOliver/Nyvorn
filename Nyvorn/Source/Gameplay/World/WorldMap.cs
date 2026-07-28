@@ -112,6 +112,8 @@ namespace Nyvorn.Source.World
             int wrappedX = WrapTileX(x);
             _backgroundTiles[wrappedX, y] = type;
             RefreshBackgroundAutoTileNeighborhood(wrappedX, y);
+            MarkChunkNeighborhoodDirty(wrappedX, y);
+            TileRevision++;
         }
 
         public byte[] ExportTileSnapshot()
