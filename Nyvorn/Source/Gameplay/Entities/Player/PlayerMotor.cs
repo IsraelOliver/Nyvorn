@@ -379,13 +379,14 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     IsGrounded = true;
                     kinematicMotor.ClearRemainderY();
 
-                    // Prevent penetration: snap player to top of platform
-                    // by checking if still colliding and pushing up
-                    // Pass positive velocity so IsPlatformBlockingMovement returns true
-                    while (platformCollisionCheck(Hurtbox, new Vector2(0f, 1f)))
+                    // Prevent penetration: check only bottom edge of player (feet)
+                    // so we don't incorrectly push up if head touches platform
+                    Rectangle bottomEdge = new Rectangle(Hurtbox.X, Hurtbox.Bottom - 1, Hurtbox.Width, 1);
+                    while (platformCollisionCheck(bottomEdge, new Vector2(0f, 1f)))
                     {
                         position.Y -= 1f;
                         kinematicMotor.Position = position;
+                        bottomEdge.Y = (int)GetHitBottom(position) - 1;
                     }
                 }
             }
