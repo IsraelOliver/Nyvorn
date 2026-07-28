@@ -104,6 +104,16 @@ namespace Nyvorn.Source.World
             TileRevision++;
         }
 
+        public void SetBackgroundTile(int x, int y, TileType type)
+        {
+            if (!InBounds(x, y))
+                return;
+
+            int wrappedX = WrapTileX(x);
+            _backgroundTiles[wrappedX, y] = type;
+            RefreshBackgroundAutoTileNeighborhood(wrappedX, y);
+        }
+
         public byte[] ExportTileSnapshot()
         {
             byte[] snapshot = new byte[Width * Height];
