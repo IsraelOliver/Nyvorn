@@ -42,7 +42,24 @@ namespace Nyvorn.Source.World.Generation.Passes
 
             PromoteSurfaceGrassShell(context);
 
+            FillBackgroundShallowUnderground(context);
+
             context.ProgressReporter?.Complete(Name, "Crosta preenchida");
+        }
+
+        private static void FillBackgroundShallowUnderground(WorldGenContext context)
+        {
+            WorldLayerDefinition shallowLayer = context.GetLayerDefinition(WorldLayerType.ShallowUnderground);
+
+            for (int x = 0; x < context.WorldMap.Width; x++)
+            {
+                int surfaceY = context.SurfaceHeights[x];
+
+                for (int y = shallowLayer.StartY; y <= shallowLayer.EndY; y++)
+                {
+                    context.WorldMap.SetBackgroundTile(x, y, TileType.Dirt);
+                }
+            }
         }
 
         private static int PromoteSurfaceGrassShell(WorldGenContext context)

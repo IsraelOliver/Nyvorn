@@ -41,7 +41,6 @@ namespace Nyvorn.Source.World.Generation
                 new SurfaceProfilePass(),
                 new BaseTerrainFillPass(),
                 new DirtToStoneTransitionPass(),
-                new SurfaceBackgroundPass(),
                 new CavePass(),
                 new DesertCirclePass(),
                 new CaveEntrancePass(),

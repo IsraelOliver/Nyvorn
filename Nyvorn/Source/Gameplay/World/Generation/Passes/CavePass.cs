@@ -23,6 +23,9 @@ namespace Nyvorn.Source.World.Generation.Passes
             OpenSimplexNoise warpNoise = new OpenSimplexNoise(caveSeed + 2000);
             OpenSimplexNoise deepNoise = new OpenSimplexNoise(caveSeed + 3000);
 
+            OpenSimplexNoise backgroundCaveNoise = new OpenSimplexNoise(caveSeed + 5000);
+            OpenSimplexNoise backgroundWarpNoise = new OpenSimplexNoise(caveSeed + 6000);
+
             int caveFadeHeight = 30;
             int transitionHeight = Math.Max(20, cavernLayer.Height / 6);
             int transitionStartY = cavernLayer.EndY - (transitionHeight / 2);
@@ -65,6 +68,8 @@ namespace Nyvorn.Source.World.Generation.Passes
                 if ((x & 15) == 0 || x == context.WorldMap.Width - 1)
                     context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Cavando cavernas");
             }
+
+            CarveBackgroundFissures(context, backgroundCaveNoise, backgroundWarpNoise, shallowLayer, caveFadeHeight);
 
             context.ProgressReporter?.Complete(Name, "Cavernas esculpidas");
         }
@@ -152,6 +157,29 @@ namespace Nyvorn.Source.World.Generation.Passes
         {
             t = Math.Clamp(t, 0f, 1f);
             return t * t * (3f - (2f * t));
+        }
+
+        private static void CarveBackgroundFissures(
+            WorldGenContext context,
+            OpenSimplexNoise caveNoise,
+            OpenSimplexNoise warpNoise,
+            WorldLayerDefinition shallowLayer,
+            int fadeHeight)
+        {
+            int startY = shallowLayer.StartY;
+            int endY = shallowLayer.EndY;
+
+            for (int x = 0; x < context.WorldMap.Width; x++)
+            {
+                for (int y = startY; y <= endY; y++)
+                {
+                    if (context.WorldMap.GetBackgroundTile(x, y) != TileType.Dirt)
+                        continue;
+
+                    if (ShouldCarveCavern(context, caveNoise, warpNoise, x, y, startY, endY, fadeHeight))
+                        context.WorldMap.SetBackgroundTile(x, y, TileType.Empty);
+                }
+            }
         }
     }
 }
