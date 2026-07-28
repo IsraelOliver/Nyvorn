@@ -426,7 +426,8 @@ namespace Nyvorn.Source.Game.States
                 TorchRuntimeSystem.TryPlaceSelectedTorch(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 DoorRuntimeSystem.TryPlaceSelectedDoor(worldInput, SelectedHotbarIndex, mouseWorld) ||
                 ChairRuntimeSystem.TryPlaceSelectedChair(worldInput, SelectedHotbarIndex, mouseWorld) ||
-                TableRuntimeSystem.TryPlaceSelectedTable(worldInput, SelectedHotbarIndex, mouseWorld);
+                TableRuntimeSystem.TryPlaceSelectedTable(worldInput, SelectedHotbarIndex, mouseWorld) ||
+                PlatformRuntimeSystem.TryPlaceSelectedPlatform(worldInput, SelectedHotbarIndex, mouseWorld);
             if (objectPlacementHandled)
             {
                 worldInput = worldInput.ConsumeWorldMouseInput();
