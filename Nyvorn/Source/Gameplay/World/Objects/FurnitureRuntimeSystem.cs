@@ -128,5 +128,25 @@ namespace Nyvorn.Source.Gameplay.World.Objects
 
             return false;
         }
+
+        /// <summary>
+        /// Generic robust platform collision check. Works for any furniture used as platforms.
+        /// Only blocks if player is moving downward and intersects the surface.
+        /// </summary>
+        protected bool CheckPlatformCollision(IReadOnlyList<T> items, Rectangle footSensor, Vector2 playerVelocity, Func<T, Rectangle> getSurfaceBounds)
+        {
+            // Only block if player is moving downward (falling/landing)
+            if (playerVelocity.Y <= 0f)
+                return false;
+
+            // Check if player intersects any platform SURFACE
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (getSurfaceBounds(items[i]).Intersects(footSensor))
+                    return true;
+            }
+
+            return false;
+        }
     }
 }
