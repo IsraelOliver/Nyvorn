@@ -17,6 +17,10 @@ namespace Nyvorn.Source.World.Generation
         private const float IronOreRegionGateLow = -0.10f;
         private const float IronOreRegionGateHigh = 0.35f;
 
+        private const float BackgroundFissureFrequencyX = 0.15f;
+        private const float BackgroundFissureFrequencyY = 0.02f;
+        private const float BackgroundFissureThreshold = 0.35f;
+
         private sealed class NoiseSet
         {
             public NoiseSet(int seed)
@@ -118,6 +122,13 @@ namespace Nyvorn.Source.World.Generation
             float regionGate = SmoothStep01(InverseLerp(IronOreRegionGateLow, IronOreRegionGateHigh, regionMask));
 
             return veinRidge * regionGate;
+        }
+
+        public static bool SampleBackgroundFissure(WorldGenContext context, int x, int y)
+        {
+            NoiseSet noiseSet = GetNoiseSet(SeedHash.ToIntSeed(context.Seeds.MaterialSeed));
+            float fissureNoise = SampleSeamedNoise(context, noiseSet.CaveNoise, x, y, BackgroundFissureFrequencyX, BackgroundFissureFrequencyY, 8100f, 9200f);
+            return fissureNoise > BackgroundFissureThreshold;
         }
 
         public static bool UsesDeepThreshold(WorldGenContext context, int x, int y)
