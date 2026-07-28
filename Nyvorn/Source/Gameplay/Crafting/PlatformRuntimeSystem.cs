@@ -243,5 +243,39 @@ namespace Nyvorn.Source.Gameplay.Crafting
 
             return false;
         }
+
+        protected override bool ValidateSupport(Rectangle bounds)
+        {
+            // Get tile coordinates from bounds
+            int tileCenterX = bounds.Center.X / WorldMap.TileSize;
+            int tileCenterY = bounds.Center.Y / WorldMap.TileSize;
+
+            // Check if has background tile at any adjacent position
+            int[] checkOffsets = { 0 };
+            foreach (int offsetX in new[] { -1, 0, 1 })
+            {
+                foreach (int offsetY in new[] { -1, 0, 1 })
+                {
+                    if (offsetX == 0 && offsetY == 0)
+                        continue;
+
+                    int checkX = WorldMap.WrapTileX(tileCenterX + offsetX);
+                    int checkY = tileCenterY + offsetY;
+
+                    if (WorldMap.InBounds(checkX, checkY))
+                    {
+                        // Check foreground tile
+                        if (WorldMap.GetTile(checkX, checkY) != TileType.Empty)
+                            return true;
+
+                        // Check background tile
+                        if (WorldMap.GetBackgroundTile(checkX, checkY) != TileType.Empty)
+                            return true;
+                    }
+                }
+            }
+
+            return false;
+        }
     }
 }
