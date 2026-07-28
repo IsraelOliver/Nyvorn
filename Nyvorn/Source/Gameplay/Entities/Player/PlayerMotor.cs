@@ -381,7 +381,8 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                     // Prevent penetration: snap player to top of platform
                     // by checking if still colliding and pushing up
-                    while (platformCollisionCheck(Hurtbox, Vector2.Zero))
+                    // Pass positive velocity so IsPlatformBlockingMovement returns true
+                    while (platformCollisionCheck(Hurtbox, new Vector2(0f, 1f)))
                     {
                         position.Y -= 1f;
                         kinematicMotor.Position = position;
