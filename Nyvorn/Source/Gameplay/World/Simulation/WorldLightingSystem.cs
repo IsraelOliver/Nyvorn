@@ -148,7 +148,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             Array.Clear(lightB, 0, cellCount);
             propagationQueue.Clear();
             SeedSkyExposedTiles(skyColor);
-            SeedBackgroundOpenTiles(skyColor);
+            // SeedBackgroundOpenTiles(skyColor); // TODO: diagnosticar por que background não foi gerado
             SeedPointLightsInto(lightR, lightG, lightB, 1f);
             Propagate(lightR, lightG, lightB, OpenTileLightDecay, SolidTileLightDecay);
 
