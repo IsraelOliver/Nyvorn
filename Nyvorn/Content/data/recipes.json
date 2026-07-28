@@ -111,5 +111,16 @@
     "ingredients": [
       { "item": "RawWood", "quantity": 10 }
     ]
+  },
+  {
+    "id": "wood_platform",
+    "result": "Platform",
+    "resultQuantity": 2,
+    "requiredTier": "Basic",
+    "displayName": "Wood Platform",
+    "displayCost": "1 Raw Wood",
+    "ingredients": [
+      { "item": "RawWood", "quantity": 1 }
+    ]
   }
 ]

@@ -243,5 +243,17 @@
     "worldPivot": [12, 16],
     "spriteSheetCell": [0, 0],
     "worldCollisionRect": [0, 8, 24, 8]
+  },
+  {
+    "id": "Platform",
+    "name": "Platform",
+    "texturePath": "tiles/wood_platform",
+    "stackable": true,
+    "maxStack": 999,
+    "gravityScale": 1.0,
+    "worldSize": [8, 8],
+    "worldPivot": [4, 8],
+    "spriteSheetCell": [0, 0],
+    "worldCollisionRect": [0, 0, 8, 8]
   }
 ]
