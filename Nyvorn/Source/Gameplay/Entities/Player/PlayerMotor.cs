@@ -371,8 +371,10 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
             // Ignore when fallthrough is active (holding S)
             if (!IsGrounded && velocity.Y >= 0f && platformCollisionCheck != null && !fallThroughPlatforms)
             {
-                Rectangle playerBounds = Hurtbox;
-                if (platformCollisionCheck(playerBounds, velocity))
+                // Check bottom portion of player (feet) for platform collision
+                // Use 3px height to match platform surface bounds
+                Rectangle bottomEdge = new Rectangle(Hurtbox.X, Hurtbox.Bottom - 3, Hurtbox.Width, 3);
+                if (platformCollisionCheck(bottomEdge, velocity))
                 {
                     LastLandingImpactVelocity = System.MathF.Max(LastLandingImpactVelocity, velocity.Y);
                     velocity.Y = 0f;
@@ -381,12 +383,11 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
                     // Prevent penetration: check only bottom edge of player (feet)
                     // so we don't incorrectly push up if head touches platform
-                    Rectangle bottomEdge = new Rectangle(Hurtbox.X, Hurtbox.Bottom - 1, Hurtbox.Width, 1);
                     while (platformCollisionCheck(bottomEdge, new Vector2(0f, 1f)))
                     {
                         position.Y -= 1f;
                         kinematicMotor.Position = position;
-                        bottomEdge.Y = (int)GetHitBottom(position) - 1;
+                        bottomEdge.Y = (int)GetHitBottom(position) - 3;
                     }
                 }
             }
