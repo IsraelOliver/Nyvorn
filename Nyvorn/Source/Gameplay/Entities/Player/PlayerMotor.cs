@@ -380,6 +380,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
                     velocity.Y = 0f;
                     IsGrounded = true;
                     kinematicMotor.ClearRemainderY();
+                    stepVisualOffsetY = 1f;  // Match tile visual offset (1px down)
 
                     // Prevent penetration: check only bottom edge of player (feet)
                     // so we don't incorrectly push up if head touches platform
