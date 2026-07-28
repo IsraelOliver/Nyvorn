@@ -148,6 +148,7 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             Array.Clear(lightB, 0, cellCount);
             propagationQueue.Clear();
             SeedSkyExposedTiles(skyColor);
+            SeedBackgroundOpenTiles(skyColor);
             SeedPointLightsInto(lightR, lightG, lightB, 1f);
             Propagate(lightR, lightG, lightB, OpenTileLightDecay, SolidTileLightDecay);
 
@@ -311,12 +312,45 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
             }
         }
 
-        // True for a solid tile OR a tile-grid cell filled with loose sand - either way, something
-        // physically occupies this tile that should absorb/block light like material, rather than the
-        // tile reading as open air just because WorldMap's tile grid alone doesn't know about sand.
+        // Light from background openings - rays enter from the "sky" at the bottom of the world
+        // where background tiles are empty (open caves). Light propagates upward through open areas
+        // and is blocked by solid background tiles, creating natural light shafts through caverns.
+        private void SeedBackgroundOpenTiles(Color skyColor)
+        {
+            float skyR = skyColor.R / 255f;
+            float skyG = skyColor.G / 255f;
+            float skyB = skyColor.B / 255f;
+
+            for (int localX = 0; localX < bufferWidth; localX++)
+            {
+                int tileX = worldMap.WrapTileX(bufferOriginTileX + localX);
+
+                // Start from bottom of the buffer and walk upward
+                for (int localY = bufferHeight - 1; localY >= 0; localY--)
+                {
+                    int tileY = bufferOriginTileY + localY;
+
+                    // Only seed if there's no background tile here (open to sky)
+                    if (worldMap.GetBackgroundTile(tileX, tileY) != TileType.Empty)
+                        break; // Stop at first solid background - can't see through it
+
+                    int index = (localY * bufferWidth) + localX;
+                    lightR[index] = skyR;
+                    lightG[index] = skyG;
+                    lightB[index] = skyB;
+                    propagationQueue.Enqueue(index);
+                }
+            }
+        }
+
+        // True for a solid tile OR a tile-grid cell filled with loose sand OR background solid tiles.
+        // Anything that physically occupies this tile should absorb/block light like material.
         private bool IsAttenuatingAt(int tileX, int tileY)
         {
             if (worldMap.IsSolidAt(tileX, tileY))
+                return true;
+
+            if (worldMap.GetBackgroundTile(tileX, tileY) != TileType.Empty)
                 return true;
 
             if (SandSystem == null)
