@@ -20,6 +20,7 @@ namespace Nyvorn.Source.Gameplay.Items
         Torch = 16,
         Mushroom = 17,
         Chair = 18,
-        Table = 19
+        Table = 19,
+        Platform = 20
     }
 }

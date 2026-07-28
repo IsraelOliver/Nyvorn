@@ -58,6 +58,7 @@ namespace Nyvorn.Source.Game.States
         public required DoorRuntimeSystem DoorRuntimeSystem { get; init; }
         public required ChairRuntimeSystem ChairRuntimeSystem { get; init; }
         public required TableRuntimeSystem TableRuntimeSystem { get; init; }
+        public required PlatformRuntimeSystem PlatformRuntimeSystem { get; init; }
         public required InteriorFocusSystem InteriorFocusSystem { get; init; }
         public required BlockParticleSystem BlockParticleSystem { get; init; }
         public required DamageNumberSystem DamageNumberSystem { get; init; }

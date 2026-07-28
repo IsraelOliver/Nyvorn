@@ -172,6 +172,13 @@ namespace Nyvorn.Source.World.Persistence
                         FacingLeft = table.FacingLeft
                     })
                     .ToList(),
+                Platforms = session.PlatformRuntimeSystem.Platforms
+                    .Select(platform => new PlatformSaveData
+                    {
+                        PositionX = platform.Position.X,
+                        PositionY = platform.Position.Y
+                    })
+                    .ToList(),
                 ConsoleCommandHistory = session.ConsoleCommandHistory.ToList(),
                 WorldTileSnapshot = session.WorldMap.ExportTileSnapshot(),
                 BackgroundTileSnapshot = session.WorldMap.ExportBackgroundTileSnapshot(),
@@ -259,6 +266,7 @@ namespace Nyvorn.Source.World.Persistence
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Chairs = saveData.Chairs ?? new List<ChairSaveData>(),
                 Tables = saveData.Tables ?? new List<TableSaveData>(),
+                Platforms = saveData.Platforms ?? new List<PlatformSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 SurfaceDecorations = saveData.SurfaceDecorations ?? new List<SurfaceDecorationSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),
@@ -293,6 +301,7 @@ namespace Nyvorn.Source.World.Persistence
                 Doors = saveData.Doors ?? new List<DoorSaveData>(),
                 Chairs = saveData.Chairs ?? new List<ChairSaveData>(),
                 Tables = saveData.Tables ?? new List<TableSaveData>(),
+                Platforms = saveData.Platforms ?? new List<PlatformSaveData>(),
                 Trees = saveData.Trees ?? new List<TreeSaveData>(),
                 SurfaceDecorations = saveData.SurfaceDecorations ?? new List<SurfaceDecorationSaveData>(),
                 ConsoleCommandHistory = saveData.ConsoleCommandHistory ?? new List<string>(),

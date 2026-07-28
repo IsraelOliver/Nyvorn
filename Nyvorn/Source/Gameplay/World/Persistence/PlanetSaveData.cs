@@ -27,6 +27,7 @@ namespace Nyvorn.Source.World.Persistence
         public List<DoorSaveData> Doors { get; init; } = new();
         public List<ChairSaveData> Chairs { get; init; } = new();
         public List<TableSaveData> Tables { get; init; } = new();
+        public List<PlatformSaveData> Platforms { get; init; } = new();
         public List<TreeSaveData> Trees { get; init; } = new();
         public List<SurfaceDecorationSaveData> SurfaceDecorations { get; init; } = new();
         public List<string> ConsoleCommandHistory { get; init; } = new();

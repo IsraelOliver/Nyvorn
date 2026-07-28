@@ -314,6 +314,9 @@ namespace Nyvorn.Source.Game.States
             build.SavedTables = saveData != null && saveData.Version >= 20 && saveData.Tables != null
                 ? new List<TableSaveData>(saveData.Tables)
                 : null;
+            build.SavedPlatforms = saveData != null && saveData.Version >= 20 && saveData.Platforms != null
+                ? new List<PlatformSaveData>(saveData.Platforms)
+                : null;
 
             BuildOperation operation = null;
             List<BuildOperation.BuildStep> steps = new()
@@ -533,6 +536,7 @@ namespace Nyvorn.Source.Game.States
             build.DoorTexture = content.Load<Texture2D>("objects/wood_door");
             build.ChairTexture = content.Load<Texture2D>("furniture/wood_chair");
             build.TableTexture = content.Load<Texture2D>("furniture/wood_table");
+            build.PlatformTexture = content.Load<Texture2D>("tiles/wood_platform");
             build.ToolbarTexture = content.Load<Texture2D>("ui/toolbar");
             build.TissueRevealIconTexture = content.Load<Texture2D>("ui/tissue_reveal-Sheet");
             build.BackgroundFarTexture = content.Load<Texture2D>("ui/background_parallax/background1");
@@ -759,6 +763,14 @@ namespace Nyvorn.Source.Game.States
                 Texture = build.TableTexture
             };
             tableRuntimeSystem.Restore(build.SavedTables);
+            PlatformRuntimeSystem platformRuntimeSystem = new PlatformRuntimeSystem
+            {
+                WorldMap = build.WorldMap,
+                Player = player,
+                Hotbar = hotbar,
+                Texture = build.PlatformTexture
+            };
+            platformRuntimeSystem.Restore(build.SavedPlatforms);
             WorldObjectRegistry worldObjectRegistry = new();
             worldObjectRegistry.Register(workbenchRuntimeSystem);
             worldObjectRegistry.Register(furnaceRuntimeSystem);
@@ -766,12 +778,14 @@ namespace Nyvorn.Source.Game.States
             worldObjectRegistry.Register(doorRuntimeSystem);
             worldObjectRegistry.Register(chairRuntimeSystem);
             worldObjectRegistry.Register(tableRuntimeSystem);
+            worldObjectRegistry.Register(platformRuntimeSystem);
             blockInteractionSystem.WorldObjectRegistry = worldObjectRegistry;
             build.WorldMap.SetObjectCollisionQueries(
                 worldObjectRegistry.IsObjectOccupyingTile,
                 worldObjectRegistry.IsMovementBlockingTile);
             FurnitureCollisionSystem furnitureCollisionSystem = new();
             furnitureCollisionSystem.Register(tableRuntimeSystem);
+            furnitureCollisionSystem.Register(platformRuntimeSystem);
             InteriorFocusSystem interiorFocusSystem = new InteriorFocusSystem
             {
                 WorldMap = build.WorldMap,
@@ -825,6 +839,7 @@ namespace Nyvorn.Source.Game.States
                 DoorRuntimeSystem = doorRuntimeSystem,
                 ChairRuntimeSystem = chairRuntimeSystem,
                 TableRuntimeSystem = tableRuntimeSystem,
+                PlatformRuntimeSystem = platformRuntimeSystem,
                 WorldObjectRegistry = worldObjectRegistry,
                 FurnitureCollisionSystem = furnitureCollisionSystem
             };
@@ -881,6 +896,7 @@ namespace Nyvorn.Source.Game.States
                 DoorRuntimeSystem = doorRuntimeSystem,
                 ChairRuntimeSystem = chairRuntimeSystem,
                 TableRuntimeSystem = tableRuntimeSystem,
+                PlatformRuntimeSystem = platformRuntimeSystem,
                 InteriorFocusSystem = interiorFocusSystem,
                 BlockParticleSystem = blockParticleSystem,
                 DamageNumberSystem = damageNumberSystem,
@@ -1281,6 +1297,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D DoorTexture { get; set; }
             public Texture2D ChairTexture { get; set; }
             public Texture2D TableTexture { get; set; }
+            public Texture2D PlatformTexture { get; set; }
             public Texture2D ToolbarTexture { get; set; }
             public Texture2D LifeBarTexture { get; set; }
             public Texture2D TissueRevealIconTexture { get; set; }
@@ -1322,6 +1339,7 @@ namespace Nyvorn.Source.Game.States
             public List<DoorSaveData> SavedDoors { get; set; }
             public List<ChairSaveData> SavedChairs { get; set; }
             public List<TableSaveData> SavedTables { get; set; }
+            public List<PlatformSaveData> SavedPlatforms { get; set; }
             public Dictionary<ItemId, Texture2D> ItemTextures { get; set; }
             public Dictionary<ItemId, Weapon> Weapons { get; set; }
             public PlayerConfig PlayerConfig { get; } = PlayerConfig.Default;

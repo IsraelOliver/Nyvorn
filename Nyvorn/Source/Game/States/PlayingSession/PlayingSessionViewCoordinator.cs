@@ -91,6 +91,7 @@ namespace Nyvorn.Source.Game.States
         public DoorRuntimeSystem DoorRuntimeSystem { get; init; }
         public ChairRuntimeSystem ChairRuntimeSystem { get; init; }
         public TableRuntimeSystem TableRuntimeSystem { get; init; }
+        public PlatformRuntimeSystem PlatformRuntimeSystem { get; init; }
         public WorldObjectRegistry WorldObjectRegistry { get; init; }
         public FurnitureCollisionSystem FurnitureCollisionSystem { get; init; }
 
@@ -469,6 +470,7 @@ namespace Nyvorn.Source.Game.States
             DoorRuntimeSystem?.Draw(spriteBatch);
             ChairRuntimeSystem?.Draw(spriteBatch);
             TableRuntimeSystem?.Draw(spriteBatch);
+            PlatformRuntimeSystem?.Draw(spriteBatch);
         }
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
