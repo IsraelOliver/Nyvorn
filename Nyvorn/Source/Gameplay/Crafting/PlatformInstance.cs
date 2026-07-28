@@ -42,7 +42,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
             (int)Position.X,
             (int)Position.Y,
             PlatformWidth,
-            2);
+            3);
 
         public bool CanInteract(Player player)
         {
