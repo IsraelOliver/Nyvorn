@@ -96,11 +96,11 @@ namespace Nyvorn.Source.Gameplay.Crafting
                     colX = 0;
                 else if (!hasLeftSolid && !hasLeftPlatform && hasRightSolid)
                     colX = 1;
-                else if (hasLeftPlatform && hasRightSolid)
+                else if (hasLeftSolid && hasRightPlatform)
                     colX = 2;
                 else if (hasLeftSolid && hasRightSolid)
                     colX = 3;
-                else if (hasLeftSolid && hasRightPlatform)
+                else if (hasLeftPlatform && hasRightSolid)
                     colX = 4;
                 else if (!hasLeftSolid && !hasLeftPlatform)
                     colX = 0;
