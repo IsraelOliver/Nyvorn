@@ -26,6 +26,7 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         private Point currentHurtboxSize;
         private float pendingVerticalLandingY;
         private bool fallThroughPlatforms;  // True when player presses S to drop through platforms
+        private float fallThroughHoldTime;  // Time S has been held (requires 1 second minimum)
 
         public PlayerMotor(Vector2 startPosition, PlayerConfig config)
         {
@@ -85,8 +86,19 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
         {
             LastLandingImpactVelocity = 0f;
 
-            // Update fallthrough state: press S to drop through platforms
-            fallThroughPlatforms = input != null && input.Value.VerticalMoveDir > 0;  // S key pressed
+            // Update fallthrough state: hold S for 1+ second to drop through platforms
+            const float FallThroughMinHoldTime = 1.0f;
+
+            if (input != null && input.Value.VerticalMoveDir > 0)
+            {
+                fallThroughHoldTime += dt;
+                fallThroughPlatforms = fallThroughHoldTime >= FallThroughMinHoldTime;
+            }
+            else
+            {
+                fallThroughHoldTime = 0f;
+                fallThroughPlatforms = false;
+            }
 
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
             UpdateHurtboxSize(collision, useDodgeHurtbox);
