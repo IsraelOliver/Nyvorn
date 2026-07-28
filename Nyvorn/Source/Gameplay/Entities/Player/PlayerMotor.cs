@@ -88,31 +88,16 @@ namespace Nyvorn.Source.Gameplay.Entities.Player
 
             // Update fallthrough state: hold S for 1+ second to drop through platforms
             const float FallThroughMinHoldTime = 1.0f;
-            bool fallThroughJustActivated = false;
 
             if (input != null && input.Value.VerticalMoveDir > 0)
             {
                 fallThroughHoldTime += dt;
-                if (fallThroughHoldTime >= FallThroughMinHoldTime && !fallThroughPlatforms)
-                {
-                    fallThroughPlatforms = true;
-                    fallThroughJustActivated = true;
-                }
+                fallThroughPlatforms = fallThroughHoldTime >= FallThroughMinHoldTime;
             }
             else
             {
                 fallThroughHoldTime = 0f;
                 fallThroughPlatforms = false;
-            }
-
-            // When fallthrough just activated, push player up to separate from platform
-            if (fallThroughJustActivated && platformCollisionCheck != null)
-            {
-                while (platformCollisionCheck(Hurtbox, Vector2.Zero))
-                {
-                    position.Y -= 1f;
-                    kinematicMotor.Position = position;
-                }
             }
 
             WorldCollisionQuery collision = WorldCollisionQuery.MovementBlockers(worldMap);
