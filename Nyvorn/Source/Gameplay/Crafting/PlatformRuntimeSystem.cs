@@ -248,8 +248,7 @@ namespace Nyvorn.Source.Gameplay.Crafting
             int tileCenterX = bounds.Center.X / WorldMap.TileSize;
             int tileCenterY = bounds.Center.Y / WorldMap.TileSize;
 
-            // Check if has background tile at any adjacent position
-            int[] checkOffsets = { 0 };
+            // Check if has adjacent tile or platform
             foreach (int offsetX in new[] { -1, 0, 1 })
             {
                 foreach (int offsetY in new[] { -1, 0, 1 })
@@ -271,6 +270,20 @@ namespace Nyvorn.Source.Gameplay.Crafting
                             return true;
                     }
                 }
+            }
+
+            // Check if has adjacent platform
+            Rectangle platformCheckBounds = new Rectangle(
+                bounds.X - WorldMap.TileSize,
+                bounds.Y - WorldMap.TileSize,
+                bounds.Width + (WorldMap.TileSize * 2),
+                bounds.Height + (WorldMap.TileSize * 2)
+            );
+
+            for (int i = 0; i < furnitureItems.Count; i++)
+            {
+                if (platformCheckBounds.Intersects(furnitureItems[i].Bounds))
+                    return true;
             }
 
             return false;
