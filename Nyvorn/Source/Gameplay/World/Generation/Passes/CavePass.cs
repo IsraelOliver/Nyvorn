@@ -69,8 +69,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                     context.ProgressReporter?.Report(Name, (x + 1) / (float)context.WorldMap.Width, "Cavando cavernas");
             }
 
-            // TODO: Debug background rendering - carving disabled temporarily
-            // CarveBackgroundFissures(context, backgroundCaveNoise, backgroundWarpNoise, shallowLayer, caveFadeHeight);
+            CarveBackgroundFissures(context, backgroundCaveNoise, backgroundWarpNoise, shallowLayer, caveFadeHeight);
 
             context.ProgressReporter?.Complete(Name, "Cavernas esculpidas");
         }
