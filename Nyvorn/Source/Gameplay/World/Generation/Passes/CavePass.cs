@@ -159,6 +159,29 @@ namespace Nyvorn.Source.World.Generation.Passes
             return t * t * (3f - (2f * t));
         }
 
+        private static bool ShouldCarveFissure(
+            WorldGenContext context,
+            OpenSimplexNoise caveNoise,
+            OpenSimplexNoise warpNoise,
+            int x,
+            int y,
+            int startY,
+            int endY)
+        {
+            const float frequencyX = 0.15f;
+            const float frequencyY = 0.02f;
+            const float threshold = 0.35f;
+            const float warpFrequency = 0.040f;
+            const float warpStrength = 18f;
+
+            float warpX = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency) * warpStrength;
+            float warpY = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 1000f, 1000f) * warpStrength;
+
+            float sample = WorldFieldSampler.SampleSeamedNoise(context, caveNoise, x, y, frequencyX, frequencyY, warpX, warpY);
+
+            return sample > threshold;
+        }
+
         private static void CarveBackgroundFissures(
             WorldGenContext context,
             OpenSimplexNoise caveNoise,
@@ -176,7 +199,7 @@ namespace Nyvorn.Source.World.Generation.Passes
                     if (context.WorldMap.GetBackgroundTile(x, y) != TileType.Dirt)
                         continue;
 
-                    if (ShouldCarveCavern(context, caveNoise, warpNoise, x, y, startY, endY, fadeHeight))
+                    if (ShouldCarveFissure(context, caveNoise, warpNoise, x, y, startY, endY))
                         context.WorldMap.SetBackgroundTile(x, y, TileType.Empty);
                 }
             }
