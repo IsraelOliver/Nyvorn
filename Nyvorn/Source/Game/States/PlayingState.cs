@@ -762,9 +762,23 @@ namespace Nyvorn.Source.Game.States
             if (sceneRenderTarget == null)
                 return;
 
-            // For now: draw scene directly without shader composition
-            // This preserves the world rendering without lighting effects.
-            // TODO: Re-enable shader composition after debugging lighting pipeline
+            // If any required resource is missing, fallback to simple draw
+            if (lightingMaskRenderTarget == null || lightingMapTexture == null ||
+                directionalSunlightMap == null || composeLightingEffect == null)
+            {
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+                spriteBatch.Draw(sceneRenderTarget, Vector2.Zero, Color.White);
+                spriteBatch.End();
+                return;
+            }
+
+            // Configure shader for lighting composition
+            composeLightingEffect.CurrentTechnique = composeLightingEffect.Techniques["ComposeLighting"];
+            composeLightingEffect.Parameters["MatrixTransform"]?.SetValue(Matrix.Identity);
+            composeLightingEffect.Parameters["LightingIntensity"]?.SetValue(1.0f);
+            composeLightingEffect.Parameters["SunlightIntensity"]?.SetValue(0.5f);
+
+            // Draw scene (which already has BFS lighting + directional sunlight applied in PHASE 2)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
             spriteBatch.Draw(sceneRenderTarget, Vector2.Zero, Color.White);
             spriteBatch.End();
@@ -845,8 +859,8 @@ namespace Nyvorn.Source.Game.States
             graphicsDevice.SetRenderTarget(sceneRenderTarget);
             DrawWorldSceneToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
 
-            // TODO: Apply BFS-computed lighting - currently causes darkening, needs investigation
-            // DrawWorldLightingToRenderTarget(spriteBatch, visibleLoopOffsets, worldWidthPixels);
+            // Apply BFS-computed lighting (multiply blend) - darkens scene based on light propagation
+            DrawWorldLightingToRenderTarget(spriteBatch, visibleLoopOffsets, worldWidthPixels);
 
             // Build lighting mask (which pixels receive lighting)
             BuildLightingMask(graphicsDevice, spriteBatch, lightingMaskRenderTarget, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
