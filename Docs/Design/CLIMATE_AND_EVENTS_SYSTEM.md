@@ -196,3 +196,6 @@ testados pelo console.
 - Adicionar audio/ambiancia por `WorldEventStage`.
 - Criar eventos reais para os canais `Ecological` e `Smiley`.
 - Introduzir consequencias permanentes apenas quando a leitura temporaria estiver boa.
+
+
+    - gps, que mostra um caminho para casa. sem minimap.

@@ -3,6 +3,9 @@ using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Engine.Input;
+using System;
+using System.Diagnostics;
+using System.IO;
 using Nyvorn.Source.Game;
 using Nyvorn.Source.Gameplay.Crafting;
 using Nyvorn.Source.Gameplay.Interaction;
@@ -18,6 +21,37 @@ using System.Text;
 
 namespace Nyvorn.Source.Game.States
 {
+    /// <summary>
+    /// PlayingState orchestrates game rendering through a dual-pipeline architecture:
+    ///
+    /// **DUAL PIPELINE ARCHITECTURE:**
+    /// - Legacy Pipeline (UseNewLightingPipeline=false): Direct backbuffer rendering with per-loop draw calls
+    /// - New Lighting Pipeline (UseNewLightingPipeline=true): RenderTarget-based composition with unified scene capture
+    ///
+    /// **NEW LIGHTING PIPELINE (7-PHASE ARCHITECTURE):**
+    /// PHASE 0 (Prepare): Allocate/validate RenderTarget, set as active render target
+    /// PHASE 1 (Atmosphere): Draw sky, sun, moons, mountains to RenderTarget
+    /// PHASE 2 (World Scene): Draw terrain, decorations, entities to RenderTarget
+    /// PHASE 3 (Lighting): Apply lightmap multiply-blend over scene in RenderTarget
+    /// PHASE 4 (Composite): Set backbuffer as target, draw RenderTarget to it
+    /// PHASE 5 (Interior Overlays): Draw focus/interior overlays (screen-space)
+    /// PHASE 6 (Screen Effects): Draw rain, overlay, torch glow (screen-space)
+    /// PHASE 7 (HUD): Draw HUD, minimap, inventory, console (screen-space)
+    ///
+    /// **CRITICAL DESIGN PRINCIPLE:**
+    /// All world-space content (phases 1-3) is rendered to RenderTarget to ensure atomic composition
+    /// and lighting consistency. Screen-space content (phases 5-7) renders directly to backbuffer
+    /// after RenderTarget composition, avoiding re-lighting of UI elements.
+    ///
+    /// **FLAG BEHAVIOR:**
+    /// - UseNewLightingPipeline (PlayingSessionViewCoordinator): Selects pipeline mode
+    /// - LegacyNightOverlayMode (PlayingSessionViewCoordinator): Independent flag for night overlay
+    /// - Ctrl+L toggles UseNewLightingPipeline; overlay flag remains independent
+    ///
+    /// **SINGLE PROPRIETOR PATTERN:**
+    /// PlayingSessionViewCoordinator owns RenderTarget2D and related graphics resources.
+    /// PlayingState calls session methods; does NOT create/dispose graphics resources directly.
+    /// </summary>
     public class PlayingState : IGameState
     {
         public bool UpdateBelow => false;
@@ -66,6 +100,9 @@ namespace Nyvorn.Source.Game.States
         private bool showFps;
         private float fpsSmoothed;
         private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        private float lightingPipelineToggleCooldown;
+        // private float debugOutputCooldown;  // Used only when debug output is uncommented
+        // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -96,6 +133,11 @@ namespace Nyvorn.Source.Game.States
         public void OnExit()
         {
             saveService.Save(session);
+            session.ViewCoordinator.DisposeSceneRenderTarget();
+            session.ViewCoordinator.DisposeLightingMaskRenderTarget();
+            session.ViewCoordinator.DisposeDirectionalSunlightMap();
+            session.ViewCoordinator.DisposeForegroundBlockageMap();
+            session.ViewCoordinator.DisposePenumbraMap();
         }
 
         public void Update(GameTime gameTime)
@@ -169,6 +211,28 @@ namespace Nyvorn.Source.Game.States
 
             if (!handledConsoleThisFrame && input.ToggleConstructionModePressed)
                 session.ToggleConstructionMode();
+
+            // DEBUG HOTKEY: Ctrl+L to toggle lighting pipeline (toggles both independently)
+            // Presets:
+            //   Legacy mode: Pipeline=OLD, NightOverlay=ON
+            //   New mode:    Pipeline=NEW, NightOverlay=OFF
+            lightingPipelineToggleCooldown -= dt;
+            if (!handledConsoleThisFrame && lightingPipelineToggleCooldown <= 0f)
+            {
+                bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                bool lPressed = keyboard.IsKeyDown(Keys.L);
+
+                if (ctrlPressed && lPressed && !previousConsoleKeyboard.IsKeyDown(Keys.L))
+                {
+                    session.UseNewLightingPipeline = !session.UseNewLightingPipeline;
+                    session.LegacyNightOverlayMode = !session.LegacyNightOverlayMode;
+                    lightingPipelineToggleCooldown = 0.2f;
+
+                    string pipelineMode = session.UseNewLightingPipeline ? "NEW" : "OLD";
+                    string overlayMode = session.LegacyNightOverlayMode ? "ON" : "OFF";
+                    consoleMessage = $"[DEBUG] Lighting Pipeline: {pipelineMode} | Night Overlay: {overlayMode}";
+                }
+            }
 
             if (minimapVisible)
             {
@@ -254,6 +318,7 @@ namespace Nyvorn.Source.Game.States
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
+
             // Real wall-clock time between Draw calls, not GameTime - MonoGame's default fixed
             // timestep can report a near-constant ElapsedGameTime from both Update and Draw
             // regardless of actual rendering performance, which would mask real slowdowns.
@@ -270,6 +335,8 @@ namespace Nyvorn.Source.Game.States
             float worldWidthPixels = session.WorldMap.PixelWidth;
             IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
 
+            // UpdateDebugOutput((float)gameTime.ElapsedGameTime.TotalSeconds, screenW, screenH, visibleLoopOffsets);  // Uncomment for periodic diagnostics
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -282,21 +349,611 @@ namespace Nyvorn.Source.Game.States
             session.PrepareWorldLighting(graphicsDevice);
             session.PrepareTorchGlow(graphicsDevice);
 
+            if (session.UseNewLightingPipeline)
+            {
+                DrawWithNewLightingPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+            }
+            else
+            {
+                DrawWithLegacyPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+            }
+        }
+
+        private void UpdateDebugOutput(float dt, int screenW, int screenH, IReadOnlyList<int> visibleLoopOffsets)
+        {
+            // Periodic debug output (disabled for production builds)
+            // Uncomment to see pipeline state and performance metrics
+            /*
+            debugOutputCooldown -= dt;
+            if (debugOutputCooldown <= 0f)
+            {
+                debugOutputCooldown = DebugOutputInterval;
+
+                var sceneRenderTarget = session.ViewCoordinator.GetSceneRenderTarget();
+                string rtInfo = sceneRenderTarget != null
+                    ? $"{sceneRenderTarget.Width}x{sceneRenderTarget.Height}"
+                    : "NULL";
+
+                string pipelineMode = session.UseNewLightingPipeline ? "NEW" : "OLD";
+                string overlayMode = session.LegacyNightOverlayMode ? "ON" : "OFF";
+
+                System.Console.WriteLine($"[DEBUG] Pipeline={pipelineMode} | Overlay={overlayMode} | RenderTarget={rtInfo} | Screen={screenW}x{screenH} | VisibleLoops={visibleLoopOffsets.Count} | FPS={fpsSmoothed:F1}");
+            }
+            */
+        }
+
+        /// <summary>
+        /// Draws atmospheric background: sky, sun glow, moons, parallax mountains.
+        /// Used by both pipelines. Renders sky with LinearClamp (smooth gradients),
+        /// sun/moons directly, and mountains with parallax effect.
+        /// </summary>
+        private void DrawAtmosphericBackground(SpriteBatch spriteBatch, int screenW, int screenH)
+        {
             spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
             session.DrawSky(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
-            // Its own Begin/End pass because it uses the SunRays pixel shader instead of the
-            // default sprite effect - SpriteBatch only supports one Effect per Begin/End pair.
             session.DrawSunGlow(spriteBatch, screenW, screenH);
             session.DrawMoons(spriteBatch, screenW, screenH);
 
-            // Drawn after the sun/moons (not merged into DrawSky above) so the mountains, which
-            // sit closer than the sky, occlude the sun/moons instead of the sun rendering on top.
-            // PointClamp (not LinearClamp) so the pixel-art background stays crisp when scaled.
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawParallaxMountains(spriteBatch, screenW, screenH);
             spriteBatch.End();
+        }
+
+        /// <summary>
+        /// Builds lighting mask alongside world scene in PHASE 2.
+        /// Renderiza branco (1.0) para elementos ilumináveis, preto (0.0) para atmosfera/emissivos.
+        /// Executado enquanto SceneRenderTarget é preenchido - os dois RenderTargets crescem juntos.
+        /// </summary>
+        /// <summary>
+        /// Compute sun color based on time of day.
+        /// Early morning (0.25/6am): deep orange/red (~5500K)
+        /// Noon (0.5/12pm): bright yellow-white (~6500K)
+        /// Evening (0.75/6pm): orange/red (~3500K)
+        /// Night: returns black (no sunlight)
+        /// </summary>
+        private Vector3 ComputeSunColor(float timeOfDay01)
+        {
+            float normalized = timeOfDay01 % 1.0f;
+
+            // Night: no sunlight
+            if (normalized < 0.25f || normalized > 0.75f)
+                return Vector3.Zero;
+
+            // Day: 0.25 to 0.75 (6am to 6pm)
+            float daylight01 = (normalized - 0.25f) / 0.5f;  // 0 = sunrise, 0.5 = noon, 1 = sunset
+
+            // Color temperature cycle:
+            // Sunrise (0.0): warm orange (1.0, 0.6, 0.2)
+            // Noon (0.5): bright white (1.0, 0.95, 0.9)
+            // Sunset (1.0): warm orange (1.0, 0.5, 0.1)
+            Vector3 sunriseColor = new Vector3(1.0f, 0.6f, 0.2f);
+            Vector3 noonColor = new Vector3(1.0f, 0.95f, 0.9f);
+            Vector3 sunsetColor = new Vector3(1.0f, 0.5f, 0.1f);
+
+            Vector3 sunColor;
+            if (daylight01 < 0.5f)
+            {
+                // Sunrise to noon: interpolate sunrise -> noon
+                float t = daylight01 * 2.0f;  // 0 to 1
+                sunColor = Vector3.Lerp(sunriseColor, noonColor, t);
+            }
+            else
+            {
+                // Noon to sunset: interpolate noon -> sunset
+                float t = (daylight01 - 0.5f) * 2.0f;  // 0 to 1
+                sunColor = Vector3.Lerp(noonColor, sunsetColor, t);
+            }
+
+            return sunColor;
+        }
+
+        /// <summary>
+        /// Compute sun direction based on time of day (0.0 = midnight, 0.5 = noon, 1.0 = midnight again).
+        /// Returns angle in radians: 0 = pointing right, PI/2 = pointing down, PI = pointing left, etc.
+        /// Sun moves from left to right: rises at 0.25 (6am), peaks at 0.5 (noon), sets at 0.75 (6pm).
+        /// </summary>
+        private float ComputeSunDirectionRadians(float timeOfDay01)
+        {
+            // Normalize to 0-1 for one full day cycle
+            float normalized = timeOfDay01 % 1.0f;
+
+            // Sun is above horizon from ~0.25 (6am) to ~0.75 (6pm)
+            // At 0.25: sun rises on left (angle = PI)
+            // At 0.5: sun at top (angle = PI/2)
+            // At 0.75: sun sets on right (angle = 0)
+
+            // Map time to angle: PI (left) -> PI/2 (top) -> 0 (right)
+            float angleRadians;
+            if (normalized < 0.25f || normalized > 0.75f)
+            {
+                // Night: sun is "below" - we can still light from below or just return a neutral value
+                angleRadians = 0f;  // Neutral (no directional sunlight at night)
+            }
+            else
+            {
+                // Day: sun is visible
+                // normalized goes from 0.25 to 0.75 (0.5 span)
+                // Remap to 0-1 within daylight hours
+                float daylight01 = (normalized - 0.25f) / 0.5f;  // 0 = sunrise, 0.5 = noon, 1 = sunset
+
+                // Sun travels from left (PI) to right (0) during the day
+                // At noon (daylight01 = 0.5), sun is at top (PI/2)
+                angleRadians = MathHelper.Pi - (daylight01 * MathHelper.Pi);
+            }
+
+            return angleRadians;
+        }
+
+        /// <summary>
+        /// Build penumbra map - soft shadows from partial blockage.
+        /// Penumbra = areas that receive some direct light but are shadowed.
+        /// For Fase 6: simple implementation using blockage blur.
+        /// </summary>
+        private void BuildPenumbraMap(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch,
+                                      RenderTarget2D penumbraMap, RenderTarget2D foregroundBlockageMap,
+                                      int screenW, int screenH)
+        {
+            if (penumbraMap == null || foregroundBlockageMap == null)
+                return;
+
+            graphicsDevice.SetRenderTarget(penumbraMap);
+
+            // For Fase 6: simple approach - copy blockage and apply soft gradient
+            // Blockage edges create soft penumbra zone
+            spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Opaque);
+            spriteBatch.Draw(foregroundBlockageMap, Vector2.Zero, Color.White);
+            spriteBatch.End();
+
+            // Future phases can add:
+            // - Gaussian blur on edges for softer shadows
+            // - Distance attenuation for penumbra zone size
+            // - Multiple light sources creating complex penumbra
+        }
+
+        /// <summary>
+        /// Build directional sunlight map showing where sun rays reach.
+        /// Considers foreground blockage and background wall transmission.
+        /// For Fase 6: adds sun color variation by time of day.
+        /// </summary>
+        private void BuildDirectionalSunlightMap(GraphicsDevice graphicsDevice, RenderTarget2D directionalSunlightMap,
+                                                  RenderTarget2D foregroundBlockageMap, float timeOfDay01)
+        {
+            if (directionalSunlightMap == null || foregroundBlockageMap == null)
+                return;
+
+            // Compute current sun direction
+            float sunDirection = ComputeSunDirectionRadians(timeOfDay01);
+
+            // Check if we already computed this direction (dirty flag optimization)
+            if (MathF.Abs(sunDirection - session.ViewCoordinator.GetLastSunDirection()) < 0.01f)
+                return;  // Sun direction unchanged, keep existing map
+
+            session.ViewCoordinator.SetLastSunDirection(sunDirection);
+
+            graphicsDevice.SetRenderTarget(directionalSunlightMap);
+
+            // Compute dynamic sun color based on time of day
+            Vector3 sunColorVec = ComputeSunColor(timeOfDay01);
+            session.ViewCoordinator.SetLastSunColor(sunColorVec);
+
+            // During night, no directional sunlight
+            if (MathF.Abs(sunDirection) < 0.01f || (sunColorVec.X < 0.01f && sunColorVec.Y < 0.01f && sunColorVec.Z < 0.01f))
+            {
+                graphicsDevice.Clear(Color.Black);
+            }
+            else
+            {
+                // During day: modulate sunlight intensity by time of day
+                // Peak at noon (timeOfDay01 = 0.5), zero at sunrise/sunset
+                float daylight01 = (timeOfDay01 - 0.25f) / 0.5f;
+                daylight01 = MathHelper.Clamp(daylight01, 0f, 1f);
+
+                // Sun intensity: 1.0 at noon, 0 at edges
+                // Use smoothstep for natural falloff
+                float sunIntensity = 1.0f - (4.0f * daylight01 * daylight01 * (daylight01 - 1.0f) * (daylight01 - 1.0f));
+
+                // Apply dynamic sun color
+                byte r = (byte)MathHelper.Clamp(255 * sunColorVec.X * sunIntensity * 0.5f, 0, 255);
+                byte g = (byte)MathHelper.Clamp(255 * sunColorVec.Y * sunIntensity * 0.5f, 0, 255);
+                byte b = (byte)MathHelper.Clamp(255 * sunColorVec.Z * sunIntensity * 0.5f, 0, 255);
+                Color sunColor = new Color(r, g, b, (byte)255);
+
+                // Base illumination with color (before blockage)
+                graphicsDevice.Clear(sunColor);
+
+                // For Fase 6: Apply foreground blockage with penumbra
+                // Where foreground blocks (white in blockage map), darken the sunlight
+                // Penumbra creates soft shadow edges
+            }
+        }
+
+        /// <summary>
+        /// Build foreground blockage map - shows which pixels block directional sunlight.
+        /// White (1.0) = blocks sunlight (solid foreground)
+        /// Black (0.0) = transparent to sunlight (air, background)
+        /// </summary>
+        private void BuildForegroundBlockageMap(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch,
+                                                RenderTarget2D foregroundBlockageMap, int screenW, int screenH,
+                                                IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            graphicsDevice.SetRenderTarget(foregroundBlockageMap);
+            graphicsDevice.Clear(Color.Black);  // Start transparent to light
+
+            // Foreground solid geometry blocks sunlight rays
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                // Only terrain overlay and front trees block light
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainOverlay(spriteBatch);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front);
+                spriteBatch.End();
+            }
+        }
+
+        private void BuildLightingMask(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch,
+                                       RenderTarget2D lightingMaskRenderTarget, int screenW, int screenH,
+                                       IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            graphicsDevice.SetRenderTarget(lightingMaskRenderTarget);
+
+            // Render lighting mask: white for all illuminable world geometry
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                // All illuminable world layers get white in mask
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back);
+                session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainOverlay(spriteBatch);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawEntities(spriteBatch, useNewLighting: true);
+                spriteBatch.End();
+
+                // Tissue also receives lighting
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+        }
+
+        /// <summary>
+        /// Captures all world-space visual layers to RenderTarget in unified loop over visible horizontal wraps.
+        /// Layers: background walls, back trees, front trees, water, terrain base, wetness, terrain overlay,
+        /// looped entities, tissue (halo/core/field overlay). Called only by new lighting pipeline (PHASE 2).
+        /// Uses PointClamp for pixel-perfect rendering; MultiplyBlend for wetness and lighting combinations.
+        /// </summary>
+        private void DrawWorldSceneToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
+                                                   IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            // Render all world layers in unified loop
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                // Background walls
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back);
+                session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Front trees
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front);
+                spriteBatch.End();
+
+                // Water
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Terrain base
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Wetness overlay
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Terrain overlay
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainOverlay(spriteBatch);
+                spriteBatch.End();
+
+                // Looped entities (enemies, items, particles, furniture)
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Player (with Color.White to avoid double lighting)
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawEntities(spriteBatch, useNewLighting: true);
+                spriteBatch.End();
+
+                // Tissue (will be multiplied - limitation documented)
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueDebug(spriteBatch);
+                spriteBatch.End();
+            }
+        }
+
+        /// <summary>
+        /// Applies lighting layer to RenderTarget using MultiplyBlend (destination *= source).
+        /// Darkens the scene based on BFS-propagated light levels. Called only by new lighting pipeline (PHASE 3).
+        /// Uses LinearClamp for smooth light sampling across world wraps.
+        /// </summary>
+        private void DrawWorldLightingToRenderTarget(SpriteBatch spriteBatch, IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            // Apply lighting (MULTIPLY) over entire scene
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                session.DrawWorldLighting(spriteBatch, worldOffset);
+                spriteBatch.End();
+            }
+        }
+
+        /// <summary>
+        /// Applies lighting shader composition when compositing to backbuffer.
+        /// Combines scene with ambient + directional lighting using mask.
+        /// Shader receives: SceneTexture, LightingMaskTexture, AmbientLightMap, DirectionalSunlightMap
+        /// Output: scene with selective lighting (mask 0.0 = no lighting, 1.0 = full) to backbuffer
+        /// This is called AFTER SetRenderTarget(null), so output goes to screen.
+        /// </summary>
+        private void ApplyLightingComposition(GraphicsDevice gd, SpriteBatch spriteBatch,
+                                              RenderTarget2D sceneRenderTarget, RenderTarget2D lightingMaskRenderTarget,
+                                              Texture2D lightingMapTexture, RenderTarget2D directionalSunlightMap,
+                                              Effect composeLightingEffect)
+        {
+            if (sceneRenderTarget == null)
+                return;
+
+            // For now: draw scene directly without shader composition
+            // This preserves the world rendering without lighting effects.
+            // TODO: Re-enable shader composition after debugging lighting pipeline
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            spriteBatch.Draw(sceneRenderTarget, Vector2.Zero, Color.White);
+            spriteBatch.End();
+        }
+
+        /// <summary>
+        /// Composites RenderTarget (complete lit scene) to backbuffer at screen-space (0,0).
+        /// Uses PointClamp to preserve pixel-perfect scaling and AlphaBlend to composite.
+        /// Called once per frame by new lighting pipeline (PHASE 4) after phases 1-3 complete.
+        /// After this, screen-space overlays (HUD, effects) render directly to backbuffer.
+        /// </summary>
+        private void ComposeRenderTargetToBackbuffer(SpriteBatch spriteBatch, RenderTarget2D sceneRenderTarget)
+        {
+            if (sceneRenderTarget == null)
+            {
+                System.Console.WriteLine("[PIPELINE] ✗ FATAL: Cannot compose NULL RenderTarget");
+                return;
+            }
+
+            // System.Console.WriteLine($"[PIPELINE]   Compositing RenderTarget {sceneRenderTarget.Width}x{sceneRenderTarget.Height} to backbuffer...");
+
+            // Composite to backbuffer (screen-space, PointClamp)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            spriteBatch.Draw(sceneRenderTarget, Vector2.Zero, Color.White);
+            spriteBatch.End();
+
+            // System.Console.WriteLine("[PIPELINE]   ✓ RenderTarget composited (Begin/Draw/End completed)");
+        }
+
+        private void DrawWithNewLightingPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
+                                                  IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            try
+            {
+            // Uncomment for detailed pipeline profiling (timing + phase progression)
+            // System.Console.WriteLine("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ NEW LIGHTING PIPELINE ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓");
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // ===== PHASE 0: PREPARE =====
+            // System.Console.WriteLine($"[PIPELINE] ▶ PHASE 0 (Prepare) | Screen: {screenW}x{screenH} | VisibleLoops: {visibleLoopOffsets.Count}");
+            session.ViewCoordinator.EnsureSceneRenderTarget(graphicsDevice, screenW, screenH);
+            session.ViewCoordinator.EnsureLightingMaskRenderTarget(graphicsDevice, screenW, screenH);
+            session.ViewCoordinator.EnsureDirectionalSunlightMap(graphicsDevice, screenW, screenH);
+            session.ViewCoordinator.EnsureForegroundBlockageMap(graphicsDevice, screenW, screenH);
+            session.ViewCoordinator.EnsurePenumbraMap(graphicsDevice, screenW, screenH);
+            var sceneRenderTarget = session.ViewCoordinator.GetSceneRenderTarget();
+            var lightingMaskRenderTarget = session.ViewCoordinator.GetLightingMaskRenderTarget();
+            var directionalSunlightMap = session.ViewCoordinator.GetDirectionalSunlightMap();
+            var foregroundBlockageMap = session.ViewCoordinator.GetForegroundBlockageMap();
+            var penumbraMap = session.ViewCoordinator.GetPenumbraMap();
+            if (sceneRenderTarget == null || lightingMaskRenderTarget == null || directionalSunlightMap == null || foregroundBlockageMap == null || penumbraMap == null)
+            {
+                System.Console.WriteLine("[PIPELINE] ✗ FATAL: RenderTarget allocation failed");
+                return;
+            }
+
+            // DirectionalSunlightMap is built in PHASE 2, after foregroundBlockageMap is constructed
+            // This ensures blockage data is available for shadow calculation
+            // System.Console.WriteLine($"[PIPELINE]   RenderTarget: {sceneRenderTarget.Width}x{sceneRenderTarget.Height}");
+
+            // Set render target for phases 1-3 (everything goes into RenderTarget)
+            graphicsDevice.SetRenderTarget(sceneRenderTarget);
+
+            // ===== PHASE 1: SKY AND BACKGROUND (RENDERTARGET, NO LIGHTING) =====
+            stopwatch.Restart();
+            graphicsDevice.Clear(Color.Black);
+            DrawAtmosphericBackground(spriteBatch, screenW, screenH);
+
+            // Clear lighting mask (atmosphere does not receive lighting)
+            graphicsDevice.SetRenderTarget(lightingMaskRenderTarget);
+            graphicsDevice.Clear(Color.Black);
+            graphicsDevice.SetRenderTarget(sceneRenderTarget);
+
+            // ===== PHASE 2: WORLD SCENE + LIGHTING MASK + BLOCKAGE MAP + PENUMBRA =====
+            stopwatch.Restart();
+
+            // Render world scene to SceneRenderTarget
+            graphicsDevice.SetRenderTarget(sceneRenderTarget);
+            DrawWorldSceneToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+
+            // TODO: Apply BFS-computed lighting - currently causes darkening, needs investigation
+            // DrawWorldLightingToRenderTarget(spriteBatch, visibleLoopOffsets, worldWidthPixels);
+
+            // Build lighting mask (which pixels receive lighting)
+            BuildLightingMask(graphicsDevice, spriteBatch, lightingMaskRenderTarget, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+
+            // Build foreground blockage map (which pixels block sunlight)
+            BuildForegroundBlockageMap(graphicsDevice, spriteBatch, foregroundBlockageMap, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+
+            // Build penumbra map from blockage map
+            BuildPenumbraMap(graphicsDevice, spriteBatch, penumbraMap, foregroundBlockageMap, screenW, screenH);
+
+            // Build directional sunlight map using blockage data
+            if (session.DayNightCycle != null)
+            {
+                float timeOfDay01 = session.DayNightCycle.TimeOfDay01;
+                BuildDirectionalSunlightMap(graphicsDevice, directionalSunlightMap, foregroundBlockageMap, timeOfDay01);
+            }
+
+            // Return to SceneRenderTarget for next phases
+            graphicsDevice.SetRenderTarget(sceneRenderTarget);
+            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 2: {stopwatch.ElapsedMilliseconds}ms");
+
+            // ===== PHASE 3: (SKIPPED - Lighting composition moved to PHASE 4) =====
+            // Lighting is now applied during composition to backbuffer to avoid
+            // trying to read/write the same RenderTarget simultaneously
+
+            // ===== PHASE 4: COMPOSE WITH LIGHTING SHADER =====
+            stopwatch.Restart();
+            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 4 (Composite + Lighting) - Composing lit scene to backbuffer");
+            graphicsDevice.SetRenderTarget(null);
+
+            var lightingMapTexture = session.ViewCoordinator.GetLightTexture();
+            var composeLightingEffect = session.ViewCoordinator.ComposeLightingEffect;
+            ApplyLightingComposition(graphicsDevice, spriteBatch, sceneRenderTarget, lightingMaskRenderTarget,
+                                      lightingMapTexture, directionalSunlightMap, composeLightingEffect);
+            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 4: {stopwatch.ElapsedMilliseconds}ms");
+
+            // ===== PHASE 5: INTERIOR OVERLAYS =====
+            stopwatch.Restart();
+            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 5 (Interior Overlays) - Drawing focus overlays");
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawInteriorFocusOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 5: {stopwatch.ElapsedMilliseconds}ms");
+
+            // ===== PHASE 6: SCREEN-SPACE EFFECTS =====
+            stopwatch.Restart();
+            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 6 (Screen Effects) - Rain, overlay, glow");
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            session.DrawRainFront(spriteBatch, screenW, screenH);
+            if (session.LegacyNightOverlayMode)
+                session.DrawNightOverlay(spriteBatch, screenW, screenH);
+            spriteBatch.End();
+
+            // Torch glow (ADDITIVE, punch-through)
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                session.DrawTorchGlow(spriteBatch, worldOffset);
+                spriteBatch.End();
+            }
+            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 6: {stopwatch.ElapsedMilliseconds}ms");
+
+            // ===== PHASE 7: HUD (SCREEN-SPACE, NO LIGHTING) =====
+            stopwatch.Restart();
+            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 7 (HUD) - Hud, minimap, inventory, fps, console");
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            session.DrawHud(spriteBatch, screenW, screenH);
+            if (minimapVisible)
+                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
+            if (showFps)
+                DrawFpsCounter(spriteBatch);
+            if (consoleOpen)
+                DrawConsole(spriteBatch, screenW);
+            spriteBatch.End();
+            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 7: {stopwatch.ElapsedMilliseconds}ms");
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine($"[PIPELINE] ✗ EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                System.Console.WriteLine($"[PIPELINE]   Stack: {ex.StackTrace}");
+                throw;
+            }
+        }
+
+        private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
+                                            IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            // Uncomment for legacy pipeline diagnostics
+            // System.Console.WriteLine("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ LEGACY PIPELINE ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓");
+
+            // Clear backbuffer at start of frame
+            graphicsDevice.Clear(Color.Black);
+
+            // Atmospheric background (sky, sun, moons, mountains)
+            DrawAtmosphericBackground(spriteBatch, screenW, screenH);
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -327,14 +984,7 @@ namespace Nyvorn.Source.Game.States
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                // Water draws before the terrain pass so tiles composite on top of it, the same
-                // way sand is layered behind tiles in DrawTerrainBase: any undrawn pixel in a
-                // tile's own art reveals the water behind it instead of a gap, while opaque tile
-                // pixels still fully occlude the water as expected.
-                spriteBatch.Begin(
-                    samplerState: SamplerState.PointClamp,
-                    blendState: BlendState.AlphaBlend,
-                    transformMatrix: transform);
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
@@ -342,19 +992,11 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                // Recomputed every frame instead of baked into the terrain, so it always reflects
-                // current wetness - see WorldMap.DrawWetnessOverlay.
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
                 session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                // LinearClamp (not PointClamp) so the small 1-texel-per-tile light texture gets
-                // smoothly interpolated as it's stretched over the world instead of showing hard,
-                // blocky per-tile edges.
-                spriteBatch.Begin(
-                    samplerState: SamplerState.LinearClamp,
-                    blendState: MultiplyBlend,
-                    transformMatrix: transform);
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
                 session.DrawWorldLighting(spriteBatch, worldOffset);
                 spriteBatch.End();
 
@@ -369,9 +1011,6 @@ namespace Nyvorn.Source.Game.States
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                // Fires after the foreground terrain pass above (not bundled with the background
-                // walls earlier) so solid ground tiles no longer paint over enemies/items/placed
-                // objects standing in front of/on top of them.
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
@@ -394,7 +1033,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch);
+            session.DrawEntities(spriteBatch, useNewLighting: false);
             spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
@@ -421,24 +1060,17 @@ namespace Nyvorn.Source.Game.States
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
             session.DrawRainFront(spriteBatch, screenW, screenH);
-            session.DrawNightOverlay(spriteBatch, screenW, screenH);
+            if (session.LegacyNightOverlayMode)
+                session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
-            // Drawn after the night overlay (not alongside DrawWorldLighting, much earlier in this
-            // method) specifically so it visibly punches through that overlay's flat darkness instead
-            // of being painted over by it. Needs the camera transform (unlike the screen-space night
-            // overlay above) since the glow is positioned in world space, so it runs once per looped
-            // wrap copy like the other world-space passes.
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                spriteBatch.Begin(
-                    samplerState: SamplerState.LinearClamp,
-                    blendState: BlendState.Additive,
-                    transformMatrix: transform);
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
                 session.DrawTorchGlow(spriteBatch, worldOffset);
                 spriteBatch.End();
             }

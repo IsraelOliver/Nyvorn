@@ -295,6 +295,12 @@
 /processorParam:DebugMode=Auto
 /build:effects/MoonPhase.fx
 
+#begin effects/ComposeLighting.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/ComposeLighting.fx
+
 #begin ui/toolbar.png
 /importer:TextureImporter
 /processor:TextureProcessor

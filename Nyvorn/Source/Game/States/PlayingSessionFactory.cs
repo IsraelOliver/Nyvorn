@@ -547,6 +547,7 @@ namespace Nyvorn.Source.Game.States
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
             build.SunRaysEffect = content.Load<Effect>("effects/SunRays");
             build.MoonPhaseEffect = content.Load<Effect>("effects/MoonPhase");
+            build.ComposeLightingEffect = content.Load<Effect>("effects/ComposeLighting");
 
             build.ItemTextures = LoadItemTextures();
             build.Weapons = CreateWeapons(build.ItemTextures, build.PlayerPickaxeMovesetTexture);
@@ -824,6 +825,7 @@ namespace Nyvorn.Source.Game.States
                     build.BackgroundFarTexture,
                     build.BackgroundMidTexture,
                     build.BackgroundNearTexture),
+                ComposeLightingEffect = build.ComposeLightingEffect,
                 TilePreviewRenderer = new WorldTilePreviewRenderer(graphicsDevice),
                 PowerHUD = new PowerHUD(graphicsDevice, build.UiFont),
                 TissueNetwork = tissueNetwork,
@@ -1307,6 +1309,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D EnemyTexture { get; set; }
             public Effect SunRaysEffect { get; set; }
             public Effect MoonPhaseEffect { get; set; }
+            public Effect ComposeLightingEffect { get; set; }
             public SpriteFont UiFont { get; set; }
             public WorldGenConfig WorldGenConfig { get; set; }
             public WorldMap WorldMap { get; set; }

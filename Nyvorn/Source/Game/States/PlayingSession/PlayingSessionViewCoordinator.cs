@@ -22,6 +22,22 @@ using System.Collections.Generic;
 
 namespace Nyvorn.Source.Game.States
 {
+    /// <summary>
+    /// PlayingSessionViewCoordinator manages all graphics resources and rendering state for the playing session.
+    ///
+    /// **SINGLE PROPRIETOR PATTERN:**
+    /// This class is the sole owner and lifecycle manager for:
+    /// - sceneRenderTarget: RenderTarget2D for new lighting pipeline (PHASES 1-3 capture, PHASE 4 composite)
+    /// - lightTexture: Computed BFS lighting map
+    /// - glowTexture: Torch/item glow overlay
+    ///
+    /// PlayingState and other render clients do NOT create or dispose these resources; they call coordinator methods.
+    ///
+    /// **RESOURCE ALLOCATION STRATEGY:**
+    /// - RenderTargets use grow-only allocation (never shrink, only expand to capacity)
+    /// - Disposed via DisposeSceneRenderTarget() called from PlayingState.OnExit()
+    /// - EnsureSceneRenderTarget() validates dimensions and recreates if necessary
+    /// </summary>
     public sealed class PlayingSessionViewCoordinator
     {
         private const float EntityDrawPaddingPixels = 48f;
@@ -58,11 +74,51 @@ namespace Nyvorn.Source.Game.States
         private int glowTextureOriginTileX;
         private int glowTextureOriginTileY;
 
+        private RenderTarget2D sceneRenderTarget;
+        private int sceneRenderTargetCapacityWidth;
+        private int sceneRenderTargetCapacityHeight;
+
+        private RenderTarget2D lightingMaskRenderTarget;
+        private int lightingMaskCapacityWidth;
+        private int lightingMaskCapacityHeight;
+
+        private RenderTarget2D directionalSunlightMap;
+        private int directionalSunlightCapacityWidth;
+        private int directionalSunlightCapacityHeight;
+        private float lastSunDirection = float.NaN;
+        private Vector3 lastSunColor = Vector3.One;
+
+        private RenderTarget2D penumbraMap;
+        private int penumbraCapacityWidth;
+        private int penumbraCapacityHeight;
+
+        private RenderTarget2D foregroundBlockageMap;
+        private int foregroundBlockageCapacityWidth;
+        private int foregroundBlockageCapacityHeight;
+
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
         private bool hasSmoothedCameraTarget;
         private bool wasFocusingInterior;
         private bool returningFromInterior;
+
+        /// <summary>
+        /// Lighting pipeline mode (OFFICIAL: New Pipeline):
+        /// - false (Legacy): Old pipeline (direct backbuffer rendering, night overlay always on)
+        /// - true (New): New pipeline (RenderTarget-based, night overlay optional) [DEFAULT]
+        ///
+        /// Toggle with Ctrl+L hotkey
+        /// </summary>
+        public bool UseNewLightingPipeline { get; set; } = true;
+
+        /// <summary>
+        /// Night overlay mode (black screen overlay for darkness):
+        /// - true: Draw night overlay (legacy mode behavior)
+        /// - false: Skip night overlay (new mode handles darkness via sky/lightmap) [DEFAULT]
+        ///
+        /// Toggle with Ctrl+L hotkey (toggles together with UseNewLightingPipeline)
+        /// </summary>
+        public bool LegacyNightOverlayMode { get; set; } = false;
 
         public required WorldMap WorldMap { get; init; }
         public SandSystem SandSystem { get; set; }
@@ -76,6 +132,7 @@ namespace Nyvorn.Source.Game.States
         public required HudRenderer HudRenderer { get; init; }
         public required WorldMinimapRenderer WorldMinimapRenderer { get; init; }
         public required ElyraSkyRenderer ElyraSkyRenderer { get; init; }
+        public required Effect ComposeLightingEffect { get; init; }
         public required WorldTilePreviewRenderer TilePreviewRenderer { get; init; }
         public required PowerHUD PowerHUD { get; init; }
         public required TissueNetwork TissueNetwork { get; init; }
@@ -339,6 +396,284 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Draw(glowTexture, destination, source, Color.White);
         }
 
+        /// <summary>
+        /// Retrieve the current scene RenderTarget (may be null if not allocated).
+        /// Called by PlayingState to validate RenderTarget state and draw it in PHASE 4.
+        /// </summary>
+        public RenderTarget2D GetSceneRenderTarget()
+        {
+            return sceneRenderTarget;
+        }
+
+        /// <summary>
+        /// Allocate or resize sceneRenderTarget if needed. Uses grow-only strategy:
+        /// if screenWidth or screenHeight exceed current capacity, reallocate with new dimensions as minimum.
+        /// Called at start of DrawWithNewLightingPipeline (PHASE 0).
+        /// Logs creation/recreation events to console for diagnostics.
+        /// </summary>
+        public void EnsureSceneRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = sceneRenderTarget == null || screenWidth > sceneRenderTargetCapacityWidth || screenHeight > sceneRenderTargetCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (sceneRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating SceneRenderTarget: {sceneRenderTargetCapacityWidth}x{sceneRenderTargetCapacityHeight} → {screenWidth}x{screenHeight}");
+                    sceneRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating SceneRenderTarget: {screenWidth}x{screenHeight}");
+                }
+
+                sceneRenderTargetCapacityWidth = System.Math.Max(screenWidth, sceneRenderTargetCapacityWidth);
+                sceneRenderTargetCapacityHeight = System.Math.Max(screenHeight, sceneRenderTargetCapacityHeight);
+                sceneRenderTarget = new RenderTarget2D(graphicsDevice, sceneRenderTargetCapacityWidth, sceneRenderTargetCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+            }
+        }
+
+        /// <summary>
+        /// Dispose and release sceneRenderTarget graphics memory.
+        /// Called from PlayingState.OnExit() to prevent resource leak when exiting playing state.
+        /// </summary>
+        public void DisposeSceneRenderTarget()
+        {
+            sceneRenderTarget?.Dispose();
+            sceneRenderTarget = null;
+        }
+
+        /// <summary>
+        /// Allocate or resize lightingMaskRenderTarget if needed. Uses grow-only strategy.
+        /// Mask format: R channel = lighting intensity (0.0 = no lighting, 1.0 = full lighting)
+        /// Constructed during PHASE 2 (world scene rendering).
+        /// </summary>
+        public void EnsureLightingMaskRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = lightingMaskRenderTarget == null || screenWidth > lightingMaskCapacityWidth || screenHeight > lightingMaskCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (lightingMaskRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating LightingMaskRenderTarget: {lightingMaskCapacityWidth}x{lightingMaskCapacityHeight} → {screenWidth}x{screenHeight}");
+                    lightingMaskRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating LightingMaskRenderTarget: {screenWidth}x{screenHeight}");
+                }
+
+                lightingMaskCapacityWidth = System.Math.Max(screenWidth, lightingMaskCapacityWidth);
+                lightingMaskCapacityHeight = System.Math.Max(screenHeight, lightingMaskCapacityHeight);
+                lightingMaskRenderTarget = new RenderTarget2D(graphicsDevice, lightingMaskCapacityWidth, lightingMaskCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Retrieve the current lighting mask RenderTarget (may be null if not allocated).
+        /// </summary>
+        public RenderTarget2D GetLightingMaskRenderTarget()
+        {
+            return lightingMaskRenderTarget;
+        }
+
+        /// <summary>
+        /// Dispose and release lightingMaskRenderTarget graphics memory.
+        /// </summary>
+        public void DisposeLightingMaskRenderTarget()
+        {
+            lightingMaskRenderTarget?.Dispose();
+            lightingMaskRenderTarget = null;
+        }
+
+        /// <summary>
+        /// Retrieve the current lighting texture (BFS-computed ambient light).
+        /// Used by PHASE 3 to composite lighting with mask.
+        /// </summary>
+        public Texture2D GetLightTexture()
+        {
+            return lightTexture;
+        }
+
+        /// <summary>
+        /// Allocate or resize directionalSunlightMap if needed. Uses grow-only strategy.
+        /// Stores directional sunlight contribution (separate from ambient BFS light).
+        /// Constructed during PHASE 2 based on sun position and world geometry.
+        /// </summary>
+        public void EnsureDirectionalSunlightMap(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = directionalSunlightMap == null || screenWidth > directionalSunlightCapacityWidth || screenHeight > directionalSunlightCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (directionalSunlightMap != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating DirectionalSunlightMap: {directionalSunlightCapacityWidth}x{directionalSunlightCapacityHeight} → {screenWidth}x{screenHeight}");
+                    directionalSunlightMap.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating DirectionalSunlightMap: {screenWidth}x{screenHeight}");
+                }
+
+                directionalSunlightCapacityWidth = System.Math.Max(screenWidth, directionalSunlightCapacityWidth);
+                directionalSunlightCapacityHeight = System.Math.Max(screenHeight, directionalSunlightCapacityHeight);
+                directionalSunlightMap = new RenderTarget2D(graphicsDevice, directionalSunlightCapacityWidth, directionalSunlightCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Retrieve the current directional sunlight map (may be null if not allocated).
+        /// </summary>
+        public RenderTarget2D GetDirectionalSunlightMap()
+        {
+            return directionalSunlightMap;
+        }
+
+        /// <summary>
+        /// Dispose and release directionalSunlightMap graphics memory.
+        /// </summary>
+        public void DisposeDirectionalSunlightMap()
+        {
+            directionalSunlightMap?.Dispose();
+            directionalSunlightMap = null;
+        }
+
+        /// <summary>
+        /// Cache the last computed sun direction (in radians) to avoid redundant calculations.
+        /// </summary>
+        public float GetLastSunDirection()
+        {
+            return lastSunDirection;
+        }
+
+        /// <summary>
+        /// Update cached sun direction.
+        /// </summary>
+        public void SetLastSunDirection(float sunDirectionRadians)
+        {
+            lastSunDirection = sunDirectionRadians;
+        }
+
+        /// <summary>
+        /// Allocate or resize foregroundBlockageMap if needed. Uses grow-only strategy.
+        /// Maps foreground solid geometry that blocks directional sunlight.
+        /// White = blocks light, Black = transparent to light.
+        /// </summary>
+        public void EnsureForegroundBlockageMap(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = foregroundBlockageMap == null || screenWidth > foregroundBlockageCapacityWidth || screenHeight > foregroundBlockageCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (foregroundBlockageMap != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating ForegroundBlockageMap: {foregroundBlockageCapacityWidth}x{foregroundBlockageCapacityHeight} → {screenWidth}x{screenHeight}");
+                    foregroundBlockageMap.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating ForegroundBlockageMap: {screenWidth}x{screenHeight}");
+                }
+
+                foregroundBlockageCapacityWidth = System.Math.Max(screenWidth, foregroundBlockageCapacityWidth);
+                foregroundBlockageCapacityHeight = System.Math.Max(screenHeight, foregroundBlockageCapacityHeight);
+                foregroundBlockageMap = new RenderTarget2D(graphicsDevice, foregroundBlockageCapacityWidth, foregroundBlockageCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Retrieve the foreground blockage map (may be null if not allocated).
+        /// </summary>
+        public RenderTarget2D GetForegroundBlockageMap()
+        {
+            return foregroundBlockageMap;
+        }
+
+        /// <summary>
+        /// Dispose and release foregroundBlockageMap graphics memory.
+        /// </summary>
+        public void DisposeForegroundBlockageMap()
+        {
+            foregroundBlockageMap?.Dispose();
+            foregroundBlockageMap = null;
+        }
+
+        /// <summary>
+        /// Allocate or resize penumbraMap if needed. Uses grow-only strategy.
+        /// Stores soft shadow information (penumbra from partial blockage).
+        /// </summary>
+        public void EnsurePenumbraMap(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = penumbraMap == null || screenWidth > penumbraCapacityWidth || screenHeight > penumbraCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (penumbraMap != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating PenumbraMap: {penumbraCapacityWidth}x{penumbraCapacityHeight} → {screenWidth}x{screenHeight}");
+                    penumbraMap.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating PenumbraMap: {screenWidth}x{screenHeight}");
+                }
+
+                penumbraCapacityWidth = System.Math.Max(screenWidth, penumbraCapacityWidth);
+                penumbraCapacityHeight = System.Math.Max(screenHeight, penumbraCapacityHeight);
+                penumbraMap = new RenderTarget2D(graphicsDevice, penumbraCapacityWidth, penumbraCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Retrieve the penumbra map (may be null if not allocated).
+        /// </summary>
+        public RenderTarget2D GetPenumbraMap()
+        {
+            return penumbraMap;
+        }
+
+        /// <summary>
+        /// Dispose and release penumbraMap graphics memory.
+        /// </summary>
+        public void DisposePenumbraMap()
+        {
+            penumbraMap?.Dispose();
+            penumbraMap = null;
+        }
+
+        /// <summary>
+        /// Cache computed sun color to avoid recalculation every frame.
+        /// </summary>
+        public Vector3 GetLastSunColor()
+        {
+            return lastSunColor;
+        }
+
+        /// <summary>
+        /// Update cached sun color.
+        /// </summary>
+        public void SetLastSunColor(Vector3 sunColor)
+        {
+            lastSunColor = sunColor;
+        }
+
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer, Color ambientLight)
         {
             GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
@@ -351,9 +686,10 @@ namespace Nyvorn.Source.Game.States
             WorldMap.PrepareVisibleChunkCache(graphicsDevice, startTileX, endTileX, startTileY, endTileY);
         }
 
-        public void DrawEntities(SpriteBatch spriteBatch, WorldLightingSystem lightingSystem)
+        public void DrawEntities(SpriteBatch spriteBatch, WorldLightingSystem lightingSystem, bool useNewLighting = false)
         {
-            Player.Draw(spriteBatch, GetAmbientTintAt(lightingSystem, Player.Position));
+            Color tint = useNewLighting ? Color.White : GetAmbientTintAt(lightingSystem, Player.Position);
+            Player.Draw(spriteBatch, tint);
         }
 
         // Entities aren't tile-cached, so this can query WorldLightingSystem at each entity's own

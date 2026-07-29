@@ -101,6 +101,16 @@ namespace Nyvorn.Source.Game.States
         public bool IsConstructionMode { get; private set; }
         public bool TissueVisualEnabled { get; private set; }
         public bool TissueFieldVisualEnabled { get; private set; }
+        public bool UseNewLightingPipeline
+        {
+            get => ViewCoordinator.UseNewLightingPipeline;
+            set => ViewCoordinator.UseNewLightingPipeline = value;
+        }
+        public bool LegacyNightOverlayMode
+        {
+            get => ViewCoordinator.LegacyNightOverlayMode;
+            set => ViewCoordinator.LegacyNightOverlayMode = value;
+        }
         public bool DebugFlyEnabled => Player.DebugFlyEnabled;
         public float TimeOfDay01 => DayNightCycle.TimeOfDay01;
         public float WorldTimeCyclePercent => DayNightCycle.CyclePercent;
@@ -524,9 +534,24 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.PrepareTerrainRender(graphicsDevice, screenWidth, screenHeight, worldOffsetX);
         }
 
-        public void DrawEntities(SpriteBatch spriteBatch)
+        public Microsoft.Xna.Framework.Graphics.RenderTarget2D GetSceneRenderTarget()
         {
-            ViewCoordinator.DrawEntities(spriteBatch, LightingSystem);
+            return ViewCoordinator.GetSceneRenderTarget();
+        }
+
+        public void EnsureSceneRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            ViewCoordinator.EnsureSceneRenderTarget(graphicsDevice, screenWidth, screenHeight);
+        }
+
+        public void DisposeSceneRenderTarget()
+        {
+            ViewCoordinator.DisposeSceneRenderTarget();
+        }
+
+        public void DrawEntities(SpriteBatch spriteBatch, bool useNewLighting = false)
+        {
+            ViewCoordinator.DrawEntities(spriteBatch, LightingSystem, useNewLighting);
         }
 
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
