@@ -864,6 +864,10 @@ namespace Nyvorn.Source.Game.States
             };
             build.WorldMap.SetWetnessField(worldTickCoordinator.WetnessField);
             WorldLightingSystem lightingSystem = new(build.WorldMap);
+
+            // Initialize Lighting V2 subsystem (PHASE 1: structure only, no visual changes yet)
+            viewCoordinator.InitializeLightingV2(graphicsDevice, dayNightCycle, environmentSystem);
+
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
                 RuntimeContext = runtimeContext,

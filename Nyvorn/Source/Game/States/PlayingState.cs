@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Engine.Graphics.LightingV2;
 using Nyvorn.Source.Engine.Input;
 using System;
 using System.Diagnostics;
@@ -138,6 +139,7 @@ namespace Nyvorn.Source.Game.States
             session.ViewCoordinator.DisposeDirectionalSunlightMap();
             session.ViewCoordinator.DisposeForegroundBlockageMap();
             session.ViewCoordinator.DisposePenumbraMap();
+            session.ViewCoordinator.DisposeLightingV2();
         }
 
         public void Update(GameTime gameTime)
@@ -349,7 +351,12 @@ namespace Nyvorn.Source.Game.States
             session.PrepareWorldLighting(graphicsDevice);
             session.PrepareTorchGlow(graphicsDevice);
 
-            if (session.UseNewLightingPipeline)
+            // Lighting V2 (PHASE 2: Composition Neutral)
+            if (session.ViewCoordinator.LightingPipelineMode == Engine.Graphics.LightingV2.LightingPipelineMode.V2)
+            {
+                DrawWithLightingV2Pipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+            }
+            else if (session.UseNewLightingPipeline)
             {
                 DrawWithNewLightingPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
             }
@@ -953,6 +960,133 @@ namespace Nyvorn.Source.Game.States
             {
                 System.Console.WriteLine($"[PIPELINE] ✗ EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                 System.Console.WriteLine($"[PIPELINE]   Stack: {ex.StackTrace}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Lighting V2 Pipeline - PHASE 2 (Composition Neutral).
+        /// Renders scene with neutral white lighting to validate composition, camera, zoom, wrapping.
+        /// Does NOT calculate or apply actual illumination - all pixels rendered with Color.White.
+        /// </summary>
+        private void DrawWithLightingV2Pipeline(SpriteBatch spriteBatch, int screenW, int screenH,
+                                                IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            try
+            {
+                var viewCoord = session.ViewCoordinator;
+                var renderer = viewCoord.LightingV2Renderer;
+                var lightingSystem = viewCoord.LightingV2System;
+
+                if (renderer == null || lightingSystem == null)
+                    return;
+
+                // PHASE 0: Prepare scene RenderTarget
+                viewCoord.EnsureLightingV2Resources(screenW, screenH);
+                renderer.Phase0_BeginSceneRender();
+
+                // PHASE 1: Draw atmosphere (sky, sun, moons, mountains)
+                DrawAtmosphericBackground(spriteBatch, screenW, screenH);
+
+                // PHASE 2: Draw world (terrain, water, decorations, background, entities)
+                for (int i = 0; i < visibleLoopOffsets.Count; i++)
+                {
+                    int loopIndex = visibleLoopOffsets[i];
+                    float worldOffset = loopIndex * worldWidthPixels;
+                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                    // Background walls
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Back);
+                    session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    // Front trees
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Front);
+                    spriteBatch.End();
+
+                    // Water
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                    session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    // Terrain base
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    viewCoord.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    // Wetness overlay
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                    viewCoord.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    // Terrain overlay
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawTerrainOverlay(spriteBatch);
+                    spriteBatch.End();
+
+                    // Looped world entities (enemies, items, particles, furniture)
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    // PHASE 3: Draw entities (player, enemies) with neutral lighting
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawEntities(spriteBatch, useNewLighting: true);
+                    spriteBatch.End();
+
+                    // Tissue layers
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                    session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                    session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                    session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                    session.DrawTissueDebug(spriteBatch);
+                    spriteBatch.End();
+                }
+
+                // End scene rendering (restore backbuffer)
+                renderer.EndSceneRender();
+
+                // PHASE 5: Composite scene to backbuffer with neutral lighting
+                Rectangle screenRect = new Rectangle(0, 0, screenW, screenH);
+                renderer.Phase5_CompositeSceneToBackbuffer(spriteBatch, screenRect);
+
+                // Debug: Visualize scene RenderTarget if enabled
+                if (viewCoord.LightingV2DebugSceneRenderTarget)
+                {
+                    renderer.DrawDebugSceneRenderTarget(spriteBatch, screenRect);
+                }
+
+                // PHASE 6: Screen-space effects (rain, night overlay if enabled)
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+                session.DrawRainFront(spriteBatch, screenW, screenH);
+                if (session.LegacyNightOverlayMode)
+                    session.DrawNightOverlay(spriteBatch, screenW, screenH);
+                spriteBatch.End();
+
+                // PHASE 7: HUD (screen-space UI, no lighting)
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                session.DrawHud(spriteBatch, screenW, screenH);
+                if (minimapVisible)
+                    session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+                playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
+                if (showFps)
+                    DrawFpsCounter(spriteBatch);
+                if (consoleOpen)
+                    DrawConsole(spriteBatch, screenW);
+                spriteBatch.End();
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine($"[LIGHTING V2] ✗ EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                System.Console.WriteLine($"[LIGHTING V2]   Stack: {ex.StackTrace}");
                 throw;
             }
         }

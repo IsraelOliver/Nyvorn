@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Engine.Graphics.LightingV2;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
@@ -102,6 +103,12 @@ namespace Nyvorn.Source.Game.States
         private bool wasFocusingInterior;
         private bool returningFromInterior;
 
+        // Lighting V2 (PHASE 1: structure only, no visual changes)
+        private LightingV2Resources lightingV2Resources;
+        private LightingV2System lightingV2System;
+        private LightingV2Renderer lightingV2Renderer;
+        private LightingPipelineMode lightingPipelineMode = LightingPipelineMode.Legacy;
+
         /// <summary>
         /// Lighting pipeline mode (OFFICIAL: New Pipeline):
         /// - false (Legacy): Old pipeline (direct backbuffer rendering, night overlay always on)
@@ -153,6 +160,132 @@ namespace Nyvorn.Source.Game.States
         public FurnitureCollisionSystem FurnitureCollisionSystem { get; init; }
 
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
+
+        // Lighting V2 public accessors
+        public LightingPipelineMode LightingPipelineMode
+        {
+            get => lightingPipelineMode;
+            set => lightingPipelineMode = value;
+        }
+
+        public LightingV2System LightingV2System => lightingV2System;
+        public LightingV2Renderer LightingV2Renderer => lightingV2Renderer;
+        public LightingV2Resources LightingV2Resources => lightingV2Resources;
+
+        /// <summary>
+        /// Initialize Lighting V2 subsystem with required data providers and graphics device.
+        /// Called once after PlayingSessionViewCoordinator is fully constructed.
+        /// </summary>
+        public void InitializeLightingV2(GraphicsDevice graphicsDevice, WorldDayNightCycle dayNightCycle, WorldEnvironmentSystem environmentSystem)
+        {
+            if (graphicsDevice == null)
+                return;
+
+            // Create resource owner
+            lightingV2Resources = new LightingV2Resources(graphicsDevice);
+
+            // Create data adapters
+            var worldDataProvider = new WorldDataAdapter(WorldMap);
+            var sunCycleProvider = new SunCycleAdapter(dayNightCycle, environmentSystem);
+            var localLightRegistry = new LocalLightAdapter(TorchRuntimeSystem);
+
+            // Create settings and debug state
+            var settings = new LightingV2Settings();
+            var debugState = new LightingV2DebugState();
+
+            // Create lighting system
+            lightingV2System = new LightingV2System(worldDataProvider, sunCycleProvider, localLightRegistry, settings, debugState);
+
+            // Create renderer
+            lightingV2Renderer = new LightingV2Renderer(graphicsDevice, lightingV2Resources, debugState);
+
+            // Default to Legacy mode
+            lightingPipelineMode = LightingPipelineMode.Legacy;
+        }
+
+        /// <summary>
+        /// Ensure Lighting V2 resources are allocated for the current viewport size.
+        /// Called every frame when V2 pipeline is active.
+        /// </summary>
+        public void EnsureLightingV2Resources(int logicalViewWidth, int logicalViewHeight)
+        {
+            if (lightingV2Resources == null)
+                return;
+
+            lightingV2Resources.EnsureResources(logicalViewWidth, logicalViewHeight);
+        }
+
+        /// <summary>
+        /// Handle viewport resize for Lighting V2.
+        /// </summary>
+        public void OnLightingV2Resize(int logicalViewWidth, int logicalViewHeight)
+        {
+            if (lightingV2Renderer == null)
+                return;
+
+            lightingV2Renderer.OnResize(logicalViewWidth, logicalViewHeight);
+        }
+
+        /// <summary>
+        /// PHASE 0: Prepare scene RenderTarget for V2 rendering.
+        /// Call before rendering world content to V2 scene.
+        /// </summary>
+        public void BeginLightingV2SceneRender()
+        {
+            if (lightingV2Renderer == null)
+                return;
+
+            lightingV2Renderer.Phase0_BeginSceneRender();
+        }
+
+        /// <summary>
+        /// End V2 scene rendering and restore backbuffer as render target.
+        /// Call after all world-space content is rendered to the scene RenderTarget.
+        /// </summary>
+        public void EndLightingV2SceneRender()
+        {
+            if (lightingV2Renderer == null)
+                return;
+
+            lightingV2Renderer.EndSceneRender();
+        }
+
+        /// <summary>
+        /// PHASE 5: Composite the V2 scene RenderTarget to backbuffer.
+        /// Call to present the rendered scene with neutral lighting.
+        /// </summary>
+        public void CompositeLightingV2SceneToBackbuffer(SpriteBatch spriteBatch, Rectangle destRect)
+        {
+            if (lightingV2Renderer == null)
+                return;
+
+            lightingV2Renderer.Phase5_CompositeSceneToBackbuffer(spriteBatch, destRect);
+        }
+
+        /// <summary>
+        /// Enable/disable debug visualization of the V2 scene RenderTarget.
+        /// </summary>
+        public bool LightingV2DebugSceneRenderTarget
+        {
+            get => lightingV2Renderer?.DebugSceneRenderTarget ?? false;
+            set
+            {
+                if (lightingV2Renderer != null)
+                    lightingV2Renderer.DebugSceneRenderTarget = value;
+            }
+        }
+
+        /// <summary>
+        /// Dispose Lighting V2 resources.
+        /// Called from PlayingState.OnExit() after other resource cleanup.
+        /// </summary>
+        public void DisposeLightingV2()
+        {
+            lightingV2Renderer = null;
+            lightingV2System = null;
+            lightingV2Resources?.Dispose();
+            lightingV2Resources = null;
+        }
 
         public void UpdateSimulationViewport(int screenWidth, int screenHeight)
         {
