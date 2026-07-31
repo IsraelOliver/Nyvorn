@@ -1175,12 +1175,10 @@ namespace Nyvorn.Source.Game.States
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
 
             // PHASE 1.2: Draw world (terrain, water, decorations) to WorldRT
+            // World pass: loop through all visible copies, NO debug rendering
             graphicsDevice.SetRenderTarget(viewCoord.GetV3WorldRenderTarget());
             graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
             graphicsDevice.Clear(Color.Transparent);
-
-            // PHASE 1.2B: Prepare V3DebugWorldRT (same size as WorldRT, for debug visualization)
-            viewCoord.EnsureV3DebugWorldRenderTarget(graphicsDevice, screenW, screenH);
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -1239,18 +1237,26 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
+            }
 
-                // PHASE 2 (Debug): Draw debug visualization to V3DebugWorldRT using exact same transform
-                if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.LightingV3DebugController != null && viewCoord.LightingV3DebugRenderer != null)
+            // PHASE 1.2B: Debug visualization pass (SEPARATE from world pass)
+            // All visible copies drawn to V3DebugWorldRT with same transformations
+            if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.LightingV3DebugController != null && viewCoord.LightingV3DebugRenderer != null)
+            {
+                // Prepare debug RenderTarget
+                viewCoord.EnsureV3DebugWorldRenderTarget(graphicsDevice, screenW, screenH);
+                graphicsDevice.SetRenderTarget(viewCoord.GetV3DebugWorldRenderTarget());
+                graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
+                graphicsDevice.Clear(Color.Transparent);  // Clear ONCE, not per loop iteration
+
+                // Loop through same visible offsets
+                for (int i = 0; i < visibleLoopOffsets.Count; i++)
                 {
-                    // Draw to debug RT only once per loop iteration (not on every offset)
-                    if (i == 0)
-                    {
-                        graphicsDevice.SetRenderTarget(viewCoord.GetV3DebugWorldRenderTarget());
-                        graphicsDevice.Clear(Color.Transparent);
-                    }
+                    int loopIndex = visibleLoopOffsets[i];
+                    float worldOffset = loopIndex * worldWidthPixels;
+                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                    // Draw using exact same transform as world
+                    // Draw debug using exact same transform as world
                     spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                     viewCoord.LightingV3DebugRenderer.Render(
                         spriteBatch,
@@ -1260,13 +1266,9 @@ namespace Nyvorn.Source.Game.States
                         transform,
                         "");
                     spriteBatch.End();
-
-                    // Return to world RT after debug draw
-                    if (i == visibleLoopOffsets.Count - 1)
-                    {
-                        graphicsDevice.SetRenderTarget(viewCoord.GetV3WorldRenderTarget());
-                    }
                 }
+
+                // Restore to backbuffer (done below, not here)
             }
 
             // PHASE 1.3: Draw entities to EntitiesRT
