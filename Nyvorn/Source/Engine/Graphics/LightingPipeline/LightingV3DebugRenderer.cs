@@ -28,32 +28,44 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Render debug visualization.
+        /// Render debug visualization and mode confirmation text.
         /// Call after scene rendering, before HUD, within spriteBatch.Begin/End pair.
         /// </summary>
         public void Render(SpriteBatch spriteBatch, LightingV3Foundation foundation,
-                          LightingDebugMode mode, int tileSize)
+                          LightingDebugMode mode, int tileSize,
+                          string modeConfirmationText = "")
         {
-            if (mode == LightingDebugMode.None)
+            if (mode == LightingDebugMode.None && string.IsNullOrEmpty(modeConfirmationText))
                 return;
 
-            switch (mode)
+            if (mode != LightingDebugMode.None)
             {
-                case LightingDebugMode.Classification:
-                    RenderClassification(spriteBatch, foundation, tileSize);
-                    break;
+                switch (mode)
+                {
+                    case LightingDebugMode.Classification:
+                        RenderClassification(spriteBatch, foundation, tileSize);
+                        break;
 
-                case LightingDebugMode.SunOpacity:
-                    RenderOpacity(spriteBatch, foundation, tileSize, isLocal: false);
-                    break;
+                    case LightingDebugMode.SunOpacity:
+                        RenderOpacity(spriteBatch, foundation, tileSize, isLocal: false);
+                        break;
 
-                case LightingDebugMode.LocalLightOpacity:
-                    RenderOpacity(spriteBatch, foundation, tileSize, isLocal: true);
-                    break;
+                    case LightingDebugMode.LocalLightOpacity:
+                        RenderOpacity(spriteBatch, foundation, tileSize, isLocal: true);
+                        break;
 
-                case LightingDebugMode.SampleGrid:
-                    RenderSampleGrid(spriteBatch, foundation, tileSize);
-                    break;
+                    case LightingDebugMode.SampleGrid:
+                        RenderSampleGrid(spriteBatch, foundation, tileSize);
+                        break;
+                }
+            }
+
+            // Render mode confirmation text (if just changed mode)
+            if (!string.IsNullOrEmpty(modeConfirmationText))
+            {
+                // Text drawn in simple console-like format in top-left
+                // Since we don't have a SpriteFont available, output to console instead
+                System.Console.WriteLine($"[LightingV3] {modeConfirmationText}");
             }
         }
 
