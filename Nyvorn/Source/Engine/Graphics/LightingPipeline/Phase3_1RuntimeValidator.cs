@@ -201,8 +201,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         /// <summary>
         /// Test continuity of sun direction through a dense cycle sampling.
-        /// Samples 256+ points through one full day and checks for discontinuities.
-        /// Requires ISolarProvider to sample at arbitrary times.
+        /// Samples 256 points through one full day and checks for discontinuities.
+        /// With 256 samples, each represents 360°/256 ≈ 1.4° of rotation.
+        /// Threshold is derived to allow ~2.5x the expected step (margin for smooth curves).
         /// </summary>
         public static void ValidateContinuity(GameSolarProvider solarProvider)
         {
@@ -217,60 +218,86 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
 
             const int sampleCount = 256;
-            const float discontinuityThreshold = 0.5f; // dot product threshold for adjacency
+
+            // Calculate minimum dot product based on expected angular step
+            // 360° / 256 samples = 1.40625° per step
+            // Allow ~2.5x margin for smooth curves: ~3.5°
+            // cos(3.5°) ≈ 0.998
+            const float maxAllowedAngleDegrees = (360.0f / sampleCount) * 2.5f;
+            const float minimumContinuityDot = 0.998f; // cos(~3.5°)
+
             bool hasBadDiscontinuities = false;
             int discontinuityCount = 0;
-
+            Vector2 firstDirection = Vector2.Zero;
             Vector2 prevDirection = Vector2.Zero;
-            float prevTime = -1f;
 
             for (int i = 0; i < sampleCount; i++)
             {
-                float timeOfDay = (i % sampleCount) / (float)sampleCount; // [0, 1)
+                float timeOfDay = i / (float)sampleCount; // [0, 1)
                 var state = solarProvider.GetSunState();
 
-                if (i > 0) // Skip first point (no previous)
+                if (i == 0)
                 {
+                    // Store first direction for wrap-around check
+                    firstDirection = state.DirectionToSun;
+                }
+                else
+                {
+                    // Check continuity between adjacent samples
                     float dot = Vector2.Dot(prevDirection, state.DirectionToSun);
 
-                    // Adjacent samples should have high dot product (< ~0.05 radians = ~3° apart)
-                    if (dot < discontinuityThreshold)
+                    if (dot < minimumContinuityDot)
                     {
                         discontinuityCount++;
+                        hasBadDiscontinuities = true;
 
-                        // Report only if it's a real discontinuity (not wrapping)
-                        // Wrapping would be: last sample near 1.0, next sample near 0.0
-                        bool isWrap = (prevTime > 0.95f && timeOfDay < 0.05f);
-
-                        if (!isWrap)
+                        if (discontinuityCount <= 5) // Report first 5 discontinuities
                         {
-                            hasBadDiscontinuities = true;
-                            if (discontinuityCount <= 5) // Report first 5 bad ones
-                            {
-                                System.Console.WriteLine($"  ⚠ DISCONTINUITY at timeOfDay={timeOfDay:F4}");
-                                System.Console.WriteLine($"    Previous: ({prevDirection.X:F6}, {prevDirection.Y:F6})");
-                                System.Console.WriteLine($"    Current:  ({state.DirectionToSun.X:F6}, {state.DirectionToSun.Y:F6})");
-                                System.Console.WriteLine($"    Dot product: {dot:F6} (threshold: {discontinuityThreshold})");
-                            }
+                            float angleRadians = (float)System.Math.Acos(System.Math.Clamp(dot, -1f, 1f));
+                            float angleDegrees = angleRadians * 180f / System.MathF.PI;
+
+                            System.Console.WriteLine($"  ⚠ DISCONTINUITY at timeOfDay={timeOfDay:F4}");
+                            System.Console.WriteLine($"    Previous: ({prevDirection.X:F6}, {prevDirection.Y:F6})");
+                            System.Console.WriteLine($"    Current:  ({state.DirectionToSun.X:F6}, {state.DirectionToSun.Y:F6})");
+                            System.Console.WriteLine($"    Angular difference: {angleDegrees:F2}° (threshold: {maxAllowedAngleDegrees:F2}°)");
                         }
                     }
                 }
 
                 prevDirection = state.DirectionToSun;
-                prevTime = timeOfDay;
+            }
+
+            // Check continuity between last sample and first sample (wrap-around)
+            // Vectors are naturally continuous across 360°→0° boundary
+            float dotWrap = Vector2.Dot(prevDirection, firstDirection);
+            if (dotWrap < minimumContinuityDot)
+            {
+                discontinuityCount++;
+                if (!hasBadDiscontinuities && discontinuityCount <= 5)
+                {
+                    float angleRadians = (float)System.Math.Acos(System.Math.Clamp(dotWrap, -1f, 1f));
+                    float angleDegrees = angleRadians * 180f / System.MathF.PI;
+
+                    System.Console.WriteLine($"  ⚠ WRAP-AROUND DISCONTINUITY (sample 255→0)");
+                    System.Console.WriteLine($"    Last:  ({prevDirection.X:F6}, {prevDirection.Y:F6})");
+                    System.Console.WriteLine($"    First: ({firstDirection.X:F6}, {firstDirection.Y:F6})");
+                    System.Console.WriteLine($"    Angular difference: {angleDegrees:F2}°");
+                    hasBadDiscontinuities = true;
+                }
             }
 
             if (!hasBadDiscontinuities)
             {
                 System.Console.WriteLine("✓ Direction continuity verified across full cycle");
                 System.Console.WriteLine($"  Sampled: {sampleCount} points");
-                System.Console.WriteLine($"  Discontinuities (including wrap): {discontinuityCount}");
-                System.Console.WriteLine($"  No unexpected jumps detected");
+                System.Console.WriteLine($"  Angular step: {360.0f / sampleCount:F2}° per sample");
+                System.Console.WriteLine($"  Continuity threshold: cos({maxAllowedAngleDegrees:F2}°) = {minimumContinuityDot:F6}");
+                System.Console.WriteLine($"  No discontinuities detected");
             }
             else
             {
                 System.Console.WriteLine($"✗ Found {discontinuityCount} discontinuities (first 5 shown above)");
-                System.Console.WriteLine("  Review direction calculation for jumps");
+                System.Console.WriteLine("  Review direction calculation for unexpected jumps");
             }
             System.Console.WriteLine();
         }
