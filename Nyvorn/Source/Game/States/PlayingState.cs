@@ -108,9 +108,7 @@ namespace Nyvorn.Source.Game.States
 
         // Phase 2: Logging flags (one-time per session)
         private bool _hasLoggedFirstFoundationUpdate = false;
-        private bool _hasLoggedFirstDebugDraw = false;
         private int _foundationUpdateCount = 0;
-        private int _debugDrawCount = 0;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -471,45 +469,10 @@ namespace Nyvorn.Source.Game.States
                 else  // V3 mode
                 {
                     // PHASE 1: Use separated RenderTargets for V3 composition
+                    // (Debug visualization drawn to V3DebugWorldRT within the render loop, composed after)
                     DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
 
-                    // PHASE 2: Draw debug visualization (world-space with exact world-view transform)
-                    if (session.ViewCoordinator.LightingV3DebugController != null && session.ViewCoordinator.LightingV3DebugRenderer != null)
-                    {
-                        _debugDrawCount++;
-                        if (!_hasLoggedFirstDebugDraw)
-                        {
-                            _hasLoggedFirstDebugDraw = true;
-                            var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
-                            System.Console.WriteLine("[LightingV3Probe] First debug draw callsite | Mode: " + debugMode);
-                            System.Console.WriteLine("[LightingV3Probe] World-space render using Matrix.CreateTranslation(worldOffset) * camera.GetViewMatrix()");
-                        }
-
-                        var debugMode2 = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
-                        var modeConfirmation = session.ViewCoordinator.LightingV3DebugController.ShowModeConfirmation
-                            ? session.ViewCoordinator.LightingV3DebugController.GetModeConfirmationText()
-                            : "";
-
-                        // CRITICAL: Use EXACT same matrix as world rendering
-                        // For single-loop rendering (most common), use first visible offset
-                        // This matches: Matrix.CreateTranslation(worldOffset, 0f, 0f) * camera.GetViewMatrix()
-                        float debugWorldOffset = visibleLoopOffsets.Count > 0 ? visibleLoopOffsets[0] * worldWidthPixels : 0f;
-                        Matrix worldViewTransform = Matrix.CreateTranslation(debugWorldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: worldViewTransform);
-
-                        session.ViewCoordinator.LightingV3DebugRenderer.Render(
-                            spriteBatch,
-                            session.ViewCoordinator.LightingV3Foundation,
-                            debugMode2,
-                            session.WorldMap.TileSize,
-                            worldViewTransform,
-                            modeConfirmation);
-
-                        spriteBatch.End();
-                    }
-
-                    // Screen-space overlay: Always visible with mode info and counters
+                    // PHASE 2: Screen-space overlay (text only, no world-space drawing here)
                     if (session.ViewCoordinator.LightingV3Foundation != null && session.ViewCoordinator.LightingV3DebugController != null)
                     {
                         var foundation = session.ViewCoordinator.LightingV3Foundation;
@@ -1216,6 +1179,9 @@ namespace Nyvorn.Source.Game.States
             graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
             graphicsDevice.Clear(Color.Transparent);
 
+            // PHASE 1.2B: Prepare V3DebugWorldRT (same size as WorldRT, for debug visualization)
+            viewCoord.EnsureV3DebugWorldRenderTarget(graphicsDevice, screenW, screenH);
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -1273,6 +1239,34 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
+
+                // PHASE 2 (Debug): Draw debug visualization to V3DebugWorldRT using exact same transform
+                if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.LightingV3DebugController != null && viewCoord.LightingV3DebugRenderer != null)
+                {
+                    // Draw to debug RT only once per loop iteration (not on every offset)
+                    if (i == 0)
+                    {
+                        graphicsDevice.SetRenderTarget(viewCoord.GetV3DebugWorldRenderTarget());
+                        graphicsDevice.Clear(Color.Transparent);
+                    }
+
+                    // Draw using exact same transform as world
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                    viewCoord.LightingV3DebugRenderer.Render(
+                        spriteBatch,
+                        viewCoord.LightingV3Foundation,
+                        viewCoord.LightingV3DebugController.GetCurrentMode(),
+                        session.WorldMap.TileSize,
+                        transform,
+                        "");
+                    spriteBatch.End();
+
+                    // Return to world RT after debug draw
+                    if (i == visibleLoopOffsets.Count - 1)
+                    {
+                        graphicsDevice.SetRenderTarget(viewCoord.GetV3WorldRenderTarget());
+                    }
+                }
             }
 
             // PHASE 1.3: Draw entities to EntitiesRT
@@ -1319,6 +1313,14 @@ namespace Nyvorn.Source.Game.States
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive);
             spriteBatch.Draw(viewCoord.GetV3EmissiveRenderTarget(), destinationRect, sourceRect, Color.White);
             spriteBatch.End();
+
+            // PHASE 2 (Debug): Compose debug visualization from V3DebugWorldRT (after world, before HUD)
+            if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.GetV3DebugWorldRenderTarget() != null)
+            {
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+                spriteBatch.Draw(viewCoord.GetV3DebugWorldRenderTarget(), destinationRect, sourceRect, Color.White);
+                spriteBatch.End();
+            }
 
             // PHASE 1.6: Screen-space effects (rain, HUD)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);

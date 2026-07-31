@@ -107,6 +107,11 @@ namespace Nyvorn.Source.Game.States
         private int v3WorldCapacityWidth;
         private int v3WorldCapacityHeight;
 
+        // Phase 2: Debug visualization RenderTarget (same size and format as V3WorldRT)
+        private RenderTarget2D v3DebugWorldRenderTarget;
+        private int v3DebugWorldCapacityWidth;
+        private int v3DebugWorldCapacityHeight;
+
         private RenderTarget2D v3EntitiesRenderTarget;
         private int v3EntitiesCapacityWidth;
         private int v3EntitiesCapacityHeight;
@@ -990,11 +995,36 @@ namespace Nyvorn.Source.Game.States
             }
         }
 
+        /// <summary>
+        /// Allocate or resize V3 debug visualization RenderTarget (Phase 2).
+        /// Same size and format as V3WorldRT, composed after world but before HUD.
+        /// </summary>
+        public void EnsureV3DebugWorldRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = v3DebugWorldRenderTarget == null || screenWidth > v3DebugWorldCapacityWidth || screenHeight > v3DebugWorldCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (v3DebugWorldRenderTarget != null)
+                {
+                    v3DebugWorldRenderTarget.Dispose();
+                }
+
+                v3DebugWorldCapacityWidth = System.Math.Max(screenWidth, v3DebugWorldCapacityWidth);
+                v3DebugWorldCapacityHeight = System.Math.Max(screenHeight, v3DebugWorldCapacityHeight);
+                v3DebugWorldRenderTarget = new RenderTarget2D(graphicsDevice, v3DebugWorldCapacityWidth, v3DebugWorldCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
         /// <summary>Public getters for V3 RenderTargets.</summary>
         public RenderTarget2D GetV3AtmosphereRenderTarget() => v3AtmosphereRenderTarget;
         public RenderTarget2D GetV3WorldRenderTarget() => v3WorldRenderTarget;
         public RenderTarget2D GetV3EntitiesRenderTarget() => v3EntitiesRenderTarget;
         public RenderTarget2D GetV3EmissiveRenderTarget() => v3EmissiveRenderTarget;
+        public RenderTarget2D GetV3DebugWorldRenderTarget() => v3DebugWorldRenderTarget;
 
         /// <summary>Dispose all V3 RenderTargets.</summary>
         public void DisposeV3RenderTargets()
@@ -1004,6 +1034,9 @@ namespace Nyvorn.Source.Game.States
 
             v3WorldRenderTarget?.Dispose();
             v3WorldRenderTarget = null;
+
+            v3DebugWorldRenderTarget?.Dispose();
+            v3DebugWorldRenderTarget = null;
 
             v3EntitiesRenderTarget?.Dispose();
             v3EntitiesRenderTarget = null;
