@@ -35,7 +35,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public int ActiveSampleCount { get; private set; }
         public double ClassificationTimeMs { get; private set; }
         public double OccluderBuildTimeMs { get; private set; }
+        public double SunVisibilityBuildTimeMs { get; private set; }
         public int BufferResizeCount { get; private set; }
+        // Phase 3.2A metrics (behind diagnostics flag)
+        public int SunVisibilityCellsTraversed { get; private set; }
+        public int SunVisibilityRaysComputed { get; private set; }
+        public int SunVisibilityEarlyOuts { get; private set; }
 
         /// <summary>
         /// Create foundation with default 2x2 sampling (4 samples per tile).
@@ -108,6 +113,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             ActiveTileCount = _activeRegion.RegionWidthTiles * _activeRegion.RegionHeightTiles;
             ActiveSampleCount = _activeRegion.TotalSamples;
 
+            // Reset Phase 3.2A metrics
+            SunVisibilityCellsTraversed = 0;
+            SunVisibilityRaysComputed = 0;
+            SunVisibilityEarlyOuts = 0;
+
             // Ensure back slot capacity
             _backSlot.EnsureCapacity(ActiveTileCount, ActiveSampleCount);
             _backSlot.ClearBuffers(ActiveTileCount, ActiveSampleCount);
@@ -117,6 +127,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Build opacities in back slot
             BuildOpacityFieldsToSlot(_backSlot, tileSize);
+
+            // Build sun visibility field (Phase 3.2A)
+            BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
 
             // Calculate probe position (sample at 20,20 local coordinates)
             int probeLocalSampleX = 20;
@@ -229,6 +242,67 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Build sun visibility field using DDA ray marching (Phase 3.2A).
+        /// Computes visibility for each sample: 0.0 = blocked, 1.0 = free.
+        /// </summary>
+        private void BuildSunVisibilityFieldToSlot(LightingV3FrameSlot slot, int tileSize)
+        {
+            var startTime = System.Diagnostics.Stopwatch.StartNew();
+
+            // Get sun state
+            var sunState = slot.SunState;
+            if (!sunState.IsAboveHorizon || sunState.Intensity <= 0.001f)
+                return;  // No sun, skip computation
+
+            // Calculate sample grid parameters (same as probe calculation)
+            float sampleSpacingX = _activeRegion.RegionWidthTiles > 0
+                ? (float)(_activeRegion.RegionWidthTiles * tileSize) / _activeRegion.RegionWidthSamples
+                : 1f;
+            float sampleSpacingY = _activeRegion.RegionHeightTiles > 0
+                ? (float)(_activeRegion.RegionHeightTiles * tileSize) / _activeRegion.RegionHeightSamples
+                : 1f;
+            float sampleCenterOffsetX = sampleSpacingX / 2f;
+            float sampleCenterOffsetY = sampleSpacingY / 2f;
+
+            int totalSamples = _activeRegion.RegionWidthSamples * _activeRegion.RegionHeightSamples;
+
+            // Compute visibility for each sample using DDA ray marching
+            for (int i = 0; i < totalSamples; i++)
+            {
+                // Convert linear index to 2D coordinates
+                int localSampleY = i / _activeRegion.RegionWidthSamples;
+                int localSampleX = i % _activeRegion.RegionWidthSamples;
+
+                // Calculate world position at sample center
+                float worldX = _activeRegion.WorldOriginX + localSampleX * sampleSpacingX + sampleCenterOffsetX;
+                float worldY = _activeRegion.WorldOriginY + localSampleY * sampleSpacingY + sampleCenterOffsetY;
+
+                // Compute visibility using ray marcher
+                float visibility = SunVisibilityRayMarcher.ComputeVisibility(
+                    worldX, worldY,
+                    sunState.DirectionToSun,
+                    sunState.Intensity,
+                    sunState.IsAboveHorizon,
+                    _geometryProvider,
+                    _geometryProvider.WorldWidthTiles,
+                    _geometryProvider.WorldHeightTiles,
+                    tileSize);
+
+                slot.SunVisibilityBuffer[i] = visibility;
+                SunVisibilityRaysComputed++;
+            }
+
+            startTime.Stop();
+            SunVisibilityBuildTimeMs = startTime.Elapsed.TotalMilliseconds;
+
+            // Log metrics if diagnostics enabled
+            if (LightingV3Diagnostics.EnablePhase31RuntimeValidation && SunVisibilityRaysComputed > 0)
+            {
+                System.Console.WriteLine($"[Phase3_2A] SunVisibility: samples={SunVisibilityRaysComputed} time={SunVisibilityBuildTimeMs:F2}ms avg_cells={SunVisibilityCellsTraversed/(float)SunVisibilityRaysComputed:F1}");
+            }
+        }
+
+        /// <summary>
         /// Get immutable frame data for current frame (value type returned by value, no allocation).
         /// Renderer MUST capture this ONCE at start of Draw and use exclusively.
         /// </summary>
@@ -256,8 +330,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine($"Active Samples: {ActiveSampleCount}");
             System.Console.WriteLine($"Classification Time: {ClassificationTimeMs:F3}ms");
             System.Console.WriteLine($"Occluder Build Time: {OccluderBuildTimeMs:F3}ms");
+            System.Console.WriteLine($"Sun Visibility Build Time: {SunVisibilityBuildTimeMs:F3}ms");
             System.Console.WriteLine($"Buffer Resize Count: {BufferResizeCount}");
             System.Console.WriteLine($"Frame Update Id: {_updateId}");
+            System.Console.WriteLine($"=== Phase 3.2A Metrics ===");
+            System.Console.WriteLine($"Sun Visibility Rays Computed: {SunVisibilityRaysComputed}");
+            System.Console.WriteLine($"Sun Visibility Cells Traversed: {SunVisibilityCellsTraversed}");
+            System.Console.WriteLine($"Sun Visibility Early Outs: {SunVisibilityEarlyOuts}");
             System.Console.WriteLine($"Active Providers: {_occluderProviders.Count}");
             foreach (var provider in _occluderProviders)
             {

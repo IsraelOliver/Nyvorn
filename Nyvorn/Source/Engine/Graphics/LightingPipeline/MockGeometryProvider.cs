@@ -83,6 +83,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         {
             return tileY >= 0 && tileY < _worldHeight;
         }
+
+        public int WorldWidthTiles => _worldWidth;
+
+        public int WorldHeightTiles => _worldHeight;
     }
 
     /// <summary>

@@ -35,6 +35,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// Check if tile coordinates are in world bounds.
         /// </summary>
         bool IsInBounds(int tileX, int tileY);
+
+        /// <summary>
+        /// Get world width in tiles.
+        /// </summary>
+        int WorldWidthTiles { get; }
+
+        /// <summary>
+        /// Get world height in tiles.
+        /// </summary>
+        int WorldHeightTiles { get; }
     }
 
     /// <summary>
@@ -57,5 +67,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public int WrapTileX(int tileX) => _worldDataProvider.WrapTileX(tileX);
 
         public bool IsInBounds(int tileX, int tileY) => _worldDataProvider.IsInBounds(tileX, tileY);
+
+        public int WorldWidthTiles => _worldDataProvider.WorldWidth;
+
+        public int WorldHeightTiles => _worldDataProvider.WorldHeight;
     }
 }
