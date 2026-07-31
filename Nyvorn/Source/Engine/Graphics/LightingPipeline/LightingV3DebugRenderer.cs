@@ -26,6 +26,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private int _localOpacitySamplesDrawn = 0;
         private int _sampleGridPointsDrawn = 0;
 
+        // Bounds diagnostics (reset each frame)
+        private int _minDrawWorldX = int.MaxValue;
+        private int _maxDrawWorldX = int.MinValue;
+        private int _minDrawWorldY = int.MaxValue;
+        private int _maxDrawWorldY = int.MinValue;
+
         public LightingV3DebugRenderer(GraphicsDevice graphicsDevice)
         {
             // Create 1x1 pixel texture for primitive drawing
@@ -50,6 +56,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public int SampleGridPointsDrawn => _sampleGridPointsDrawn;
 
         /// <summary>
+        /// Get world-space bounds of drawn primitives (for diagnostics).
+        /// </summary>
+        public int MinDrawWorldX => _minDrawWorldX == int.MaxValue ? 0 : _minDrawWorldX;
+        public int MaxDrawWorldX => _maxDrawWorldX == int.MinValue ? 0 : _maxDrawWorldX;
+        public int MinDrawWorldY => _minDrawWorldY == int.MaxValue ? 0 : _minDrawWorldY;
+        public int MaxDrawWorldY => _maxDrawWorldY == int.MinValue ? 0 : _maxDrawWorldY;
+
+        /// <summary>
         /// Render debug visualization and mode confirmation text.
         /// Call after scene rendering, before HUD, within spriteBatch.Begin/End pair.
         /// </summary>
@@ -57,11 +71,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                           LightingDebugMode mode, int tileSize,
                           string modeConfirmationText = "")
         {
-            // Reset frame counters
+            // Reset frame counters and bounds
             _classificationTilesDrawn = 0;
             _sunOpacitySamplesDrawn = 0;
             _localOpacitySamplesDrawn = 0;
             _sampleGridPointsDrawn = 0;
+            _minDrawWorldX = int.MaxValue;
+            _maxDrawWorldX = int.MinValue;
+            _minDrawWorldY = int.MaxValue;
+            _maxDrawWorldY = int.MinValue;
 
             if (mode == LightingDebugMode.None && string.IsNullOrEmpty(modeConfirmationText))
                 return;
@@ -133,6 +151,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     var rect = new Rectangle(pixelX, pixelY, tileSize, tileSize);
                     spriteBatch.Draw(_pixelTexture, rect, color);
                     _classificationTilesDrawn++;
+
+                    // Track world-space bounds
+                    _minDrawWorldX = System.Math.Min(_minDrawWorldX, pixelX);
+                    _maxDrawWorldX = System.Math.Max(_maxDrawWorldX, pixelX + tileSize);
+                    _minDrawWorldY = System.Math.Min(_minDrawWorldY, pixelY);
+                    _maxDrawWorldY = System.Math.Max(_maxDrawWorldY, pixelY + tileSize);
                 }
             }
         }

@@ -391,13 +391,24 @@ namespace Nyvorn.Source.Game.States
                             session.ViewCoordinator.LightingV3Foundation.DumpMetricsToConsole();
 
                             var renderer = session.ViewCoordinator.LightingV3DebugRenderer;
+                            var controller = session.ViewCoordinator.LightingV3DebugController;
                             if (renderer != null)
                             {
-                                System.Console.WriteLine($"[LightingV3 Renderer Counters]");
+                                System.Console.WriteLine($"\n[LightingV3 Renderer State]");
+                                System.Console.WriteLine($"  ControllerId: {controller.InstanceId}");
+                                System.Console.WriteLine($"  Current Mode: {controller.GetCurrentMode()}");
+
+                                System.Console.WriteLine($"\n[LightingV3 Renderer Counters (last frame)]");
                                 System.Console.WriteLine($"  Classification Tiles Drawn: {renderer.ClassificationTilesDrawn}");
                                 System.Console.WriteLine($"  Sun Opacity Samples Drawn: {renderer.SunOpacitySamplesDrawn}");
                                 System.Console.WriteLine($"  Local Opacity Samples Drawn: {renderer.LocalOpacitySamplesDrawn}");
                                 System.Console.WriteLine($"  Sample Grid Points Drawn: {renderer.SampleGridPointsDrawn}");
+
+                                System.Console.WriteLine($"\n[LightingV3 Renderer World-Space Bounds (last frame)]");
+                                System.Console.WriteLine($"  X: [{renderer.MinDrawWorldX}, {renderer.MaxDrawWorldX}]");
+                                System.Console.WriteLine($"  Y: [{renderer.MinDrawWorldY}, {renderer.MaxDrawWorldY}]");
+                                System.Console.WriteLine($"  Width: {renderer.MaxDrawWorldX - renderer.MinDrawWorldX}");
+                                System.Console.WriteLine($"  Height: {renderer.MaxDrawWorldY - renderer.MinDrawWorldY}");
                             }
                         }
                         else
@@ -462,7 +473,7 @@ namespace Nyvorn.Source.Game.States
                     // PHASE 1: Use separated RenderTargets for V3 composition
                     DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
 
-                    // PHASE 2: Draw debug visualization (after composition, before effects) - ALWAYS VISIBLE FOR VALIDATION
+                    // PHASE 2: Draw debug visualization (world-space with camera transform)
                     if (session.ViewCoordinator.LightingV3DebugController != null && session.ViewCoordinator.LightingV3DebugRenderer != null)
                     {
                         _debugDrawCount++;
@@ -471,6 +482,7 @@ namespace Nyvorn.Source.Game.States
                             _hasLoggedFirstDebugDraw = true;
                             var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
                             System.Console.WriteLine("[LightingV3Probe] First debug draw callsite | Mode: " + debugMode);
+                            System.Console.WriteLine("[LightingV3Probe] World-space render using camera.GetViewMatrix()");
                         }
 
                         var debugMode2 = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
@@ -478,7 +490,11 @@ namespace Nyvorn.Source.Game.States
                             ? session.ViewCoordinator.LightingV3DebugController.GetModeConfirmationText()
                             : "";
 
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+                        // CRITICAL FIX: Use camera view matrix to transform world-space debug coords to screen-space
+                        // Match the exact matrix used by world rendering in DrawWithLightingV3NeutralComposition
+                        var cameraTransform = session.Camera.GetViewMatrix();
+
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: cameraTransform);
 
                         session.ViewCoordinator.LightingV3DebugRenderer.Render(
                             spriteBatch,
@@ -487,23 +503,59 @@ namespace Nyvorn.Source.Game.States
                             session.WorldMap.TileSize,
                             modeConfirmation);
 
-                        // Draw magenta rectangle proof (20x20) in bottom-right corner
+                        spriteBatch.End();
+                    }
+
+                    // Screen-space overlay: Always visible with mode info and counters
+                    if (session.ViewCoordinator.LightingV3Foundation != null && session.ViewCoordinator.LightingV3DebugController != null)
+                    {
+                        var foundation = session.ViewCoordinator.LightingV3Foundation;
+                        var controller = session.ViewCoordinator.LightingV3DebugController;
+                        var renderer = session.ViewCoordinator.LightingV3DebugRenderer;
+                        var currentMode = controller.GetCurrentMode();
+
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+
+                        // Draw semi-transparent background for text
+                        spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 350, 100), new Color(0, 0, 0, 200));
+
+                        // Draw overlay text (screen-space, no transform matrix)
+                        var textColor = new Color(0, 255, 200, 255);
+                        var textPos = new Vector2(20, 18);
+                        var lineHeight = 16f;
+
+                        spriteBatch.DrawString(consoleFont, "V3 Foundation Active", textPos, textColor);
+                        textPos.Y += lineHeight;
+
+                        spriteBatch.DrawString(consoleFont, $"ControllerId: {controller.InstanceId}", textPos, textColor);
+                        textPos.Y += lineHeight;
+
+                        spriteBatch.DrawString(consoleFont, $"Mode: {currentMode}", textPos, textColor);
+                        textPos.Y += lineHeight;
+
+                        spriteBatch.DrawString(consoleFont, $"Tiles: {foundation.ActiveTileCount}", textPos, textColor);
+                        textPos.Y += lineHeight;
+
+                        // Show counter for current mode
+                        if (renderer != null && currentMode.ToString() != "None")
+                        {
+                            string counterText = currentMode switch
+                            {
+                                LightingDebugMode.Classification => $"Drawn: {renderer.ClassificationTilesDrawn} tiles",
+                                LightingDebugMode.SunOpacity => $"Drawn: {renderer.SunOpacitySamplesDrawn} samples",
+                                LightingDebugMode.LocalLightOpacity => $"Drawn: {renderer.LocalOpacitySamplesDrawn} samples",
+                                LightingDebugMode.SampleGrid => $"Drawn: {renderer.SampleGridPointsDrawn} points",
+                                _ => "Drawn: 0"
+                            };
+                            spriteBatch.DrawString(consoleFont, counterText, textPos, textColor);
+                        }
+
+                        // Magenta rectangle proof (screen-space)
                         var magentaPixel = new Color(255, 0, 255, 255);
                         spriteBatch.Draw(
                             consolePixel,
                             new Rectangle(screenW - 20, screenH - 20, 20, 20),
                             magentaPixel);
-
-                        spriteBatch.End();
-                    }
-
-                    // Fixed overlay always visible: Dark box proof (text rendering not available without SpriteFont)
-                    if (session.ViewCoordinator.LightingV3Foundation != null)
-                    {
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-
-                        // Draw semi-transparent background for overlay
-                        spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 350, 90), new Color(0, 0, 0, 200));
 
                         spriteBatch.End();
                     }
