@@ -80,6 +80,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Store the world-view transform for use in render methods
             _worldViewTransform = worldViewTransform;
 
+            // DIAGNOSTIC: Log transform for comparison with world pass
+            if (mode == LightingDebugMode.SunOpacity || mode == LightingDebugMode.LocalLightOpacity)
+            {
+                var region = foundation?.GetActiveRegion();
+                if (region != null)
+                {
+                    System.Console.WriteLine($"[V3DebugRender] WorldOrigin: ({region.WorldOriginX}, {region.WorldOriginY})");
+
+                    // Sample diagnostic: first sample position
+                    var firstSampleWorldPos = region.LocalSampleToWorldPosition(0, 0, tileSize);
+                    System.Console.WriteLine($"[V3DebugRender] First sample world position: ({firstSampleWorldPos.X}, {firstSampleWorldPos.Y})");
+                }
+            }
+
             // Reset frame counters and bounds
             _classificationTilesDrawn = 0;
             _sunOpacitySamplesDrawn = 0;
