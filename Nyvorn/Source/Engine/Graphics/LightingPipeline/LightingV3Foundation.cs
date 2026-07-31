@@ -23,13 +23,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private readonly List<IOccluderProvider> _occluderProviders;
 
         private ActiveLightingRegion _activeRegion;
-        private LightingCellClassification[] _tileClassifications;
-        private OccluderField _occluderField;
 
-        // Frame data snapshot (atomic publish after update)
-        private LightingV3FrameData _currentFrameData;
+        // Double-buffered frame slots (true immutability via independent buffers)
+        private LightingV3FrameSlot _backSlot;  // Being built during Update
+        private LightingV3FrameSlot _frontSlot; // Consumed by renderer during Draw
         private int _updateId;
-        private int _tileSize;
 
         // Metrics
         public int ActiveTileCount { get; private set; }
@@ -56,8 +54,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _occluderProviders = new List<IOccluderProvider>();
 
             _activeRegion = new ActiveLightingRegion(_samplingConfig);
-            _occluderField = new OccluderField();
-            _tileClassifications = new LightingCellClassification[256]; // Initial capacity
+
+            // Create double-buffered slots (256 initial capacity)
+            _backSlot = new LightingV3FrameSlot(256, 1024);
+            _frontSlot = new LightingV3FrameSlot(256, 1024);
+            _updateId = 0;
 
             RegisterDefaultProviders();
         }
@@ -87,42 +88,83 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public void Update(float cameraWorldX, float cameraWorldY, int logicalRenderWidth, int logicalRenderHeight, int tileSize)
         {
+            // Capture previous origin for change detection
+            float prevOriginX = _activeRegion.WorldOriginX;
+            float prevOriginY = _activeRegion.WorldOriginY;
+
             // Update active region
             _activeRegion.Update(cameraWorldX, cameraWorldY, logicalRenderWidth, logicalRenderHeight, tileSize);
 
             ActiveTileCount = _activeRegion.RegionWidthTiles * _activeRegion.RegionHeightTiles;
             ActiveSampleCount = _activeRegion.TotalSamples;
 
-            // Ensure classification buffer capacity
-            if (_tileClassifications.Length < ActiveTileCount)
+            // Ensure back slot capacity
+            _backSlot.EnsureCapacity(ActiveTileCount, ActiveSampleCount);
+            _backSlot.ClearBuffers(ActiveTileCount, ActiveSampleCount);
+
+            // Classify tiles in back slot
+            ClassifyRegionToSlot(_backSlot, tileSize);
+
+            // Build opacities in back slot
+            BuildOpacityFieldsToSlot(_backSlot, tileSize);
+
+            // Calculate probe position (sample at 20,20 local coordinates)
+            int probeLocalSampleX = 20;
+            int probeLocalSampleY = 20;
+            int probeIndex = probeLocalSampleY * _activeRegion.RegionWidthSamples + probeLocalSampleX;
+
+            float sampleSpacingX = _activeRegion.RegionWidthTiles > 0
+                ? (float)(_activeRegion.RegionWidthTiles * tileSize) / _activeRegion.RegionWidthSamples
+                : 1f;
+            float sampleSpacingY = _activeRegion.RegionHeightTiles > 0
+                ? (float)(_activeRegion.RegionHeightTiles * tileSize) / _activeRegion.RegionHeightSamples
+                : 1f;
+            float sampleCenterOffsetX = sampleSpacingX / 2f;
+            float sampleCenterOffsetY = sampleSpacingY / 2f;
+
+            float probeWorldX = _activeRegion.WorldOriginX + probeLocalSampleX * sampleSpacingX + sampleCenterOffsetX;
+            float probeWorldY = _activeRegion.WorldOriginY + probeLocalSampleY * sampleSpacingY + sampleCenterOffsetY;
+
+            float probeSunOpacity = probeIndex >= 0 && probeIndex < _backSlot.SunOpacityBuffer.Length
+                ? _backSlot.SunOpacityBuffer[probeIndex]
+                : 0f;
+            float probeLocalOpacity = probeIndex >= 0 && probeIndex < _backSlot.LocalOpacityBuffer.Length
+                ? _backSlot.LocalOpacityBuffer[probeIndex]
+                : 0f;
+
+            // Store probe data in back slot
+            _backSlot.ProbeLocalSampleX = probeLocalSampleX;
+            _backSlot.ProbeLocalSampleY = probeLocalSampleY;
+            _backSlot.ProbeSampleWorldX = probeWorldX;
+            _backSlot.ProbeSampleWorldY = probeWorldY;
+            _backSlot.ProbeSunOpacity = probeSunOpacity;
+            _backSlot.ProbeLocalOpacity = probeLocalOpacity;
+
+            // CRITICAL: Publish frame atomically after both buffers are ready
+            _updateId++;
+            _backSlot.FrameId = _updateId;
+            _backSlot.Region = new ActiveRegionSnapshot(_activeRegion, tileSize);
+
+            // Log probe when WorldOrigin changes
+            bool regionChanged = prevOriginX != _activeRegion.WorldOriginX ||
+                               prevOriginY != _activeRegion.WorldOriginY;
+            if (regionChanged)
             {
-                System.Array.Resize(ref _tileClassifications, System.Math.Max(256, ActiveTileCount * 2));
+                System.Console.WriteLine($"[V3FoundationPublish] UpdateId={_updateId} WorldOrigin=({_activeRegion.WorldOriginX},{_activeRegion.WorldOriginY}) " +
+                    $"ProbeIndex={probeIndex} ProbeWorld=({probeWorldX:F1},{probeWorldY:F1}) " +
+                    $"Sun={probeSunOpacity:F3} Local={probeLocalOpacity:F3}");
             }
 
-            // Classify tiles in region
-            ClassifyRegion(tileSize);
-
-            // Build occluder field
-            BuildOccluderField();
-
-            // CRITICAL: Publish immutable frame data snapshot
-            // This ensures renderer never reads mismatched region/buffers
-            _tileSize = tileSize;
-            _updateId++;
-            _currentFrameData = new LightingV3FrameData(
-                _updateId,
-                _activeRegion,
-                _tileClassifications,
-                _occluderField,
-                tileSize);
-
-            System.Console.WriteLine($"[V3FoundationBuild] UpdateId: {_updateId} | WorldOrigin: ({_activeRegion.WorldOriginX}, {_activeRegion.WorldOriginY})");
+            // Swap buffers: front becomes the published data, back is next to build
+            var temp = _frontSlot;
+            _frontSlot = _backSlot;
+            _backSlot = temp;
         }
 
         /// <summary>
-        /// Classify all tiles in the active region.
+        /// Classify all tiles in the active region to back slot.
         /// </summary>
-        private void ClassifyRegion(int tileSize)
+        private void ClassifyRegionToSlot(LightingV3FrameSlot slot, int tileSize)
         {
             var startTime = System.Diagnostics.Stopwatch.StartNew();
 
@@ -132,31 +174,34 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             int topTile = (int)System.Math.Floor(_activeRegion.WorldOriginY / tileSize);
 
             classifier.ClassifyRegion(leftTile, topTile, _activeRegion.RegionWidthTiles, _activeRegion.RegionHeightTiles,
-                                     _tileClassifications);
+                                     slot.TileClassifications);
 
             startTime.Stop();
             ClassificationTimeMs = startTime.Elapsed.TotalMilliseconds;
         }
 
         /// <summary>
-        /// Build occluder field from classifications and provider data.
+        /// Build opacity buffers from classifications and provider data to back slot.
         /// </summary>
-        private void BuildOccluderField()
+        private void BuildOpacityFieldsToSlot(LightingV3FrameSlot slot, int tileSize)
         {
             var startTime = System.Diagnostics.Stopwatch.StartNew();
 
-            int prevCapacity = _occluderField.SampleCount;
+            // Create temporary occluder field for this build
+            var tempField = new OccluderField();
+            tempField.Initialize(_activeRegion.RegionWidthSamples, _activeRegion.RegionHeightSamples);
 
-            _occluderField.Initialize(_activeRegion.RegionWidthSamples, _activeRegion.RegionHeightSamples);
-
-            if (_occluderField.SampleCount > prevCapacity)
-                BufferResizeCount++;
-
-            // Apply all providers
-            int tileSize = 16; // TODO: Get from world/config
+            // Apply all providers to temp field
             foreach (var provider in _occluderProviders)
             {
-                provider.ApplyOcclusion(_occluderField, _activeRegion, tileSize);
+                provider.ApplyOcclusion(tempField, _activeRegion, tileSize);
+            }
+
+            // Copy opacities to slot buffers
+            for (int i = 0; i < _activeRegion.RegionWidthSamples * _activeRegion.RegionHeightSamples; i++)
+            {
+                slot.SunOpacityBuffer[i] = tempField.GetSunOpacity(i);
+                slot.LocalOpacityBuffer[i] = tempField.GetLocalLightOpacity(i);
             }
 
             startTime.Stop();
@@ -164,25 +209,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Get immutable frame data for current update.
-        /// Renderer MUST use this method, not GetActiveRegion/GetOccluderField separately.
+        /// Get immutable frame data for current frame (value type returned by value, no allocation).
+        /// Renderer MUST capture this ONCE at start of Draw and use exclusively.
         /// </summary>
-        public LightingV3FrameData GetFrameData() => _currentFrameData;
+        public LightingV3FrameData? GetFrameData() => _frontSlot != null ? new LightingV3FrameData(_frontSlot) : null;
 
         /// <summary>
-        /// Get the active lighting region (DEPRECATED: use GetFrameData).
+        /// Get the active lighting region (for compatibility only, use GetFrameData).
         /// </summary>
         public ActiveLightingRegion GetActiveRegion() => _activeRegion;
-
-        /// <summary>
-        /// Get the occluder field (DEPRECATED: use GetFrameData).
-        /// </summary>
-        public OccluderField GetOccluderField() => _occluderField;
-
-        /// <summary>
-        /// Get tile classifications (for debugging).
-        /// </summary>
-        public LightingCellClassification[] GetTileClassifications() => _tileClassifications;
 
         /// <summary>
         /// Get sampling configuration.
@@ -202,12 +237,32 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine($"Classification Time: {ClassificationTimeMs:F3}ms");
             System.Console.WriteLine($"Occluder Build Time: {OccluderBuildTimeMs:F3}ms");
             System.Console.WriteLine($"Buffer Resize Count: {BufferResizeCount}");
-            System.Console.WriteLine($"Occluder Field: {_occluderField}");
+            System.Console.WriteLine($"Frame Update Id: {_updateId}");
             System.Console.WriteLine($"Active Providers: {_occluderProviders.Count}");
             foreach (var provider in _occluderProviders)
             {
                 System.Console.WriteLine($"  - {provider.ProviderName}");
             }
+        }
+
+        /// <summary>
+        /// Validate that front and back slots have independent buffers.
+        /// Prints validation results to console.
+        /// </summary>
+        public void ValidateSlotIndependence()
+        {
+            bool tilesIndependent = !ReferenceEquals(_frontSlot.TileClassifications, _backSlot.TileClassifications);
+            bool sunIndependent = !ReferenceEquals(_frontSlot.SunOpacityBuffer, _backSlot.SunOpacityBuffer);
+            bool localIndependent = !ReferenceEquals(_frontSlot.LocalOpacityBuffer, _backSlot.LocalOpacityBuffer);
+
+            bool allIndependent = tilesIndependent && sunIndependent && localIndependent;
+
+            System.Console.WriteLine($"=== Slot Independence Validation ===");
+            System.Console.WriteLine($"TileClassifications: {(tilesIndependent ? "✓ INDEPENDENT" : "✗ SHARED")}");
+            System.Console.WriteLine($"SunOpacityBuffer: {(sunIndependent ? "✓ INDEPENDENT" : "✗ SHARED")}");
+            System.Console.WriteLine($"LocalOpacityBuffer: {(localIndependent ? "✓ INDEPENDENT" : "✗ SHARED")}");
+            System.Console.WriteLine($"Result: {(allIndependent ? "✓ ALL INDEPENDENT" : "✗ VALIDATION FAILED")}");
+            System.Console.WriteLine($"=====================================");
         }
 
         /// <summary>

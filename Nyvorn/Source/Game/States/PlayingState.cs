@@ -1243,16 +1243,9 @@ namespace Nyvorn.Source.Game.States
             // All visible copies drawn to V3DebugWorldRT with same transformations
             if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.LightingV3DebugController != null && viewCoord.LightingV3DebugRenderer != null)
             {
-                // DIAGNOSTIC: Check ActiveLightingRegion alignment
+                // CAPTURE FRAME DATA ONCE (immutable snapshot for entire debug pass)
                 var debugFoundation = viewCoord.LightingV3Foundation;
-                if (debugFoundation != null)
-                {
-                    var region = debugFoundation.GetActiveRegion();
-                    System.Console.WriteLine($"[V3Debug] ActiveRegionWorldOrigin: ({region.WorldOriginX}, {region.WorldOriginY}) pixels");
-                    System.Console.WriteLine($"[V3Debug] CameraPosition: ({session.Camera.Position.X}, {session.Camera.Position.Y})");
-                    System.Console.WriteLine($"[V3Debug] RegionSize: {region.RegionWidthTiles}x{region.RegionHeightTiles} tiles, " +
-                        $"{region.RegionWidthSamples}x{region.RegionHeightSamples} samples");
-                }
+                var frameData = debugFoundation?.GetFrameData();
 
                 // Prepare debug RenderTarget
                 viewCoord.EnsureV3DebugWorldRenderTarget(graphicsDevice, screenW, screenH);
@@ -1261,22 +1254,24 @@ namespace Nyvorn.Source.Game.States
                 graphicsDevice.Clear(Color.Transparent);  // Clear ONCE, not per loop iteration
 
                 // Loop through same visible offsets with EXACT same matrices
-                for (int i = 0; i < visibleLoopOffsets.Count; i++)
+                if (frameData.HasValue)
                 {
-                    int loopIndex = visibleLoopOffsets[i];
-                    float worldOffset = loopIndex * worldWidthPixels;
-                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+                    for (int i = 0; i < visibleLoopOffsets.Count; i++)
+                    {
+                        int loopIndex = visibleLoopOffsets[i];
+                        float worldOffset = loopIndex * worldWidthPixels;
+                        Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                    // Draw debug using exact same transform as world
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                    viewCoord.LightingV3DebugRenderer.Render(
-                        spriteBatch,
-                        viewCoord.LightingV3Foundation,
-                        viewCoord.LightingV3DebugController.GetCurrentMode(),
-                        session.WorldMap.TileSize,
-                        transform,
-                        "");
-                    spriteBatch.End();
+                        // Draw debug using exact same transform as world
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                        viewCoord.LightingV3DebugRenderer.Render(
+                            spriteBatch,
+                            frameData.Value,
+                            viewCoord.LightingV3DebugController.GetCurrentMode(),
+                            session.WorldMap.TileSize,
+                            transform);
+                        spriteBatch.End();
+                    }
                 }
 
                 // Restore to backbuffer (done below, not here)
@@ -1330,12 +1325,6 @@ namespace Nyvorn.Source.Game.States
             // PHASE 2 (Debug): Compose debug visualization from V3DebugWorldRT (after world, before HUD)
             if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.GetV3DebugWorldRenderTarget() != null)
             {
-                // DIAGNOSTIC: Verify composition parameters
-                System.Console.WriteLine($"[V3Composition] World DestRect: ({destinationRect.X}, {destinationRect.Y}, {destinationRect.Width}, {destinationRect.Height})");
-                System.Console.WriteLine($"[V3Composition] World SourceRect: ({sourceRect.X}, {sourceRect.Y}, {sourceRect.Width}, {sourceRect.Height})");
-                System.Console.WriteLine($"[V3Composition] V3WorldRT: {viewCoord.GetV3WorldRenderTarget().Width}x{viewCoord.GetV3WorldRenderTarget().Height}");
-                System.Console.WriteLine($"[V3Composition] V3DebugRT: {viewCoord.GetV3DebugWorldRenderTarget().Width}x{viewCoord.GetV3DebugWorldRenderTarget().Height}");
-
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
                 spriteBatch.Draw(viewCoord.GetV3DebugWorldRenderTarget(), destinationRect, sourceRect, Color.White);
                 spriteBatch.End();

@@ -68,7 +68,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public void Render(SpriteBatch spriteBatch, LightingV3Foundation foundation, Texture2D pixelTexture, int tileSize)
         {
-            if (_mode == LightingDebugMode.None)
+            if (_mode == LightingDebugMode.None || foundation == null)
+                return;
+
+            var frameData = foundation.GetFrameData();
+            if (!frameData.HasValue)
                 return;
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
@@ -76,16 +80,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             switch (_mode)
             {
                 case LightingDebugMode.Classification:
-                    RenderClassification(spriteBatch, foundation, pixelTexture, tileSize);
+                    RenderClassification(spriteBatch, frameData.Value, pixelTexture, tileSize);
                     break;
                 case LightingDebugMode.SunOpacity:
-                    RenderOpacity(spriteBatch, foundation, pixelTexture, tileSize, isLocal: false);
+                    RenderOpacity(spriteBatch, frameData.Value, pixelTexture, tileSize, isLocal: false);
                     break;
                 case LightingDebugMode.LocalLightOpacity:
-                    RenderOpacity(spriteBatch, foundation, pixelTexture, tileSize, isLocal: true);
+                    RenderOpacity(spriteBatch, frameData.Value, pixelTexture, tileSize, isLocal: true);
                     break;
                 case LightingDebugMode.SampleGrid:
-                    RenderSampleGrid(spriteBatch, foundation, pixelTexture, tileSize);
+                    RenderSampleGrid(spriteBatch, frameData.Value, pixelTexture, tileSize);
                     break;
             }
 
@@ -97,18 +101,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             spriteBatch.End();
         }
 
-        private void RenderClassification(SpriteBatch spriteBatch, LightingV3Foundation foundation, Texture2D pixelTexture, int tileSize)
+        private void RenderClassification(SpriteBatch spriteBatch, LightingV3FrameData frameData, Texture2D pixelTexture, int tileSize)
         {
-            var region = foundation.GetActiveRegion();
-            var classifications = foundation.GetTileClassifications();
+            var region = frameData.Region;
+            var classifications = frameData.TileClassifications;
 
-            int leftTile = (int)System.Math.Floor(region.WorldOriginX / tileSize);
-            int topTile = (int)System.Math.Floor(region.WorldOriginY / tileSize);
+            int leftTile = region.WorldOriginX / tileSize;
+            int topTile = region.WorldOriginY / tileSize;
 
             int index = 0;
-            for (int ty = 0; ty < region.RegionHeightTiles; ty++)
+            for (int ty = 0; ty < region.TileHeight; ty++)
             {
-                for (int tx = 0; tx < region.RegionWidthTiles; tx++)
+                for (int tx = 0; tx < region.TileWidth; tx++)
                 {
                     if (index >= classifications.Length)
                         break;
@@ -134,50 +138,55 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
         }
 
-        private void RenderOpacity(SpriteBatch spriteBatch, LightingV3Foundation foundation, Texture2D pixelTexture, int tileSize, bool isLocal)
+        private void RenderOpacity(SpriteBatch spriteBatch, LightingV3FrameData frameData, Texture2D pixelTexture, int tileSize, bool isLocal)
         {
-            var region = foundation.GetActiveRegion();
-            var field = foundation.GetOccluderField();
+            var region = frameData.Region;
+            var opacityBuffer = isLocal ? frameData.LocalOpacityBuffer : frameData.SunOpacityBuffer;
 
             // Render each sample as a small pixel
-            int sampleSize = tileSize / region.RegionWidthSamples * region.RegionWidthTiles;
+            int sampleSize = tileSize / region.SampleWidth * region.TileWidth;
             if (sampleSize < 1) sampleSize = 1;
 
-            for (int sy = 0; sy < region.RegionHeightSamples; sy++)
+            for (int sy = 0; sy < region.SampleHeight; sy++)
             {
-                for (int sx = 0; sx < region.RegionWidthSamples; sx++)
+                for (int sx = 0; sx < region.SampleWidth; sx++)
                 {
-                    int flatIndex = field.SampleToFlatIndex(sx, sy);
-                    if (flatIndex < 0)
+                    int flatIndex = sy * region.SampleWidth + sx;
+                    if (flatIndex >= opacityBuffer.Length)
                         continue;
 
-                    float opacity = isLocal ? field.GetLocalLightOpacity(flatIndex) : field.GetSunOpacity(flatIndex);
+                    float opacity = opacityBuffer[flatIndex];
 
                     // Grayscale: 0=black, 1=white
                     byte value = (byte)(opacity * 255);
                     Color color = new Color((float)value / 255f, (float)value / 255f, (float)value / 255f, 200f / 255f);
 
-                    var worldPos = region.LocalSampleToWorldPosition(sx, sy, tileSize);
-                    var rect = new Rectangle((int)worldPos.X, (int)worldPos.Y, sampleSize, sampleSize);
+                    // Calculate world position
+                    float worldX = region.WorldOriginX + (sx + 0.5f) * (region.TileWidth * tileSize) / region.SampleWidth;
+                    float worldY = region.WorldOriginY + (sy + 0.5f) * (region.TileHeight * tileSize) / region.SampleHeight;
+
+                    var rect = new Rectangle((int)worldX, (int)worldY, sampleSize, sampleSize);
                     spriteBatch.Draw(pixelTexture, rect, color);
                 }
             }
         }
 
-        private void RenderSampleGrid(SpriteBatch spriteBatch, LightingV3Foundation foundation, Texture2D pixelTexture, int tileSize)
+        private void RenderSampleGrid(SpriteBatch spriteBatch, LightingV3FrameData frameData, Texture2D pixelTexture, int tileSize)
         {
-            var region = foundation.GetActiveRegion();
+            var region = frameData.Region;
 
             // Draw crosshair at each sample position
-            for (int sy = 0; sy < region.RegionHeightSamples; sy++)
+            for (int sy = 0; sy < region.SampleHeight; sy++)
             {
-                for (int sx = 0; sx < region.RegionWidthSamples; sx++)
+                for (int sx = 0; sx < region.SampleWidth; sx++)
                 {
-                    var worldPos = region.LocalSampleToWorldPosition(sx, sy, tileSize);
+                    // Calculate world position
+                    float worldX = region.WorldOriginX + (sx + 0.5f) * (region.TileWidth * tileSize) / region.SampleWidth;
+                    float worldY = region.WorldOriginY + (sy + 0.5f) * (region.TileHeight * tileSize) / region.SampleHeight;
 
                     // Draw small crosshair
-                    float x = worldPos.X;
-                    float y = worldPos.Y;
+                    float x = worldX;
+                    float y = worldY;
                     int size = 2;
 
                     spriteBatch.Draw(pixelTexture, new Rectangle((int)(x - size), (int)y, size * 2 + 1, 1), Color.Yellow);

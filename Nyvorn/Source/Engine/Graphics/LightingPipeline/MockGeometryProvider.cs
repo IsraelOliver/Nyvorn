@@ -121,19 +121,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             var foundation = new LightingV3Foundation(mock);
             foundation.Update(0, 0, 16, 16, 16);
-            var field = foundation.GetOccluderField();
+            var frameData = foundation.GetFrameData();
 
             bool classificationCorrect = result == LightingCellClassification.SolidForeground;
-            bool sunOcclusionCorrect = System.Math.Abs(field.GetSunOpacity(0) - 1.0f) < 0.01f;
-            bool localOcclusionCorrect = System.Math.Abs(field.GetLocalLightOpacity(0) - 1.0f) < 0.01f;
+            bool sunOcclusionCorrect = frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 0 && System.Math.Abs(frameData.Value.SunOpacityBuffer[0] - 1.0f) < 0.01f;
+            bool localOcclusionCorrect = frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 0 && System.Math.Abs(frameData.Value.LocalOpacityBuffer[0] - 1.0f) < 0.01f;
 
             bool passed = classificationCorrect && sunOcclusionCorrect && localOcclusionCorrect;
             System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case A: SolidForeground");
             if (!passed)
             {
                 System.Console.WriteLine($"  Classification: {result} (expected SolidForeground)");
-                System.Console.WriteLine($"  SunOpacity: {field.GetSunOpacity(0)} (expected 1.0)");
-                System.Console.WriteLine($"  LocalLightOpacity: {field.GetLocalLightOpacity(0)} (expected 1.0)");
+                if (frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 0)
+                    System.Console.WriteLine($"  SunOpacity: {frameData.Value.SunOpacityBuffer[0]} (expected 1.0)");
+                if (frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 0)
+                    System.Console.WriteLine($"  LocalLightOpacity: {frameData.Value.LocalOpacityBuffer[0]} (expected 1.0)");
             }
         }
 
@@ -150,19 +152,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             var foundation = new LightingV3Foundation(mock);
             foundation.Update(0, 0, 16, 16, 16);
-            var field = foundation.GetOccluderField();
+            var frameData = foundation.GetFrameData();
 
             bool classificationCorrect = result == LightingCellClassification.VisibleBackground;
-            bool sunOcclusionCorrect = System.Math.Abs(field.GetSunOpacity(0) - 0.0f) < 0.01f;
-            bool localOcclusionCorrect = System.Math.Abs(field.GetLocalLightOpacity(0) - 0.0f) < 0.01f;
+            bool sunOcclusionCorrect = frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 0 && System.Math.Abs(frameData.Value.SunOpacityBuffer[0] - 0.0f) < 0.01f;
+            bool localOcclusionCorrect = frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 0 && System.Math.Abs(frameData.Value.LocalOpacityBuffer[0] - 0.0f) < 0.01f;
 
             bool passed = classificationCorrect && sunOcclusionCorrect && localOcclusionCorrect;
             System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case B: VisibleBackground");
             if (!passed)
             {
                 System.Console.WriteLine($"  Classification: {result} (expected VisibleBackground)");
-                System.Console.WriteLine($"  SunOpacity: {field.GetSunOpacity(0)} (expected 0.0)");
-                System.Console.WriteLine($"  LocalLightOpacity: {field.GetLocalLightOpacity(0)} (expected 0.0)");
+                if (frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 0)
+                    System.Console.WriteLine($"  SunOpacity: {frameData.Value.SunOpacityBuffer[0]} (expected 0.0)");
+                if (frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 0)
+                    System.Console.WriteLine($"  LocalLightOpacity: {frameData.Value.LocalOpacityBuffer[0]} (expected 0.0)");
             }
         }
 
@@ -221,19 +225,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             var foundation = new LightingV3Foundation(mock);
             foundation.Update(0, 0, 48, 16, 16);
-            var field = foundation.GetOccluderField();
+            var frameData = foundation.GetFrameData();
 
-            bool rule1 = System.Math.Abs(field.GetSunOpacity(0) - 1.0f) < 0.01f;  // Solid
-            bool rule2 = System.Math.Abs(field.GetSunOpacity(1) - 0.0f) < 0.01f;  // Background
-            bool rule3 = System.Math.Abs(field.GetSunOpacity(2) - 0.0f) < 0.01f;  // Atmosphere
+            bool rule1 = frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 0 && System.Math.Abs(frameData.Value.SunOpacityBuffer[0] - 1.0f) < 0.01f;  // Solid
+            bool rule2 = frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 1 && System.Math.Abs(frameData.Value.SunOpacityBuffer[1] - 0.0f) < 0.01f;  // Background
+            bool rule3 = frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 2 && System.Math.Abs(frameData.Value.SunOpacityBuffer[2] - 0.0f) < 0.01f;  // Atmosphere
 
             bool passed = rule1 && rule2 && rule3;
             System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case E: Sun Occlusion Rules");
             if (!passed)
             {
-                System.Console.WriteLine($"  Solid sun: {field.GetSunOpacity(0)} (expected 1.0)");
-                System.Console.WriteLine($"  Background sun: {field.GetSunOpacity(1)} (expected 0.0)");
-                System.Console.WriteLine($"  Atmosphere sun: {field.GetSunOpacity(2)} (expected 0.0)");
+                if (frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 0)
+                    System.Console.WriteLine($"  Solid sun: {frameData.Value.SunOpacityBuffer[0]} (expected 1.0)");
+                if (frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 1)
+                    System.Console.WriteLine($"  Background sun: {frameData.Value.SunOpacityBuffer[1]} (expected 0.0)");
+                if (frameData.HasValue && frameData.Value.SunOpacityBuffer.Length > 2)
+                    System.Console.WriteLine($"  Atmosphere sun: {frameData.Value.SunOpacityBuffer[2]} (expected 0.0)");
             }
         }
 
@@ -255,19 +262,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             var foundation = new LightingV3Foundation(mock);
             foundation.Update(0, 0, 48, 16, 16);
-            var field = foundation.GetOccluderField();
+            var frameData = foundation.GetFrameData();
 
-            bool rule1 = System.Math.Abs(field.GetLocalLightOpacity(0) - 1.0f) < 0.01f;  // Solid
-            bool rule2 = System.Math.Abs(field.GetLocalLightOpacity(1) - 0.0f) < 0.01f;  // Background
-            bool rule3 = System.Math.Abs(field.GetLocalLightOpacity(2) - 0.0f) < 0.01f;  // Atmosphere
+            bool rule1 = frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 0 && System.Math.Abs(frameData.Value.LocalOpacityBuffer[0] - 1.0f) < 0.01f;  // Solid
+            bool rule2 = frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 1 && System.Math.Abs(frameData.Value.LocalOpacityBuffer[1] - 0.0f) < 0.01f;  // Background
+            bool rule3 = frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 2 && System.Math.Abs(frameData.Value.LocalOpacityBuffer[2] - 0.0f) < 0.01f;  // Atmosphere
 
             bool passed = rule1 && rule2 && rule3;
             System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case F: Local Light Occlusion Rules");
             if (!passed)
             {
-                System.Console.WriteLine($"  Solid local: {field.GetLocalLightOpacity(0)} (expected 1.0)");
-                System.Console.WriteLine($"  Background local: {field.GetLocalLightOpacity(1)} (expected 0.0)");
-                System.Console.WriteLine($"  Atmosphere local: {field.GetLocalLightOpacity(2)} (expected 0.0)");
+                if (frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 0)
+                    System.Console.WriteLine($"  Solid local: {frameData.Value.LocalOpacityBuffer[0]} (expected 1.0)");
+                if (frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 1)
+                    System.Console.WriteLine($"  Background local: {frameData.Value.LocalOpacityBuffer[1]} (expected 0.0)");
+                if (frameData.HasValue && frameData.Value.LocalOpacityBuffer.Length > 2)
+                    System.Console.WriteLine($"  Atmosphere local: {frameData.Value.LocalOpacityBuffer[2]} (expected 0.0)");
             }
         }
     }
