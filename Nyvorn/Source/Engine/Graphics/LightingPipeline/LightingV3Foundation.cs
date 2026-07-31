@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Nyvorn.Source.World;
 
 namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 {
@@ -13,11 +12,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// - Where elements are (ActiveLightingRegion)
     /// - What type they are (SceneWorldClassifier)
     /// - How much they block (OccluderField)
+    ///
+    /// Depends on ILightingWorldGeometryProvider for foreground/background queries.
+    /// Does NOT depend on WorldMap directly (decoupled via interface).
     /// </summary>
     public class LightingV3Foundation
     {
         private readonly LightingSamplingConfig _samplingConfig;
-        private readonly WorldMap _worldMap;
+        private readonly ILightingWorldGeometryProvider _geometryProvider;
         private readonly List<IOccluderProvider> _occluderProviders;
 
         private ActiveLightingRegion _activeRegion;
@@ -34,17 +36,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// <summary>
         /// Create foundation with default 2x2 sampling (4 samples per tile).
         /// </summary>
-        public LightingV3Foundation(WorldMap worldMap)
-            : this(worldMap, LightingSamplingConfig.Default2x2)
+        public LightingV3Foundation(ILightingWorldGeometryProvider geometryProvider)
+            : this(geometryProvider, LightingSamplingConfig.Default2x2)
         {
         }
 
         /// <summary>
         /// Create foundation with custom sampling configuration.
         /// </summary>
-        public LightingV3Foundation(WorldMap worldMap, LightingSamplingConfig samplingConfig)
+        public LightingV3Foundation(ILightingWorldGeometryProvider geometryProvider, LightingSamplingConfig samplingConfig)
         {
-            _worldMap = worldMap ?? throw new ArgumentNullException(nameof(worldMap));
+            _geometryProvider = geometryProvider ?? throw new ArgumentNullException(nameof(geometryProvider));
             _samplingConfig = samplingConfig ?? throw new ArgumentNullException(nameof(samplingConfig));
             _occluderProviders = new List<IOccluderProvider>();
 
@@ -60,7 +62,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         private void RegisterDefaultProviders()
         {
-            _occluderProviders.Add(new ForegroundTileOccluderProvider(_worldMap));
+            _occluderProviders.Add(new ForegroundTileOccluderProvider(_geometryProvider));
         }
 
         /// <summary>
@@ -106,7 +108,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         {
             var startTime = System.Diagnostics.Stopwatch.StartNew();
 
-            var classifier = new SceneWorldClassifier(_worldMap);
+            var classifier = new SceneWorldClassifier(_geometryProvider);
 
             int leftTile = (int)System.Math.Floor(_activeRegion.WorldOriginX / tileSize);
             int topTile = (int)System.Math.Floor(_activeRegion.WorldOriginY / tileSize);

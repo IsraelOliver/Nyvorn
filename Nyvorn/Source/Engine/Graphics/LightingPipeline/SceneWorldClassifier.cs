@@ -1,5 +1,3 @@
-using Nyvorn.Source.World;
-
 namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 {
     /// <summary>
@@ -12,35 +10,38 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// - Depth or vertical position
     /// - Time of day
     /// - Current illumination state
+    ///
+    /// Depends on ILightingWorldGeometryProvider to query foreground/background independently.
     /// </summary>
     public class SceneWorldClassifier
     {
-        private readonly WorldMap _worldMap;
+        private readonly ILightingWorldGeometryProvider _geometryProvider;
 
-        public SceneWorldClassifier(WorldMap worldMap)
+        public SceneWorldClassifier(ILightingWorldGeometryProvider geometryProvider)
         {
-            _worldMap = worldMap ?? throw new System.ArgumentNullException(nameof(worldMap));
+            _geometryProvider = geometryProvider ?? throw new System.ArgumentNullException(nameof(geometryProvider));
         }
 
         /// <summary>
         /// Classify a single world tile.
-        /// Returns classification based on tile solidity and structure.
-        /// Phase 2: Uses IsSolidAt for foreground detection.
-        /// Future: Will integrate background wall and structure data when available.
+        /// Returns classification based on foreground solidity and background wall presence.
+        ///
+        /// Rules:
+        /// 1. If foreground is solid → SolidForeground (background irrelevant)
+        /// 2. If foreground is empty AND background wall exists → VisibleBackground
+        /// 3. If both empty → OpenAtmosphere
         /// </summary>
         public LightingCellClassification ClassifyTile(int worldTileX, int worldTileY)
         {
-            // Check if foreground is solid (using IsSolidAt)
-            if (_worldMap.IsSolidAt(worldTileX, worldTileY))
+            // Rule 1: Solid foreground blocks everything
+            if (_geometryProvider.IsForegroundSolidAt(worldTileX, worldTileY))
                 return LightingCellClassification.SolidForeground;
 
-            // TODO: Phase 2+: Check for background walls when data is available
-            // For now, if not solid, it's open
-            // hasBackgroundWall = _worldMap.HasBackgroundWallAt(worldTileX, worldTileY);
-            // if (hasBackgroundWall)
-            //     return LightingCellClassification.VisibleBackground;
+            // Rule 2: Empty foreground + background wall present
+            if (_geometryProvider.HasBackgroundWallAt(worldTileX, worldTileY))
+                return LightingCellClassification.VisibleBackground;
 
-            // Empty foreground = Open atmosphere (for Phase 2)
+            // Rule 3: Both empty
             return LightingCellClassification.OpenAtmosphere;
         }
 
@@ -59,7 +60,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             {
                 for (int tx = startTileX; tx < startTileX + widthTiles; tx++)
                 {
-                    outClassifications[index++] = ClassifyTile(tx, ty);
+                    int wrappedX = _geometryProvider.WrapTileX(tx);
+                    LightingCellClassification classification = ClassifyTile(wrappedX, ty);
+                    outClassifications[index++] = classification;
                 }
             }
         }

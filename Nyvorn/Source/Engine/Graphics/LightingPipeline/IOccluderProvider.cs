@@ -36,18 +36,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// </summary>
     public class ForegroundTileOccluderProvider : IOccluderProvider
     {
-        private readonly WorldMap _worldMap;
+        private readonly ILightingWorldGeometryProvider _geometryProvider;
 
         public string ProviderName => "ForegroundTiles";
 
-        public ForegroundTileOccluderProvider(WorldMap worldMap)
+        public ForegroundTileOccluderProvider(ILightingWorldGeometryProvider geometryProvider)
         {
-            _worldMap = worldMap ?? throw new System.ArgumentNullException(nameof(worldMap));
+            _geometryProvider = geometryProvider ?? throw new System.ArgumentNullException(nameof(geometryProvider));
         }
 
         public void ApplyOcclusion(OccluderField field, ActiveLightingRegion region, int tileSize)
         {
-            var classifier = new SceneWorldClassifier(_worldMap);
+            var classifier = new SceneWorldClassifier(_geometryProvider);
 
             // Process all tiles in the region
             int leftTile = (int)System.Math.Floor(region.WorldOriginX / tileSize);
