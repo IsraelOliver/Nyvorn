@@ -34,6 +34,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// <summary>Legacy lighting composite/multiply executions</summary>
         public int LegacyCompositeCount { get; set; }
 
+        // === LEGACY ENTITY LIGHTING ===
+        /// <summary>Legacy entity light samples</summary>
+        public int LegacyEntityLightSampleCount { get; set; }
+
+        /// <summary>Legacy player light samples</summary>
+        public int LegacyPlayerLightSampleCount { get; set; }
+
+        /// <summary>Legacy entity tint applies</summary>
+        public int LegacyEntityTintApplyCount { get; set; }
+
         // === V3 COUNTERS ===
         // Must be zero when running in Legacy mode
 
@@ -42,6 +52,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         /// <summary>LightingV3Renderer.Composite() executions</summary>
         public int V3CompositeCount { get; set; }
+
+        // === V3 ENTITY LIGHTING ===
+        /// <summary>Neutral (V3) entity light samples</summary>
+        public int NeutralEntityLightSampleCount { get; set; }
+
+        /// <summary>Neutral (V3) entity draws</summary>
+        public int NeutralEntityDrawCount { get; set; }
 
         // === HELPERS ===
 
@@ -52,12 +69,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             LegacyGlowGridCopyCount +
             LegacyBslShadowDrawCount +
             LegacyNightOverlayDrawCount +
-            LegacyCompositeCount;
+            LegacyCompositeCount +
+            LegacyEntityLightSampleCount +
+            LegacyPlayerLightSampleCount +
+            LegacyEntityTintApplyCount;
 
         /// <summary>Total V3 executions this frame</summary>
         public int V3TotalExecutions =>
             V3UpdateCount +
-            V3CompositeCount;
+            V3CompositeCount +
+            NeutralEntityLightSampleCount +
+            NeutralEntityDrawCount;
 
         /// <summary>Validate isolation: Legacy and V3 are mutually exclusive</summary>
         public bool IsIsolationValid =>
@@ -73,9 +95,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             LegacyBslShadowDrawCount = 0;
             LegacyNightOverlayDrawCount = 0;
             LegacyCompositeCount = 0;
+            LegacyEntityLightSampleCount = 0;
+            LegacyPlayerLightSampleCount = 0;
+            LegacyEntityTintApplyCount = 0;
 
             V3UpdateCount = 0;
             V3CompositeCount = 0;
+            NeutralEntityLightSampleCount = 0;
+            NeutralEntityDrawCount = 0;
         }
 
         /// <summary>Return human-readable summary</summary>

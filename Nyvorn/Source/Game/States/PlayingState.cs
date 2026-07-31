@@ -141,6 +141,7 @@ namespace Nyvorn.Source.Game.States
             session.ViewCoordinator.DisposeForegroundBlockageMap();
             session.ViewCoordinator.DisposePenumbraMap();
             session.ViewCoordinator.DisposeLightingV2();
+            session.ViewCoordinator.DisposeV3RenderTargets();  // PHASE 1: Dispose V3 RenderTargets
         }
 
         public void Update(GameTime gameTime)
@@ -235,6 +236,19 @@ namespace Nyvorn.Source.Game.States
                     lightingPipelineToggleCooldown = 0.2f;
 
                     consoleMessage = $"[DEBUG] Lighting Pipeline Mode: {newMode}";
+                }
+            }
+
+            // DEBUG HOTKEY: Ctrl+Shift+M to dump metrics (PHASE 0: Validation)
+            if (!handledConsoleThisFrame)
+            {
+                bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool mPressed = keyboard.IsKeyDown(Keys.M);
+
+                if (ctrlPressed && shiftPressed && mPressed && !previousConsoleKeyboard.IsKeyDown(Keys.M))
+                {
+                    LightingPipelineCoordinator.I.DumpMetricsToConsole();
                 }
             }
 
@@ -368,7 +382,8 @@ namespace Nyvorn.Source.Game.States
                 }
                 else  // V3 mode
                 {
-                    DrawWithCompositionNeutralPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+                    // PHASE 1: Use separated RenderTargets for V3 composition
+                    DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
                 }
             }
             finally
@@ -632,6 +647,9 @@ namespace Nyvorn.Source.Game.States
         {
             graphicsDevice.SetRenderTarget(lightingMaskRenderTarget);
 
+            // Entity lighting in V3 mode: always neutral (Color.White)
+            var neutralSampler = new NeutralEntityLightSampler(LightingPipelineCoordinator.I);
+
             // Render lighting mask: white for all illuminable world geometry
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -666,7 +684,7 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawEntities(spriteBatch, useNewLighting: true);
+                session.DrawEntities(spriteBatch, neutralSampler);
                 spriteBatch.End();
 
                 // Tissue also receives lighting
@@ -690,6 +708,9 @@ namespace Nyvorn.Source.Game.States
         private void DrawWorldSceneToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
                                                    IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
+            // Entity lighting in V3 mode: always neutral (Color.White)
+            var neutralSampler = new NeutralEntityLightSampler(LightingPipelineCoordinator.I);
+
             // Render all world layers in unified loop
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -735,7 +756,7 @@ namespace Nyvorn.Source.Game.States
 
                 // Player (with Color.White to avoid double lighting)
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawEntities(spriteBatch, useNewLighting: true);
+                session.DrawEntities(spriteBatch, neutralSampler);
                 spriteBatch.End();
 
                 // Tissue (will be multiplied - limitation documented)
@@ -989,126 +1010,154 @@ namespace Nyvorn.Source.Game.States
         /// Renders scene with neutral white lighting to validate composition, camera, zoom, wrapping.
         /// Does NOT calculate or apply actual illumination - all pixels rendered with Color.White.
         /// </summary>
-        private void DrawWithLightingV2Pipeline(SpriteBatch spriteBatch, int screenW, int screenH,
-                                                IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        /// <summary>
+        /// PHASE 1: V3 Neutral Composition with separated RenderTargets.
+        /// Renders scene to 4 independent RenderTargets (Atmosphere, World, Entities, Emissive)
+        /// and composes them neutrally (no lighting applied).
+        /// Output is visually identical to neutral V3 mode from Phase 0.
+        /// </summary>
+        private void DrawWithLightingV3NeutralComposition(SpriteBatch spriteBatch, int screenW, int screenH,
+                                                          IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
-            try
+            var viewCoord = session.ViewCoordinator;
+
+            // PHASE 1.0: Ensure RenderTargets are allocated
+            viewCoord.EnsureV3AtmosphereRenderTarget(graphicsDevice, screenW, screenH);
+            viewCoord.EnsureV3WorldRenderTarget(graphicsDevice, screenW, screenH);
+            viewCoord.EnsureV3EntitiesRenderTarget(graphicsDevice, screenW, screenH);
+            viewCoord.EnsureV3EmissiveRenderTarget(graphicsDevice, screenW, screenH);
+
+            // PHASE 1.1: Draw atmosphere to AtmosphereRT
+            graphicsDevice.SetRenderTarget(viewCoord.GetV3AtmosphereRenderTarget());
+            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
+            graphicsDevice.Clear(Color.Black);
+            DrawAtmosphericBackground(spriteBatch, screenW, screenH);
+
+            // PHASE 1.2: Draw world (terrain, water, decorations) to WorldRT
+            graphicsDevice.SetRenderTarget(viewCoord.GetV3WorldRenderTarget());
+            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
+            graphicsDevice.Clear(Color.Transparent);
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
-                var viewCoord = session.ViewCoordinator;
-                var renderer = viewCoord.LightingV2Renderer;
-                var lightingSystem = viewCoord.LightingV2System;
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                if (renderer == null || lightingSystem == null)
-                    return;
-
-                // PHASE 0: Prepare scene RenderTarget
-                viewCoord.EnsureLightingV2Resources(screenW, screenH);
-                renderer.Phase0_BeginSceneRender();
-
-                // PHASE 1: Draw atmosphere (sky, sun, moons, mountains)
-                DrawAtmosphericBackground(spriteBatch, screenW, screenH);
-
-                // PHASE 2: Draw world (terrain, water, decorations, background, entities)
-                for (int i = 0; i < visibleLoopOffsets.Count; i++)
-                {
-                    int loopIndex = visibleLoopOffsets[i];
-                    float worldOffset = loopIndex * worldWidthPixels;
-                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                    // Background walls
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Back);
-                    session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    // Front trees
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Front);
-                    spriteBatch.End();
-
-                    // Water
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                    session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    // Terrain base
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    viewCoord.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    // Wetness overlay
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                    viewCoord.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    // Terrain overlay
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawTerrainOverlay(spriteBatch);
-                    spriteBatch.End();
-
-                    // Looped world entities (enemies, items, particles, furniture)
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    // PHASE 3: Draw entities (player, enemies) with neutral lighting
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawEntities(spriteBatch, useNewLighting: true);
-                    spriteBatch.End();
-
-                    // Tissue layers
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
-                    session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                    session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
-                    session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
-                    spriteBatch.End();
-
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                    session.DrawTissueDebug(spriteBatch);
-                    spriteBatch.End();
-                }
-
-                // End scene rendering (restore backbuffer)
-                renderer.EndSceneRender();
-
-                // PHASE 5: Composite scene to backbuffer with neutral lighting
-                Rectangle screenRect = new Rectangle(0, 0, screenW, screenH);
-                renderer.Phase5_CompositeSceneToBackbuffer(spriteBatch, screenRect);
-
-                // Debug: Visualize scene RenderTarget if enabled
-                if (viewCoord.LightingV2DebugSceneRenderTarget)
-                {
-                    renderer.DrawDebugSceneRenderTarget(spriteBatch, screenRect);
-                }
-
-                // PHASE 6: Screen-space effects (rain, night overlay if enabled)
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-                session.DrawRainFront(spriteBatch, screenW, screenH);
-                if (session.LegacyNightOverlayMode)
-                    session.DrawNightOverlay(spriteBatch, screenW, screenH);
+                // Background walls
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                // PHASE 1: Pass Color.White to trees in V3 neutral (no night tinting)
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Back, Color.White);
+                session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                // PHASE 7: HUD (screen-space UI, no lighting)
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-                session.DrawHud(spriteBatch, screenW, screenH);
-                if (minimapVisible)
-                    session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
-                playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
-                if (showFps)
-                    DrawFpsCounter(spriteBatch);
-                if (consoleOpen)
-                    DrawConsole(spriteBatch, screenW);
+                // Front trees
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                // PHASE 1: Pass Color.White to trees in V3 neutral (no night tinting)
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Front, Color.White);
+                spriteBatch.End();
+
+                // Water
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Terrain base
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                viewCoord.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Wetness overlay
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                viewCoord.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Terrain overlay
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainOverlay(spriteBatch);
+                spriteBatch.End();
+
+                // Looped world entities
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // Tissue layers in world RT
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
             }
-            catch (Exception ex)
-            {
-                System.Console.WriteLine($"[LIGHTING V2] ✗ EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                System.Console.WriteLine($"[LIGHTING V2]   Stack: {ex.StackTrace}");
-                throw;
-            }
+
+            // PHASE 1.3: Draw entities to EntitiesRT
+            graphicsDevice.SetRenderTarget(viewCoord.GetV3EntitiesRenderTarget());
+            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
+            graphicsDevice.Clear(Color.Transparent);
+
+            var neutralSampler = new Engine.Graphics.LightingPipeline.NeutralEntityLightSampler(Engine.Graphics.LightingPipeline.LightingPipelineCoordinator.I);
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+            session.DrawEntities(spriteBatch, neutralSampler);
+            spriteBatch.End();
+
+            // PHASE 1.4: Emissive RT (empty in Phase 1, reserved for future use)
+            graphicsDevice.SetRenderTarget(viewCoord.GetV3EmissiveRenderTarget());
+            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
+            graphicsDevice.Clear(Color.Transparent);
+            // No drawing to emissive in Phase 1
+
+            // PHASE 1.5: Composite all RenderTargets to backbuffer
+            graphicsDevice.SetRenderTarget(null);
+            graphicsDevice.Clear(Color.Black);
+
+            // Restore viewport to ensure input conversions work correctly
+            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
+
+            Rectangle destinationRect = new Rectangle(0, 0, screenW, screenH);
+            Rectangle sourceRect = new Rectangle(0, 0, screenW, screenH);
+
+            // Composite in order: Atmosphere → World → Entities → Emissive
+            // Use sourceRect to limit to logical content size (ignore grow-only capacity)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Opaque);
+            spriteBatch.Draw(viewCoord.GetV3AtmosphereRenderTarget(), destinationRect, sourceRect, Color.White);
+            spriteBatch.End();
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            spriteBatch.Draw(viewCoord.GetV3WorldRenderTarget(), destinationRect, sourceRect, Color.White);
+            spriteBatch.End();
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            spriteBatch.Draw(viewCoord.GetV3EntitiesRenderTarget(), destinationRect, sourceRect, Color.White);
+            spriteBatch.End();
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive);
+            spriteBatch.Draw(viewCoord.GetV3EmissiveRenderTarget(), destinationRect, sourceRect, Color.White);
+            spriteBatch.End();
+
+            // PHASE 1.6: Screen-space effects (rain, HUD)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            session.DrawRainFront(spriteBatch, screenW, screenH);
+            spriteBatch.End();
+
+            // HUD (no lighting)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            session.DrawHud(spriteBatch, screenW, screenH);
+            if (minimapVisible)
+                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
+            if (showFps)
+                DrawFpsCounter(spriteBatch);
+            if (consoleOpen)
+                DrawConsole(spriteBatch, screenW);
+            spriteBatch.End();
         }
 
         private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
@@ -1200,8 +1249,11 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
+            // Entity lighting in Legacy mode: sample from WorldLightingSystem
+            var legacySampler = new LegacyEntityLightSampler(session.LightingSystem, session.WorldMap, LightingPipelineCoordinator.I);
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch, useNewLighting: false);
+            session.DrawEntities(spriteBatch, legacySampler);
             spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
@@ -1348,8 +1400,11 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
+            // Entity lighting in V3 neutral mode: always return Color.White (no tinting)
+            var neutralSampler = new NeutralEntityLightSampler(LightingPipelineCoordinator.I);
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch, useNewLighting: false);
+            session.DrawEntities(spriteBatch, neutralSampler);
             spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)

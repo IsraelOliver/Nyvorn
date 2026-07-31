@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using Nyvorn.Source.Engine.Graphics.LightingV2;
 using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Physics.Liquids;
@@ -97,6 +98,23 @@ namespace Nyvorn.Source.Game.States
         private int foregroundBlockageCapacityWidth;
         private int foregroundBlockageCapacityHeight;
 
+        // PHASE 1: V3 Neutral Composition RenderTargets
+        private RenderTarget2D v3AtmosphereRenderTarget;
+        private int v3AtmosphereCapacityWidth;
+        private int v3AtmosphereCapacityHeight;
+
+        private RenderTarget2D v3WorldRenderTarget;
+        private int v3WorldCapacityWidth;
+        private int v3WorldCapacityHeight;
+
+        private RenderTarget2D v3EntitiesRenderTarget;
+        private int v3EntitiesCapacityWidth;
+        private int v3EntitiesCapacityHeight;
+
+        private RenderTarget2D v3EmissiveRenderTarget;
+        private int v3EmissiveCapacityWidth;
+        private int v3EmissiveCapacityHeight;
+
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
         private bool hasSmoothedCameraTarget;
@@ -107,7 +125,7 @@ namespace Nyvorn.Source.Game.States
         private LightingV2Resources lightingV2Resources;
         private LightingV2System lightingV2System;
         private LightingV2Renderer lightingV2Renderer;
-        private LightingPipelineMode lightingPipelineMode = LightingPipelineMode.Legacy;
+        private Engine.Graphics.LightingPipeline.LightingPipelineMode lightingPipelineMode = Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
 
         /// <summary>
         /// Lighting pipeline mode (OFFICIAL: New Pipeline):
@@ -162,7 +180,7 @@ namespace Nyvorn.Source.Game.States
         public IReadOnlyList<WorldChunkCoord> ActiveSimulationChunks => activeSimulationChunks;
 
         // Lighting V2 public accessors
-        public LightingPipelineMode LightingPipelineMode
+        public Engine.Graphics.LightingPipeline.LightingPipelineMode LightingPipelineMode
         {
             get => lightingPipelineMode;
             set => lightingPipelineMode = value;
@@ -200,7 +218,7 @@ namespace Nyvorn.Source.Game.States
             lightingV2Renderer = new LightingV2Renderer(graphicsDevice, lightingV2Resources, debugState);
 
             // Default to Legacy mode
-            lightingPipelineMode = LightingPipelineMode.Legacy;
+            lightingPipelineMode = Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
         }
 
         /// <summary>
@@ -430,6 +448,9 @@ namespace Nyvorn.Source.Game.States
 
             if (lightTextureBuffer.Length < cellCount)
                 lightTextureBuffer = new Color[cellCount];
+
+            // Record at central callsite (caller already checked Legacy mode)
+            LightingPipelineCoordinator.I.RecordLegacyLightGridCopy();
             lightingSystem.CopyLightGridTo(lightTextureBuffer);
 
             // Grown-only, like lightBuffer/lightTextureBuffer above: allocated at the largest size
@@ -465,6 +486,8 @@ namespace Nyvorn.Source.Game.States
             if (lightTexture == null || lightTextureActiveWidth <= 0 || lightTextureActiveHeight <= 0)
                 return;
 
+            LightingPipelineCoordinator.I.RecordLegacyComposite();
+
             int tileSize = WorldMap.TileSize;
             // Mirrors the frame-shift correction used elsewhere: the texture was built from the
             // camera's true (unshifted) position, so a looped world-wrap copy (worldOffsetX != 0)
@@ -493,6 +516,9 @@ namespace Nyvorn.Source.Game.States
 
             if (glowTextureBuffer.Length < cellCount)
                 glowTextureBuffer = new Color[cellCount];
+
+            // Record at central callsite (caller already checked Legacy mode)
+            LightingPipelineCoordinator.I.RecordLegacyGlowGridCopy();
             lightingSystem.CopyGlowGridTo(glowTextureBuffer);
 
             if (glowTexture == null || width > glowTextureCapacityWidth || height > glowTextureCapacityHeight)
@@ -791,6 +817,142 @@ namespace Nyvorn.Source.Game.States
             penumbraMap = null;
         }
 
+        // ========== PHASE 1: V3 NEUTRAL COMPOSITION RENDERTARGETS ==========
+
+        /// <summary>
+        /// Allocate or resize V3 atmosphere RenderTarget. Stores sky, sun, moons, mountains.
+        /// </summary>
+        public void EnsureV3AtmosphereRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = v3AtmosphereRenderTarget == null || screenWidth > v3AtmosphereCapacityWidth || screenHeight > v3AtmosphereCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (v3AtmosphereRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating V3AtmosphereRT: {v3AtmosphereCapacityWidth}x{v3AtmosphereCapacityHeight} → {screenWidth}x{screenHeight}");
+                    v3AtmosphereRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating V3AtmosphereRT: {screenWidth}x{screenHeight}");
+                }
+
+                v3AtmosphereCapacityWidth = System.Math.Max(screenWidth, v3AtmosphereCapacityWidth);
+                v3AtmosphereCapacityHeight = System.Math.Max(screenHeight, v3AtmosphereCapacityHeight);
+                v3AtmosphereRenderTarget = new RenderTarget2D(graphicsDevice, v3AtmosphereCapacityWidth, v3AtmosphereCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Allocate or resize V3 world RenderTarget. Stores terrain, water, decorations.
+        /// </summary>
+        public void EnsureV3WorldRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = v3WorldRenderTarget == null || screenWidth > v3WorldCapacityWidth || screenHeight > v3WorldCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (v3WorldRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating V3WorldRT: {v3WorldCapacityWidth}x{v3WorldCapacityHeight} → {screenWidth}x{screenHeight}");
+                    v3WorldRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating V3WorldRT: {screenWidth}x{screenHeight}");
+                }
+
+                v3WorldCapacityWidth = System.Math.Max(screenWidth, v3WorldCapacityWidth);
+                v3WorldCapacityHeight = System.Math.Max(screenHeight, v3WorldCapacityHeight);
+                v3WorldRenderTarget = new RenderTarget2D(graphicsDevice, v3WorldCapacityWidth, v3WorldCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Allocate or resize V3 entities RenderTarget. Stores player, enemies, NPCs, items.
+        /// </summary>
+        public void EnsureV3EntitiesRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = v3EntitiesRenderTarget == null || screenWidth > v3EntitiesCapacityWidth || screenHeight > v3EntitiesCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (v3EntitiesRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating V3EntitiesRT: {v3EntitiesCapacityWidth}x{v3EntitiesCapacityHeight} → {screenWidth}x{screenHeight}");
+                    v3EntitiesRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating V3EntitiesRT: {screenWidth}x{screenHeight}");
+                }
+
+                v3EntitiesCapacityWidth = System.Math.Max(screenWidth, v3EntitiesCapacityWidth);
+                v3EntitiesCapacityHeight = System.Math.Max(screenHeight, v3EntitiesCapacityHeight);
+                v3EntitiesRenderTarget = new RenderTarget2D(graphicsDevice, v3EntitiesCapacityWidth, v3EntitiesCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>
+        /// Allocate or resize V3 emissive RenderTarget. Reserved for future emissive objects.
+        /// </summary>
+        public void EnsureV3EmissiveRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = v3EmissiveRenderTarget == null || screenWidth > v3EmissiveCapacityWidth || screenHeight > v3EmissiveCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (v3EmissiveRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating V3EmissiveRT: {v3EmissiveCapacityWidth}x{v3EmissiveCapacityHeight} → {screenWidth}x{screenHeight}");
+                    v3EmissiveRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating V3EmissiveRT: {screenWidth}x{screenHeight}");
+                }
+
+                v3EmissiveCapacityWidth = System.Math.Max(screenWidth, v3EmissiveCapacityWidth);
+                v3EmissiveCapacityHeight = System.Math.Max(screenHeight, v3EmissiveCapacityHeight);
+                v3EmissiveRenderTarget = new RenderTarget2D(graphicsDevice, v3EmissiveCapacityWidth, v3EmissiveCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.DiscardContents);
+            }
+        }
+
+        /// <summary>Public getters for V3 RenderTargets.</summary>
+        public RenderTarget2D GetV3AtmosphereRenderTarget() => v3AtmosphereRenderTarget;
+        public RenderTarget2D GetV3WorldRenderTarget() => v3WorldRenderTarget;
+        public RenderTarget2D GetV3EntitiesRenderTarget() => v3EntitiesRenderTarget;
+        public RenderTarget2D GetV3EmissiveRenderTarget() => v3EmissiveRenderTarget;
+
+        /// <summary>Dispose all V3 RenderTargets.</summary>
+        public void DisposeV3RenderTargets()
+        {
+            v3AtmosphereRenderTarget?.Dispose();
+            v3AtmosphereRenderTarget = null;
+
+            v3WorldRenderTarget?.Dispose();
+            v3WorldRenderTarget = null;
+
+            v3EntitiesRenderTarget?.Dispose();
+            v3EntitiesRenderTarget = null;
+
+            v3EmissiveRenderTarget?.Dispose();
+            v3EmissiveRenderTarget = null;
+        }
+
         /// <summary>
         /// Cache computed sun color to avoid recalculation every frame.
         /// </summary>
@@ -819,9 +981,20 @@ namespace Nyvorn.Source.Game.States
             WorldMap.PrepareVisibleChunkCache(graphicsDevice, startTileX, endTileX, startTileY, endTileY);
         }
 
-        public void DrawEntities(SpriteBatch spriteBatch, WorldLightingSystem lightingSystem, bool useNewLighting = false)
+        public void DrawEntities(SpriteBatch spriteBatch, IEntityLightSampler entityLightSampler)
         {
-            Color tint = useNewLighting ? Color.White : GetAmbientTintAt(lightingSystem, Player.Position);
+            Color tint = entityLightSampler.SampleLightAt(Player.Position);
+
+            // Record entity draw event using type-safe metrics
+            var metrics = entityLightSampler.GetMetrics();
+            metrics.RecordDraw();
+
+            // Legacy-specific: record tint application
+            if (entityLightSampler is LegacyEntityLightSampler)
+            {
+                metrics.RecordEntityTintApply();
+            }
+
             Player.Draw(spriteBatch, tint);
         }
 

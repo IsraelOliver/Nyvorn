@@ -460,7 +460,14 @@ namespace Nyvorn.Source.Game.States
             BlockInteractionSystem.TryBreakTargetBlock(dt, worldInput, mouseWorld, SelectedHotbarIndex);
             EntityRuntimeSystem.Update(dt, screenWidth, screenHeight);
             LightingSystem.SetPointLights(TorchRuntimeSystem.GetLightSourcePositions());
-            LightingSystem.Update(dt, Camera.Position, Camera.Zoom, screenWidth, screenHeight, EnvironmentSystem.SkyState.AmbientLight);
+
+            // PHASE 0: Record Legacy lighting update at central callsite (only if Legacy mode)
+            if (Engine.Graphics.LightingPipeline.LightingPipelineCoordinator.I.IsLegacyMode)
+            {
+                Engine.Graphics.LightingPipeline.LightingPipelineCoordinator.I.RecordLegacyLightingUpdate();
+                LightingSystem.Update(dt, Camera.Position, Camera.Zoom, screenWidth, screenHeight, EnvironmentSystem.SkyState.AmbientLight);
+            }
+
             BlockParticleSystem.Update(dt);
 
             CombatCoordinator.ResolveCombat();
@@ -527,7 +534,14 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
         {
+            // Default: use ambient light (Legacy behavior)
             ViewCoordinator.DrawTreeDecorations(spriteBatch, screenWidth, screenHeight, worldOffsetX, layer, EnvironmentSystem.SkyState.AmbientLight);
+        }
+
+        public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer, Color tint)
+        {
+            // Explicit tint provided (V3 neutral can pass Color.White)
+            ViewCoordinator.DrawTreeDecorations(spriteBatch, screenWidth, screenHeight, worldOffsetX, layer, tint);
         }
 
         public void PrepareTerrainRender(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight, float worldOffsetX)
@@ -550,9 +564,9 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DisposeSceneRenderTarget();
         }
 
-        public void DrawEntities(SpriteBatch spriteBatch, bool useNewLighting = false)
+        public void DrawEntities(SpriteBatch spriteBatch, Engine.Graphics.LightingPipeline.IEntityLightSampler entityLightSampler)
         {
-            ViewCoordinator.DrawEntities(spriteBatch, LightingSystem, useNewLighting);
+            ViewCoordinator.DrawEntities(spriteBatch, entityLightSampler);
         }
 
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)

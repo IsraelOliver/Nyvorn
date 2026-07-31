@@ -32,13 +32,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public static LightingPipelineCoordinator I => Instance.Value;
 
         private LightingPipelineMode activeMode;
-        private LightingExecutionMetrics metrics;
+        private LightingExecutionMetrics currentFrameMetrics;
+        private LightingExecutionMetrics sessionMetrics;
         private int frameCount;
 
         public LightingPipelineCoordinator()
         {
             activeMode = LightingPipelineMode.Legacy;  // Default to legacy for backward compatibility
-            metrics = new LightingExecutionMetrics();
+            currentFrameMetrics = new LightingExecutionMetrics();
+            sessionMetrics = new LightingExecutionMetrics();
             frameCount = 0;
         }
 
@@ -47,8 +49,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// <summary>Currently active pipeline mode</summary>
         public LightingPipelineMode ActiveMode => activeMode;
 
-        /// <summary>Current execution metrics (read-only snapshot)</summary>
-        public LightingExecutionMetrics Metrics => metrics;
+        /// <summary>Current frame execution metrics (read-only snapshot)</summary>
+        public LightingExecutionMetrics Metrics => currentFrameMetrics;
+
+        /// <summary>Cumulative session execution metrics (read-only snapshot)</summary>
+        public LightingExecutionMetrics SessionMetrics => sessionMetrics;
 
         /// <summary>Number of frames processed since creation</summary>
         public int FrameCount => frameCount;
@@ -66,11 +71,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             LightingPipelineMode previousMode = activeMode;
             activeMode = newMode;
 
-            // Reset metrics when switching
-            metrics.Reset();
+            // Reset current frame metrics when switching
+            currentFrameMetrics.Reset();
 
             Console.WriteLine(
-                $"[LightingPipeline] Mode switched: {previousMode} → {activeMode} (Frame {frameCount})");
+                $"[LightingPipeline] Requested: {previousMode} -> {activeMode} at frame {frameCount}");
+            Console.WriteLine(
+                $"[LightingPipeline] Applied: {activeMode} at frame {frameCount + 1}");
         }
 
         /// <summary>
@@ -79,7 +86,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public void BeginFrame()
         {
-            metrics.Reset();
+            currentFrameMetrics.Reset();
         }
 
         /// <summary>
@@ -88,9 +95,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public void EndFrame()
         {
-            if (!metrics.IsIsolationValid)
+            if (!currentFrameMetrics.IsIsolationValid)
             {
-                string warning = $"[LightingPipeline] ISOLATION VIOLATION: {metrics}";
+                string warning = $"[LightingPipeline] ISOLATION VIOLATION: {currentFrameMetrics}";
                 Console.WriteLine(warning);
                 Debug.WriteLine(warning);
             }
@@ -100,16 +107,24 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         // ========== COUNTER INCREMENT METHODS ==========
         // Called by rendering systems when they execute
+        // Each counter updates both current frame and session metrics
 
-        public void RecordLegacyLightingUpdate() => metrics.LegacyLightingUpdateCount++;
-        public void RecordLegacyLightGridCopy() => metrics.LegacyLightGridCopyCount++;
-        public void RecordLegacyGlowGridCopy() => metrics.LegacyGlowGridCopyCount++;
-        public void RecordLegacyBslShadowDraw() => metrics.LegacyBslShadowDrawCount++;
-        public void RecordLegacyNightOverlayDraw() => metrics.LegacyNightOverlayDrawCount++;
-        public void RecordLegacyComposite() => metrics.LegacyCompositeCount++;
+        public void RecordLegacyLightingUpdate() { currentFrameMetrics.LegacyLightingUpdateCount++; sessionMetrics.LegacyLightingUpdateCount++; }
+        public void RecordLegacyLightGridCopy() { currentFrameMetrics.LegacyLightGridCopyCount++; sessionMetrics.LegacyLightGridCopyCount++; }
+        public void RecordLegacyGlowGridCopy() { currentFrameMetrics.LegacyGlowGridCopyCount++; sessionMetrics.LegacyGlowGridCopyCount++; }
+        public void RecordLegacyBslShadowDraw() { currentFrameMetrics.LegacyBslShadowDrawCount++; sessionMetrics.LegacyBslShadowDrawCount++; }
+        public void RecordLegacyNightOverlayDraw() { currentFrameMetrics.LegacyNightOverlayDrawCount++; sessionMetrics.LegacyNightOverlayDrawCount++; }
+        public void RecordLegacyComposite() { currentFrameMetrics.LegacyCompositeCount++; sessionMetrics.LegacyCompositeCount++; }
 
-        public void RecordV3Update() => metrics.V3UpdateCount++;
-        public void RecordV3Composite() => metrics.V3CompositeCount++;
+        public void RecordLegacyEntityLightSample() { currentFrameMetrics.LegacyEntityLightSampleCount++; sessionMetrics.LegacyEntityLightSampleCount++; }
+        public void RecordLegacyPlayerLightSample() { currentFrameMetrics.LegacyPlayerLightSampleCount++; sessionMetrics.LegacyPlayerLightSampleCount++; }
+        public void RecordLegacyEntityTintApply() { currentFrameMetrics.LegacyEntityTintApplyCount++; sessionMetrics.LegacyEntityTintApplyCount++; }
+
+        public void RecordV3Update() { currentFrameMetrics.V3UpdateCount++; sessionMetrics.V3UpdateCount++; }
+        public void RecordV3Composite() { currentFrameMetrics.V3CompositeCount++; sessionMetrics.V3CompositeCount++; }
+
+        public void RecordNeutralEntityLightSample() { currentFrameMetrics.NeutralEntityLightSampleCount++; sessionMetrics.NeutralEntityLightSampleCount++; }
+        public void RecordNeutralEntityDraw() { currentFrameMetrics.NeutralEntityDrawCount++; sessionMetrics.NeutralEntityDrawCount++; }
 
         // ========== VALIDATION QUERIES ==========
 
@@ -126,6 +141,69 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         {
             if (!IsV3Mode)
                 throw new InvalidOperationException($"Expected V3 mode, but active mode is {activeMode}");
+        }
+
+        // ========== DEBUG HELPERS ==========
+
+        public void DumpMetricsToConsole()
+        {
+            Console.WriteLine("\n========== LIGHTING PIPELINE METRICS (Ctrl+Shift+M) ==========");
+            Console.WriteLine($"Active Mode: {activeMode}");
+            Console.WriteLine($"Frame: {frameCount}");
+            Console.WriteLine();
+
+            // CURRENT FRAME METRICS
+            Console.WriteLine("--- CURRENT FRAME METRICS ---");
+            Console.WriteLine($"Isolation Valid: {currentFrameMetrics.IsIsolationValid}");
+            Console.WriteLine();
+
+            Console.WriteLine("[LEGACY COUNTERS]");
+            Console.WriteLine($"  LightingUpdate:       {currentFrameMetrics.LegacyLightingUpdateCount}");
+            Console.WriteLine($"  LightGridCopy:        {currentFrameMetrics.LegacyLightGridCopyCount}");
+            Console.WriteLine($"  GlowGridCopy:         {currentFrameMetrics.LegacyGlowGridCopyCount}");
+            Console.WriteLine($"  BslShadowDraw:        {currentFrameMetrics.LegacyBslShadowDrawCount}");
+            Console.WriteLine($"  NightOverlayDraw:     {currentFrameMetrics.LegacyNightOverlayDrawCount}");
+            Console.WriteLine($"  Composite:            {currentFrameMetrics.LegacyCompositeCount}");
+            Console.WriteLine($"  EntityLightSample:    {currentFrameMetrics.LegacyEntityLightSampleCount}");
+            Console.WriteLine($"  PlayerLightSample:    {currentFrameMetrics.LegacyPlayerLightSampleCount}");
+            Console.WriteLine($"  EntityTintApply:      {currentFrameMetrics.LegacyEntityTintApplyCount}");
+            Console.WriteLine($"  TOTAL:                {currentFrameMetrics.LegacyTotalExecutions}");
+            Console.WriteLine();
+
+            Console.WriteLine("[V3 COUNTERS]");
+            Console.WriteLine($"  Update:               {currentFrameMetrics.V3UpdateCount}");
+            Console.WriteLine($"  Composite:            {currentFrameMetrics.V3CompositeCount}");
+            Console.WriteLine($"  EntityLightSample:    {currentFrameMetrics.NeutralEntityLightSampleCount}");
+            Console.WriteLine($"  EntityDraw:           {currentFrameMetrics.NeutralEntityDrawCount}");
+            Console.WriteLine($"  TOTAL:                {currentFrameMetrics.V3TotalExecutions}");
+            Console.WriteLine();
+
+            // SESSION METRICS
+            Console.WriteLine("--- SESSION METRICS (Cumulative) ---");
+            Console.WriteLine();
+
+            Console.WriteLine("[LEGACY TOTALS]");
+            Console.WriteLine($"  LightingUpdate:       {sessionMetrics.LegacyLightingUpdateCount}");
+            Console.WriteLine($"  LightGridCopy:        {sessionMetrics.LegacyLightGridCopyCount}");
+            Console.WriteLine($"  GlowGridCopy:         {sessionMetrics.LegacyGlowGridCopyCount}");
+            Console.WriteLine($"  BslShadowDraw:        {sessionMetrics.LegacyBslShadowDrawCount}");
+            Console.WriteLine($"  NightOverlayDraw:     {sessionMetrics.LegacyNightOverlayDrawCount}");
+            Console.WriteLine($"  Composite:            {sessionMetrics.LegacyCompositeCount}");
+            Console.WriteLine($"  EntityLightSample:    {sessionMetrics.LegacyEntityLightSampleCount}");
+            Console.WriteLine($"  PlayerLightSample:    {sessionMetrics.LegacyPlayerLightSampleCount}");
+            Console.WriteLine($"  EntityTintApply:      {sessionMetrics.LegacyEntityTintApplyCount}");
+            Console.WriteLine($"  TOTAL:                {sessionMetrics.LegacyTotalExecutions}");
+            Console.WriteLine();
+
+            Console.WriteLine("[V3 TOTALS]");
+            Console.WriteLine($"  Update:               {sessionMetrics.V3UpdateCount}");
+            Console.WriteLine($"  Composite:            {sessionMetrics.V3CompositeCount}");
+            Console.WriteLine($"  EntityLightSample:    {sessionMetrics.NeutralEntityLightSampleCount}");
+            Console.WriteLine($"  EntityDraw:           {sessionMetrics.NeutralEntityDrawCount}");
+            Console.WriteLine($"  TOTAL:                {sessionMetrics.V3TotalExecutions}");
+            Console.WriteLine();
+
+            Console.WriteLine("============================================================\n");
         }
     }
 }
