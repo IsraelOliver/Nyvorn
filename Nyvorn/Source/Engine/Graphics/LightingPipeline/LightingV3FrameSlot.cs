@@ -40,6 +40,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public LightingCellClassification[] TileClassifications { get; set; }
         public float[] SunOpacityBuffer { get; set; }
         public float[] LocalOpacityBuffer { get; set; }
+        public float[] SunVisibilityBuffer { get; set; }  // Phase 3.2A: Sun visibility field (0.0 = blocked, 1.0 = free)
 
         // Directional sun state (Phase 3)
         public LightingV3SunState SunState { get; set; }
@@ -58,6 +59,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             TileClassifications = new LightingCellClassification[initialCapacityTiles];
             SunOpacityBuffer = new float[initialCapacitySamples];
             LocalOpacityBuffer = new float[initialCapacitySamples];
+            SunVisibilityBuffer = new float[initialCapacitySamples];
         }
 
         public void EnsureCapacity(int tileCount, int sampleCount)
@@ -80,6 +82,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 Array.Copy(LocalOpacityBuffer, newArray, Math.Min(LocalOpacityBuffer.Length, newArray.Length));
                 LocalOpacityBuffer = newArray;
             }
+            if (SunVisibilityBuffer.Length < sampleCount)
+            {
+                var newArray = new float[Math.Max(256, sampleCount * 2)];
+                Array.Copy(SunVisibilityBuffer, newArray, Math.Min(SunVisibilityBuffer.Length, newArray.Length));
+                SunVisibilityBuffer = newArray;
+            }
         }
 
         public void ClearBuffers(int tileCount, int sampleCount)
@@ -87,6 +95,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             Array.Clear(TileClassifications, 0, tileCount);
             Array.Clear(SunOpacityBuffer, 0, sampleCount);
             Array.Clear(LocalOpacityBuffer, 0, sampleCount);
+            Array.Clear(SunVisibilityBuffer, 0, sampleCount);
         }
     }
 
@@ -102,6 +111,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public readonly LightingCellClassification[] TileClassifications;
         public readonly float[] SunOpacityBuffer;
         public readonly float[] LocalOpacityBuffer;
+        public readonly float[] SunVisibilityBuffer;  // Phase 3.2A: Sun visibility (read-only view)
 
         // Directional sun state (Phase 3)
         public readonly LightingV3SunState SunState;
@@ -121,6 +131,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             TileClassifications = slot.TileClassifications;
             SunOpacityBuffer = slot.SunOpacityBuffer;
             LocalOpacityBuffer = slot.LocalOpacityBuffer;
+            SunVisibilityBuffer = slot.SunVisibilityBuffer;
             SunState = slot.SunState;
             ProbeLocalSampleX = slot.ProbeLocalSampleX;
             ProbeLocalSampleY = slot.ProbeLocalSampleY;
