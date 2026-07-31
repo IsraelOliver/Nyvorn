@@ -131,6 +131,7 @@ namespace Nyvorn.Source.Game.States
         private Engine.Graphics.LightingPipeline.LightingV3Foundation lightingV3Foundation;
         private Engine.Graphics.LightingPipeline.LightingV3DebugController lightingV3DebugController;
         private Engine.Graphics.LightingPipeline.LightingV3DebugRenderer lightingV3DebugRenderer;
+        private bool _hasLoggedFoundationInitialization = false;
 
         /// <summary>
         /// Lighting pipeline mode (OFFICIAL: New Pipeline):
@@ -246,7 +247,11 @@ namespace Nyvorn.Source.Game.States
 
             // Create foundation
             lightingV3Foundation = new Engine.Graphics.LightingPipeline.LightingV3Foundation(geometryAdapter);
-            System.Console.WriteLine("[LightingV3Probe] Foundation initialized");
+            if (!_hasLoggedFoundationInitialization)
+            {
+                _hasLoggedFoundationInitialization = true;
+                System.Console.WriteLine("[LightingV3Probe] Foundation initialized");
+            }
 
             // Create debug system (always, for validation)
             lightingV3DebugController = new Engine.Graphics.LightingPipeline.LightingV3DebugController();

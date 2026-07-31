@@ -106,6 +106,12 @@ namespace Nyvorn.Source.Game.States
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
 
+        // Phase 2: Logging flags (one-time per session)
+        private bool _hasLoggedFirstFoundationUpdate = false;
+        private bool _hasLoggedFirstDebugDraw = false;
+        private int _foundationUpdateCount = 0;
+        private int _debugDrawCount = 0;
+
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
         {
@@ -342,9 +348,14 @@ namespace Nyvorn.Source.Game.States
                     screenW,
                     screenH);
 
-                System.Console.WriteLine("[LightingV3Probe] First foundation update | FrameMode: V3 | ActiveTiles: " +
-                    session.ViewCoordinator.LightingV3Foundation.ActiveTileCount + " | ActiveSamples: " +
-                    session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount);
+                _foundationUpdateCount++;
+                if (!_hasLoggedFirstFoundationUpdate)
+                {
+                    _hasLoggedFirstFoundationUpdate = true;
+                    System.Console.WriteLine("[LightingV3Probe] First foundation update | FrameMode: V3 | ActiveTiles: " +
+                        session.ViewCoordinator.LightingV3Foundation.ActiveTileCount + " | ActiveSamples: " +
+                        session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount);
+                }
 
                 // Ctrl+Alt+1: Cycle debug visualization
                 if (!handledConsoleThisFrame)
@@ -444,20 +455,25 @@ namespace Nyvorn.Source.Game.States
                     // PHASE 2: Draw debug visualization (after composition, before effects) - ALWAYS VISIBLE FOR VALIDATION
                     if (session.ViewCoordinator.LightingV3DebugController != null && session.ViewCoordinator.LightingV3DebugRenderer != null)
                     {
-                        var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
+                        _debugDrawCount++;
+                        if (!_hasLoggedFirstDebugDraw)
+                        {
+                            _hasLoggedFirstDebugDraw = true;
+                            var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
+                            System.Console.WriteLine("[LightingV3Probe] First debug draw callsite | Mode: " + debugMode);
+                        }
+
+                        var debugMode2 = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
                         var modeConfirmation = session.ViewCoordinator.LightingV3DebugController.ShowModeConfirmation
                             ? session.ViewCoordinator.LightingV3DebugController.GetModeConfirmationText()
                             : "";
 
                         spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
 
-                        // Fixed overlay proof: "V3 FOUNDATION ACTIVE" with update/draw counts
-                        System.Console.WriteLine("[LightingV3Probe] First debug draw callsite | Mode: " + debugMode);
-
                         session.ViewCoordinator.LightingV3DebugRenderer.Render(
                             spriteBatch,
                             session.ViewCoordinator.LightingV3Foundation,
-                            debugMode,
+                            debugMode2,
                             session.WorldMap.TileSize,
                             modeConfirmation);
 
@@ -478,14 +494,6 @@ namespace Nyvorn.Source.Game.States
 
                         // Draw semi-transparent background for text
                         spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 250, 40), new Color(0, 0, 0, 128));
-
-                        // Draw fixed overlay text with update/draw proof
-                        var updateCount = session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount;
-                        var metricsText = $"V3 FOUNDATION ACTIVE | Samples: {updateCount}";
-
-                        // Using a simple text rendering approach if SpriteFont available
-                        // For now, proof is magenta rect + console logs
-                        System.Console.WriteLine($"[LightingV3Probe] Overlay draw tick | Samples: {updateCount}");
 
                         spriteBatch.End();
                     }
