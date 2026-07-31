@@ -473,7 +473,7 @@ namespace Nyvorn.Source.Game.States
                     // PHASE 1: Use separated RenderTargets for V3 composition
                     DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
 
-                    // PHASE 2: Draw debug visualization (world-space with camera transform)
+                    // PHASE 2: Draw debug visualization (world-space with exact world-view transform)
                     if (session.ViewCoordinator.LightingV3DebugController != null && session.ViewCoordinator.LightingV3DebugRenderer != null)
                     {
                         _debugDrawCount++;
@@ -482,7 +482,7 @@ namespace Nyvorn.Source.Game.States
                             _hasLoggedFirstDebugDraw = true;
                             var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
                             System.Console.WriteLine("[LightingV3Probe] First debug draw callsite | Mode: " + debugMode);
-                            System.Console.WriteLine("[LightingV3Probe] World-space render using camera.GetViewMatrix()");
+                            System.Console.WriteLine("[LightingV3Probe] World-space render using Matrix.CreateTranslation(worldOffset) * camera.GetViewMatrix()");
                         }
 
                         var debugMode2 = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
@@ -490,17 +490,20 @@ namespace Nyvorn.Source.Game.States
                             ? session.ViewCoordinator.LightingV3DebugController.GetModeConfirmationText()
                             : "";
 
-                        // CRITICAL FIX: Use camera view matrix to transform world-space debug coords to screen-space
-                        // Match the exact matrix used by world rendering in DrawWithLightingV3NeutralComposition
-                        var cameraTransform = session.Camera.GetViewMatrix();
+                        // CRITICAL: Use EXACT same matrix as world rendering
+                        // For single-loop rendering (most common), use first visible offset
+                        // This matches: Matrix.CreateTranslation(worldOffset, 0f, 0f) * camera.GetViewMatrix()
+                        float debugWorldOffset = visibleLoopOffsets.Count > 0 ? visibleLoopOffsets[0] * worldWidthPixels : 0f;
+                        Matrix worldViewTransform = Matrix.CreateTranslation(debugWorldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: cameraTransform);
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: worldViewTransform);
 
                         session.ViewCoordinator.LightingV3DebugRenderer.Render(
                             spriteBatch,
                             session.ViewCoordinator.LightingV3Foundation,
                             debugMode2,
                             session.WorldMap.TileSize,
+                            worldViewTransform,
                             modeConfirmation);
 
                         spriteBatch.End();

@@ -32,6 +32,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private int _minDrawWorldY = int.MaxValue;
         private int _maxDrawWorldY = int.MinValue;
 
+        // Transform matrix (set each render)
+        private Matrix _worldViewTransform = Matrix.Identity;
+
         public LightingV3DebugRenderer(GraphicsDevice graphicsDevice)
         {
             // Create 1x1 pixel texture for primitive drawing
@@ -65,12 +68,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         /// <summary>
         /// Render debug visualization and mode confirmation text.
-        /// Call after scene rendering, before HUD, within spriteBatch.Begin/End pair.
+        /// CRITICAL: worldViewTransform must be the EXACT matrix used for world rendering:
+        ///   Matrix.CreateTranslation(worldOffset, 0f, 0f) * camera.GetViewMatrix()
+        /// This ensures Classification, Opacity, and SampleGrid align with terrain/entities.
+        /// For non-wrapping scenarios, use just camera.GetViewMatrix() with worldOffset=0.
         /// </summary>
         public void Render(SpriteBatch spriteBatch, LightingV3Foundation foundation,
-                          LightingDebugMode mode, int tileSize,
+                          LightingDebugMode mode, int tileSize, Matrix worldViewTransform,
                           string modeConfirmationText = "")
         {
+            // Store the world-view transform for use in render methods
+            _worldViewTransform = worldViewTransform;
+
             // Reset frame counters and bounds
             _classificationTilesDrawn = 0;
             _sunOpacitySamplesDrawn = 0;
