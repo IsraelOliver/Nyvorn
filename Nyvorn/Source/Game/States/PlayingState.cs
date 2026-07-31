@@ -416,7 +416,7 @@ namespace Nyvorn.Source.Game.States
                     }
                 }
 
-                // Ctrl+Alt+3: Run Phase 3.1 simple validator (mock cycle test)
+                // Ctrl+Alt+3: Print and validate captured real game cycle dumps
                 if (!handledConsoleThisFrame)
                 {
                     bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
@@ -425,7 +425,29 @@ namespace Nyvorn.Source.Game.States
 
                     if (ctrlPressed && altPressed && threePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D3))
                     {
-                        System.Console.WriteLine("\n[Phase3_1] Running simple validator...");
+                        System.Console.WriteLine("\n[Phase3_1] Printing real game cycle dumps...");
+                        Engine.Graphics.LightingPipeline.Phase3_1RuntimeValidator.PrintDumps();
+                        Engine.Graphics.LightingPipeline.Phase3_1RuntimeValidator.Validate();
+
+                        // Also run continuity check if SolarProvider available
+                        if (session.ViewCoordinator.SunCycleProvider != null)
+                        {
+                            var solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(session.ViewCoordinator.SunCycleProvider);
+                            Engine.Graphics.LightingPipeline.Phase3_1RuntimeValidator.ValidateContinuity(solarProvider);
+                        }
+                    }
+                }
+
+                // Ctrl+Shift+3: Run Phase 3.1 mock validator (diagnostic, not real-time)
+                if (!handledConsoleThisFrame)
+                {
+                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                    bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                    bool threePressed = keyboard.IsKeyDown(Keys.D3);
+
+                    if (ctrlPressed && shiftPressed && threePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D3))
+                    {
+                        System.Console.WriteLine("\n[Phase3_1] Running mock cycle validator (diagnostic)...");
                         Engine.Graphics.LightingPipeline.Phase3_1SimpleValidator.RunFullCycleValidation();
                     }
                 }

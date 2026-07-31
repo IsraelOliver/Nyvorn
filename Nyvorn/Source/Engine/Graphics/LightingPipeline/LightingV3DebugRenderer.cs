@@ -83,15 +83,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Store the world-view transform for use in render methods
             _worldViewTransform = worldViewTransform;
 
-            // Log probe consumption only on UpdateId change (avoid spam)
-            if (frameData.UpdateId != _lastLoggedUpdateId)
-            {
-                _lastLoggedUpdateId = frameData.UpdateId;
-                System.Console.WriteLine($"[V3RendererConsume] UpdateId={frameData.UpdateId} WorldOrigin=({frameData.Region.WorldOriginX},{frameData.Region.WorldOriginY}) " +
-                    $"ProbeIndex={frameData.ProbeLocalSampleY * frameData.Region.SampleWidth + frameData.ProbeLocalSampleX} " +
-                    $"ProbeWorld=({frameData.ProbeSampleWorldX:F1},{frameData.ProbeSampleWorldY:F1}) " +
-                    $"Sun={frameData.ProbeSunOpacity:F3} Local={frameData.ProbeLocalOpacity:F3}");
-            }
+            // Store for diagnostic dump only (not logged every frame)
+            _lastLoggedUpdateId = frameData.UpdateId;
 
             // Reset frame counters and bounds
             _classificationTilesDrawn = 0;

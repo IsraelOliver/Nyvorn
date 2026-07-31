@@ -182,10 +182,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             {
                 get
                 {
-                    // Peak at noon, zero at night
-                    if (_timeOfDay01 < 0.2f || _timeOfDay01 > 0.8f) return 0f;
-                    float t = (_timeOfDay01 - 0.2f) / 0.6f; // Normalize to [0, 1] for 6 AM to 6 PM
-                    return MathF.Max(0f, MathF.Sin(t * MathF.PI));
+                    // Solar intensity curve: 0 at night, increases toward noon, peaks at 1.0, decreases after
+                    // Hours: 0=midnight, 6=6AM, 12=noon, 18=6PM, 24=midnight
+                    // timeOfDay01: 0=midnight, 0.25=6AM, 0.5=noon, 0.75=6PM, 1=midnight
+
+                    // Night hours (0-5 AM, 7-11 PM): zero intensity
+                    if (_timeOfDay01 < 0.208f || _timeOfDay01 > 0.917f) // 5 AM to 7 PM roughly
+                        return 0f;
+
+                    // Day hours (6 AM to 6 PM): sinusoidal curve, peak at noon
+                    // Remap [0.208, 0.917] (6 AM to 6 PM) to [0, 1] for sin curve
+                    float dayStart = 0.208f; // 5 AM
+                    float dayEnd = 0.917f;   // 11 PM
+                    float t = (_timeOfDay01 - dayStart) / (dayEnd - dayStart); // [0, 1]
+
+                    // Use sine: 0 at edges, 1 at middle (noon)
+                    return MathF.Sin(t * MathF.PI);
                 }
             }
 

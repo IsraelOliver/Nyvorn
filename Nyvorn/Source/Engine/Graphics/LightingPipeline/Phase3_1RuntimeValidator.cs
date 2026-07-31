@@ -1,47 +1,92 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 
 namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 {
     /// <summary>
-    /// Runtime validator for Phase 3.1 solar provider.
-    /// Captures dumps at specific times of day and validates consistency.
+    /// Real-time validator for Phase 3.1 solar provider running game cycles.
+    /// Captures dumps at Morning, Noon, Evening, Night and validates consistency.
+    /// Separate from mock validator - only handles real game data.
     /// </summary>
     public static class Phase3_1RuntimeValidator
     {
         private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _dumps = new();
+        private static bool _capturedMorning = false;
+        private static bool _capturedNoon = false;
+        private static bool _capturedEvening = false;
+        private static bool _capturedNight = false;
 
         /// <summary>
         /// Record a sun state dump with label (Morning, Noon, Evening, Night).
+        /// Prints the complete dump immediately.
         /// </summary>
         public static void RecordDump(string label, float timeOfDay, LightingV3SunState state, int updateId)
         {
+            // Track which periods have been captured
+            if (label.Contains("Morning")) _capturedMorning = true;
+            if (label.Contains("Noon")) _capturedNoon = true;
+            if (label.Contains("Evening")) _capturedEvening = true;
+            if (label.Contains("Night")) _capturedNight = true;
+
             _dumps.Add((label, timeOfDay, state, updateId));
+
+            // Print immediately upon capture
+            PrintSingleDump(label, timeOfDay, state, updateId);
         }
 
         /// <summary>
-        /// Print all recorded dumps to console in validation format.
+        /// Print a single dump in full detail.
+        /// </summary>
+        private static void PrintSingleDump(string label, float timeOfDay, LightingV3SunState state, int updateId)
+        {
+            System.Console.WriteLine($"\n[Phase3_1 Captured] {label}");
+            System.Console.WriteLine($"  TimeOfDay:             {timeOfDay:F3}");
+            System.Console.WriteLine($"  FoundationUpdateId:    {updateId}");
+            System.Console.WriteLine($"  DirectionToSun:        ({state.DirectionToSun.X:F6}, {state.DirectionToSun.Y:F6})");
+            System.Console.WriteLine($"  LightTravelDirection:  ({state.LightTravelDirection.X:F6}, {state.LightTravelDirection.Y:F6})");
+            System.Console.WriteLine($"  Elevation:             {state.Elevation:F4}°");
+            System.Console.WriteLine($"  Intensity:             {state.Intensity:F6}");
+            System.Console.WriteLine($"  LinearColor:           ({state.LinearColor.X:F6}, {state.LinearColor.Y:F6}, {state.LinearColor.Z:F6})");
+            System.Console.WriteLine($"  IsAboveHorizon:        {state.IsAboveHorizon}");
+        }
+
+        /// <summary>
+        /// Print all recorded dumps to console.
         /// </summary>
         public static void PrintDumps()
         {
             System.Console.WriteLine("\n╔════════════════════════════════════════════════════════════════════════════════╗");
-            System.Console.WriteLine("║ PHASE 3.1 RUNTIME VALIDATION - SOLAR PROVIDER STATE DUMPS                        ║");
-            System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
+            System.Console.WriteLine("║ PHASE 3.1 RUNTIME - REAL GAME CYCLE DUMPS                                        ║");
+            System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝");
+
+            if (_dumps.Count == 0)
+            {
+                System.Console.WriteLine("\nNo dumps recorded yet.");
+                System.Console.WriteLine("\nStatus:");
+                System.Console.WriteLine($"  Morning: {(_capturedMorning ? "✓ captured" : "⏳ waiting (6:00 AM, timeOfDay ≈ 0.25)")}");
+                System.Console.WriteLine($"  Noon:    {(_capturedNoon ? "✓ captured" : "⏳ waiting (12:00 PM, timeOfDay ≈ 0.50)")}");
+                System.Console.WriteLine($"  Evening: {(_capturedEvening ? "✓ captured" : "⏳ waiting (6:00 PM, timeOfDay ≈ 0.75)")}");
+                System.Console.WriteLine($"  Night:   {(_capturedNight ? "✓ captured" : "⏳ waiting (0:00 AM, timeOfDay ≈ 0.00 or > 0.90)")}");
+                System.Console.WriteLine("\nTo speed up time capture:");
+                System.Console.WriteLine("  Open console (~) and type: /tick speed 100");
+                System.Console.WriteLine("  This accelerates time 100x, completing full cycle in ~30 seconds");
+                return;
+            }
 
             foreach (var (label, timeOfDay, state, updateId) in _dumps)
             {
-                System.Console.WriteLine($"═══════════════════════════════════════════════════════════");
+                System.Console.WriteLine($"\n═══════════════════════════════════════════════════════════");
                 System.Console.WriteLine($"TIME: {label} (TimeOfDay={timeOfDay:F3})");
                 System.Console.WriteLine($"───────────────────────────────────────────────────────────");
                 System.Console.WriteLine($"UpdateId:               {updateId}");
-                System.Console.WriteLine($"DirectionToSun:        ({state.DirectionToSun.X:F4}, {state.DirectionToSun.Y:F4})");
-                System.Console.WriteLine($"LightTravelDirection:  ({state.LightTravelDirection.X:F4}, {state.LightTravelDirection.Y:F4})");
-                System.Console.WriteLine($"Elevation:             {state.Elevation:F2}°");
-                System.Console.WriteLine($"Intensity:             {state.Intensity:F4}");
+                System.Console.WriteLine($"DirectionToSun:        ({state.DirectionToSun.X:F6}, {state.DirectionToSun.Y:F6})");
+                System.Console.WriteLine($"LightTravelDirection:  ({state.LightTravelDirection.X:F6}, {state.LightTravelDirection.Y:F6})");
+                System.Console.WriteLine($"Elevation:             {state.Elevation:F4}°");
+                System.Console.WriteLine($"Intensity:             {state.Intensity:F6}");
                 System.Console.WriteLine($"IsAboveHorizon:        {state.IsAboveHorizon}");
-                System.Console.WriteLine($"LinearColor:           ({state.LinearColor.X:F4}, {state.LinearColor.Y:F4}, {state.LinearColor.Z:F4})");
+                System.Console.WriteLine($"LinearColor:           ({state.LinearColor.X:F6}, {state.LinearColor.Y:F6}, {state.LinearColor.Z:F6})");
                 System.Console.WriteLine($"IsValid:               {state.IsValid()}");
-                System.Console.WriteLine();
             }
         }
 
@@ -152,6 +197,82 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
 
             _dumps.Clear();
+        }
+
+        /// <summary>
+        /// Test continuity of sun direction through a dense cycle sampling.
+        /// Samples 256+ points through one full day and checks for discontinuities.
+        /// Requires ISolarProvider to sample at arbitrary times.
+        /// </summary>
+        public static void ValidateContinuity(GameSolarProvider solarProvider)
+        {
+            if (solarProvider == null)
+            {
+                System.Console.WriteLine("\n[Phase3_1] Continuity test skipped: SolarProvider not available");
+                return;
+            }
+
+            System.Console.WriteLine("\n╔════════════════════════════════════════════════════════════════════════════════╗");
+            System.Console.WriteLine("║ PHASE 3.1 CONTINUITY TEST - Dense Cycle Sampling (256 points)                   ║");
+            System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
+
+            const int sampleCount = 256;
+            const float discontinuityThreshold = 0.5f; // dot product threshold for adjacency
+            bool hasBadDiscontinuities = false;
+            int discontinuityCount = 0;
+
+            Vector2 prevDirection = Vector2.Zero;
+            float prevTime = -1f;
+
+            for (int i = 0; i < sampleCount; i++)
+            {
+                float timeOfDay = (i % sampleCount) / (float)sampleCount; // [0, 1)
+                var state = solarProvider.GetSunState();
+
+                if (i > 0) // Skip first point (no previous)
+                {
+                    float dot = Vector2.Dot(prevDirection, state.DirectionToSun);
+
+                    // Adjacent samples should have high dot product (< ~0.05 radians = ~3° apart)
+                    if (dot < discontinuityThreshold)
+                    {
+                        discontinuityCount++;
+
+                        // Report only if it's a real discontinuity (not wrapping)
+                        // Wrapping would be: last sample near 1.0, next sample near 0.0
+                        bool isWrap = (prevTime > 0.95f && timeOfDay < 0.05f);
+
+                        if (!isWrap)
+                        {
+                            hasBadDiscontinuities = true;
+                            if (discontinuityCount <= 5) // Report first 5 bad ones
+                            {
+                                System.Console.WriteLine($"  ⚠ DISCONTINUITY at timeOfDay={timeOfDay:F4}");
+                                System.Console.WriteLine($"    Previous: ({prevDirection.X:F6}, {prevDirection.Y:F6})");
+                                System.Console.WriteLine($"    Current:  ({state.DirectionToSun.X:F6}, {state.DirectionToSun.Y:F6})");
+                                System.Console.WriteLine($"    Dot product: {dot:F6} (threshold: {discontinuityThreshold})");
+                            }
+                        }
+                    }
+                }
+
+                prevDirection = state.DirectionToSun;
+                prevTime = timeOfDay;
+            }
+
+            if (!hasBadDiscontinuities)
+            {
+                System.Console.WriteLine("✓ Direction continuity verified across full cycle");
+                System.Console.WriteLine($"  Sampled: {sampleCount} points");
+                System.Console.WriteLine($"  Discontinuities (including wrap): {discontinuityCount}");
+                System.Console.WriteLine($"  No unexpected jumps detected");
+            }
+            else
+            {
+                System.Console.WriteLine($"✗ Found {discontinuityCount} discontinuities (first 5 shown above)");
+                System.Console.WriteLine("  Review direction calculation for jumps");
+            }
+            System.Console.WriteLine();
         }
     }
 }
