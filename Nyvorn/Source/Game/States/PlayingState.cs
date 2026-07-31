@@ -415,6 +415,20 @@ namespace Nyvorn.Source.Game.States
                         }
                     }
                 }
+
+                // Ctrl+Alt+3: Run Phase 3.1 simple validator (mock cycle test)
+                if (!handledConsoleThisFrame)
+                {
+                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
+                    bool threePressed = keyboard.IsKeyDown(Keys.D3);
+
+                    if (ctrlPressed && altPressed && threePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D3))
+                    {
+                        System.Console.WriteLine("\n[Phase3_1] Running simple validator...");
+                        Engine.Graphics.LightingPipeline.Phase3_1SimpleValidator.RunFullCycleValidation();
+                    }
+                }
             }
 
             previousConsoleKeyboard = keyboard;
@@ -1246,6 +1260,18 @@ namespace Nyvorn.Source.Game.States
                 // CAPTURE FRAME DATA ONCE (immutable snapshot for entire debug pass)
                 var debugFoundation = viewCoord.LightingV3Foundation;
                 var frameData = debugFoundation?.GetFrameData();
+
+                // Phase 3.1: Auto-capture sun state dumps at Morning, Noon, Evening, Night
+                if (frameData.HasValue && viewCoord.SunCycleProvider != null)
+                {
+                    var solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(viewCoord.SunCycleProvider);
+                    float timeOfDay01 = solarProvider.GetTimeOfDay01();
+                    Engine.Graphics.LightingPipeline.Phase3_1RuntimeDumpCapture.CheckAndCapture(
+                        timeOfDay01,
+                        frameData.Value.SunState,
+                        frameData.Value.UpdateId,
+                        solarProvider);
+                }
 
                 // Prepare debug RenderTarget
                 viewCoord.EnsureV3DebugWorldRenderTarget(graphicsDevice, screenW, screenH);

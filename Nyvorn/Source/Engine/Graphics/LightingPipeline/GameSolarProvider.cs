@@ -21,7 +21,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public LightingV3SunState GetSunState()
         {
-            // Get directional data
+            // Get directional data (authority source)
             Vector2 directionToSun = _sunCycleProvider.SunDirection;
 
             // Convert color from gamma sRGB to linear
@@ -37,13 +37,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 (float)System.Math.Pow(b, 2.2f)
             );
 
-            // Get intensity (0 at night, 1 at noon)
-            float intensity = _sunCycleProvider.SunIntensity;
+            // Derive elevation from direction (single source of truth)
+            // DirectionToSun points towards sun; negative Y means up (Y-down coordinate system)
+            // Elevation = asin(-Y) = asin of inverse Y component
+            float elevationRadians = (float)System.Math.Asin(-directionToSun.Y);
+            float elevation = elevationRadians * (180f / System.MathF.PI);  // Convert radians to degrees
 
-            // Convert normalized elevation [0, 1] to degrees [-90, 90]
-            // 0 = horizon (-0°), 0.5 = zenith (90°), 1 = opposite horizon (180° wraps to -90°)
-            float elevation01 = _sunCycleProvider.SunElevation01;
-            float elevation = (elevation01 - 0.5f) * 180f;  // Maps [0, 1] to [-90, 90]
+            // Get intensity from cycle, but zero it if sun is below horizon
+            bool isAboveHorizon = _sunCycleProvider.IsSunAboveHorizon;
+            float intensity = isAboveHorizon ? _sunCycleProvider.SunIntensity : 0f;
 
             // Create sun state (validation happens inside constructor)
             return new LightingV3SunState(directionToSun, linearColor, intensity, elevation);

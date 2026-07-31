@@ -127,15 +127,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             allValid = allValid && check7;
             System.Console.WriteLine();
 
-            // Validate 8: All dumps have same UpdateId
-            System.Console.WriteLine("VALIDATION 8: All dumps in same frame (same UpdateId)");
-            if (_dumps.Count > 1)
+            // Validate 8: Each dump has a valid UpdateId
+            System.Console.WriteLine("VALIDATION 8: Each dump has valid UpdateId (frame consistency)");
+            bool check8 = true;
+            foreach (var (label, _, state, updateId) in _dumps)
             {
-                int firstId = _dumps[0].updateId;
-                bool check8 = _dumps.TrueForAll(d => d.updateId == firstId);
-                System.Console.WriteLine($"  UpdateId consistency: {(check8 ? "✓" : "✗")}");
-                allValid = allValid && check8;
+                bool validId = updateId > 0;
+                System.Console.WriteLine($"  {label}: UpdateId={updateId} {(validId ? "✓" : "✗")}");
+                check8 = check8 && validId;
             }
+            allValid = allValid && check8;
             System.Console.WriteLine();
 
             // Summary

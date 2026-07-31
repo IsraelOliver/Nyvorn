@@ -136,6 +136,7 @@ namespace Nyvorn.Source.Game.States
         private Engine.Graphics.LightingPipeline.LightingV3Foundation lightingV3Foundation;
         private Engine.Graphics.LightingPipeline.LightingV3DebugController lightingV3DebugController;
         private Engine.Graphics.LightingPipeline.LightingV3DebugRenderer lightingV3DebugRenderer;
+        private Engine.Graphics.LightingV2.ISunCycleProvider sunCycleProvider;
         private bool _hasLoggedFoundationInitialization = false;
 
         /// <summary>
@@ -205,6 +206,7 @@ namespace Nyvorn.Source.Game.States
         public Engine.Graphics.LightingPipeline.LightingV3Foundation LightingV3Foundation => lightingV3Foundation;
         public Engine.Graphics.LightingPipeline.LightingV3DebugController LightingV3DebugController => lightingV3DebugController;
         public Engine.Graphics.LightingPipeline.LightingV3DebugRenderer LightingV3DebugRenderer => lightingV3DebugRenderer;
+        public Engine.Graphics.LightingV2.ISunCycleProvider SunCycleProvider => sunCycleProvider;
 
         /// <summary>
         /// Initialize Lighting V2 subsystem with required data providers and graphics device.
@@ -220,7 +222,7 @@ namespace Nyvorn.Source.Game.States
 
             // Create data adapters
             var worldDataProvider = new WorldDataAdapter(WorldMap);
-            var sunCycleProvider = new SunCycleAdapter(dayNightCycle, environmentSystem);
+            sunCycleProvider = new SunCycleAdapter(dayNightCycle, environmentSystem);
             var localLightRegistry = new LocalLightAdapter(TorchRuntimeSystem);
 
             // Create settings and debug state
@@ -238,8 +240,9 @@ namespace Nyvorn.Source.Game.States
         }
 
         /// <summary>
-        /// Initialize Phase 2: LightingV3Foundation with real geometry provider.
+        /// Initialize Phase 2: LightingV3Foundation with real geometry provider and solar provider.
         /// Called once after PlayingSessionViewCoordinator is constructed.
+        /// Requires InitializeLightingV2 to be called first (sunCycleProvider must be set).
         /// </summary>
         public void InitializeLightingV3(GraphicsDevice graphicsDevice)
         {
@@ -250,12 +253,23 @@ namespace Nyvorn.Source.Game.States
             var worldDataProvider = new WorldDataAdapter(WorldMap);
             var geometryAdapter = new Engine.Graphics.LightingPipeline.WorldDataGeometryAdapter(worldDataProvider);
 
-            // Create foundation
-            lightingV3Foundation = new Engine.Graphics.LightingPipeline.LightingV3Foundation(geometryAdapter);
+            // Create solar provider (bridges V2 sun cycle to V3)
+            Engine.Graphics.LightingPipeline.ISolarProvider solarProvider = null;
+            if (sunCycleProvider != null)
+            {
+                solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(sunCycleProvider);
+            }
+
+            // Create foundation with real solar provider
+            lightingV3Foundation = new Engine.Graphics.LightingPipeline.LightingV3Foundation(
+                geometryAdapter,
+                Engine.Graphics.LightingPipeline.LightingSamplingConfig.Default2x2,
+                solarProvider);
+
             if (!_hasLoggedFoundationInitialization)
             {
                 _hasLoggedFoundationInitialization = true;
-                System.Console.WriteLine("[LightingV3Probe] Foundation initialized");
+                System.Console.WriteLine("[LightingV3Probe] Foundation initialized with solar provider");
             }
 
             // Create debug system (always, for validation)
