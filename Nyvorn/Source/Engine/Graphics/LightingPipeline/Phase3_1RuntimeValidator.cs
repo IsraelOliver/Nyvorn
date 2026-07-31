@@ -92,11 +92,33 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         /// <summary>
         /// Validate all recorded dumps against phase 3.1 requirements.
+        /// Only runs if all 4 periods (Morning, Noon, Evening, Night) are captured.
         /// </summary>
         public static void Validate()
         {
+            // Check if all 4 periods were captured
+            if (_dumps.Count < 4)
+            {
+                System.Console.WriteLine("╔════════════════════════════════════════════════════════════════════════════════╗");
+                System.Console.WriteLine("║ VALIDATION SKIPPED - NOT ALL PERIODS CAPTURED                                  ║");
+                System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝");
+                System.Console.WriteLine($"\nFound {_dumps.Count}/4 dumps:");
+                foreach (var (label, _, _, _) in _dumps)
+                {
+                    System.Console.WriteLine($"  ✓ {label}");
+                }
+                System.Console.WriteLine("\nMissing:");
+                if (!_capturedMorning) System.Console.WriteLine("  ⏳ Morning (6:00 AM, timeOfDay ≈ 0.25)");
+                if (!_capturedNoon) System.Console.WriteLine("  ⏳ Noon (12:00 PM, timeOfDay ≈ 0.50)");
+                if (!_capturedEvening) System.Console.WriteLine("  ⏳ Evening (6:00 PM, timeOfDay ≈ 0.75)");
+                if (!_capturedNight) System.Console.WriteLine("  ⏳ Night (0:00 AM, timeOfDay ≈ 0.00 or > 0.90)");
+                System.Console.WriteLine("\nContinue playing through full day cycle to capture remaining periods.");
+                System.Console.WriteLine();
+                return;
+            }
+
             System.Console.WriteLine("╔════════════════════════════════════════════════════════════════════════════════╗");
-            System.Console.WriteLine("║ PHASE 3.1 VALIDATION RESULTS                                                    ║");
+            System.Console.WriteLine("║ PHASE 3.1 VALIDATION RESULTS - ALL 4 PERIODS CAPTURED                           ║");
             System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
 
             bool allValid = true;
@@ -165,10 +187,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             allValid = allValid && check6;
             System.Console.WriteLine();
 
-            // Validate 7: Night intensity is low
-            System.Console.WriteLine("VALIDATION 7: Night - Intensity is low (0.0-0.2)");
-            bool check7 = night.state.Intensity >= 0f && night.state.Intensity <= 0.2f;
-            System.Console.WriteLine($"  Intensity: {night.state.Intensity:F4} {(check7 ? "✓" : "✗")}");
+            // Validate 7: Night intensity is zero (no solar contribution)
+            System.Console.WriteLine("VALIDATION 7: Night - Intensity is zero (no solar contribution)");
+            bool check7 = System.Math.Abs(night.state.Intensity) <= 0.0001f;
+            System.Console.WriteLine($"  Intensity: {night.state.Intensity:F6} {(check7 ? "✓" : "✗")}");
             allValid = allValid && check7;
             System.Console.WriteLine();
 
