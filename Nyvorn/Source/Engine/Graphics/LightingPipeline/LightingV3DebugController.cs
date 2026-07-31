@@ -15,6 +15,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// </summary>
     public class LightingV3DebugController
     {
+        private static int _instanceCounter = 0;
+        private readonly int _instanceId;
+
         private LightingDebugMode _currentMode = LightingDebugMode.None;
         private KeyboardState _lastKeyboardState;
         private bool _isDebugEnabled;
@@ -27,6 +30,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public LightingV3DebugController()
         {
+            _instanceId = ++_instanceCounter;
 #if DEBUG
             _isDebugEnabled = true;
 #else
@@ -34,6 +38,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 #endif
             _lastKeyboardState = Keyboard.GetState();
         }
+
+        /// <summary>
+        /// Get unique instance ID for debugging controller lifecycle.
+        /// </summary>
+        public int InstanceId => _instanceId;
 
         /// <summary>
         /// Get current debug visualization mode.
@@ -85,7 +94,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void CycleMode()
         {
             _currentMode = (LightingDebugMode)(((int)_currentMode + 1) % 5);
-            System.Console.WriteLine($"[LightingV3Debug] Mode → {_currentMode}");
+            System.Console.WriteLine($"[LightingV3Debug] ControllerId: {_instanceId} | Mode -> {_currentMode}");
         }
 
         /// <summary>

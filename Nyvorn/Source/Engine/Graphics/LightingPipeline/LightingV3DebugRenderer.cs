@@ -20,12 +20,34 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     {
         private readonly Texture2D _pixelTexture;  // 1x1 white pixel for drawing
 
+        // Frame counters (reset each frame)
+        private int _classificationTilesDrawn = 0;
+        private int _sunOpacitySamplesDrawn = 0;
+        private int _localOpacitySamplesDrawn = 0;
+        private int _sampleGridPointsDrawn = 0;
+
         public LightingV3DebugRenderer(GraphicsDevice graphicsDevice)
         {
             // Create 1x1 pixel texture for primitive drawing
             _pixelTexture = new Texture2D(graphicsDevice, 1, 1);
             _pixelTexture.SetData(new[] { Color.White });
         }
+
+        /// <summary>
+        /// Get drawn tile count from last frame (for Classification mode).
+        /// </summary>
+        public int ClassificationTilesDrawn => _classificationTilesDrawn;
+
+        /// <summary>
+        /// Get drawn sample count from last frame (for Opacity modes).
+        /// </summary>
+        public int SunOpacitySamplesDrawn => _sunOpacitySamplesDrawn;
+        public int LocalOpacitySamplesDrawn => _localOpacitySamplesDrawn;
+
+        /// <summary>
+        /// Get drawn point count from last frame (for SampleGrid mode).
+        /// </summary>
+        public int SampleGridPointsDrawn => _sampleGridPointsDrawn;
 
         /// <summary>
         /// Render debug visualization and mode confirmation text.
@@ -35,6 +57,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                           LightingDebugMode mode, int tileSize,
                           string modeConfirmationText = "")
         {
+            // Reset frame counters
+            _classificationTilesDrawn = 0;
+            _sunOpacitySamplesDrawn = 0;
+            _localOpacitySamplesDrawn = 0;
+            _sampleGridPointsDrawn = 0;
+
             if (mode == LightingDebugMode.None && string.IsNullOrEmpty(modeConfirmationText))
                 return;
 
@@ -70,7 +98,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Render classification with colors (Blue/Green/Red).
+        /// Render classification with colors (Blue/Green/Red) - strong colors for diagnosis.
         /// </summary>
         private void RenderClassification(SpriteBatch spriteBatch, LightingV3Foundation foundation, int tileSize)
         {
@@ -91,9 +119,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     var classification = classifications[tileIndex++];
                     Color color = classification switch
                     {
-                        LightingCellClassification.OpenAtmosphere => Color.Blue * 0.4f,
-                        LightingCellClassification.VisibleBackground => Color.Green * 0.4f,
-                        LightingCellClassification.SolidForeground => Color.Red * 0.4f,
+                        LightingCellClassification.OpenAtmosphere => new Color(0, 80, 255, 120),
+                        LightingCellClassification.VisibleBackground => new Color(0, 255, 80, 140),
+                        LightingCellClassification.SolidForeground => new Color(255, 30, 30, 120),
                         _ => Color.Black
                     };
 
@@ -104,6 +132,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                     var rect = new Rectangle(pixelX, pixelY, tileSize, tileSize);
                     spriteBatch.Draw(_pixelTexture, rect, color);
+                    _classificationTilesDrawn++;
                 }
             }
         }
@@ -133,10 +162,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                         ? field.GetLocalLightOpacity(flatIndex)
                         : field.GetSunOpacity(flatIndex);
 
-                    // Grayscale: 0=black, 1=white
+                    // Grayscale: 0=black, 1=white (with higher alpha for visibility)
                     byte value = (byte)(opacity * 255);
                     float normalized = value / 255f;
-                    Color color = new Color(normalized, normalized, normalized, 0.5f);
+                    Color color = new Color(normalized, normalized, normalized, 0.8f);
 
                     var worldPos = region.LocalSampleToWorldPosition(sx, sy, tileSize);
                     int sampleSizePixels = (int)sampleSpacingPixels;
@@ -146,6 +175,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                                            (int)worldPos.Y - sampleSizePixels / 2,
                                            sampleSizePixels, sampleSizePixels);
                     spriteBatch.Draw(_pixelTexture, rect, color);
+
+                    if (isLocal)
+                        _localOpacitySamplesDrawn++;
+                    else
+                        _sunOpacitySamplesDrawn++;
                 }
             }
         }
@@ -165,15 +199,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                     float x = worldPos.X;
                     float y = worldPos.Y;
-                    int size = 1;  // Small crosshair: 3x3 pixels
+                    int size = 2;  // Larger point for visibility: 5x5 pixels
 
-                    // Horizontal line
+                    // Horizontal line (bright yellow)
                     var hLine = new Rectangle((int)x - size, (int)y, size * 2 + 1, 1);
-                    spriteBatch.Draw(_pixelTexture, hLine, Color.Yellow * 0.7f);
+                    spriteBatch.Draw(_pixelTexture, hLine, Color.Yellow);
 
-                    // Vertical line
+                    // Vertical line (bright yellow)
                     var vLine = new Rectangle((int)x, (int)y - size, 1, size * 2 + 1);
-                    spriteBatch.Draw(_pixelTexture, vLine, Color.Yellow * 0.7f);
+                    spriteBatch.Draw(_pixelTexture, vLine, Color.Yellow);
+
+                    _sampleGridPointsDrawn++;
                 }
             }
         }

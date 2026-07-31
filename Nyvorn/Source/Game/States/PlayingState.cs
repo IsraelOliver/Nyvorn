@@ -389,6 +389,16 @@ namespace Nyvorn.Source.Game.States
                         {
                             System.Console.WriteLine("\n[LightingV3 Foundation Metrics]");
                             session.ViewCoordinator.LightingV3Foundation.DumpMetricsToConsole();
+
+                            var renderer = session.ViewCoordinator.LightingV3DebugRenderer;
+                            if (renderer != null)
+                            {
+                                System.Console.WriteLine($"[LightingV3 Renderer Counters]");
+                                System.Console.WriteLine($"  Classification Tiles Drawn: {renderer.ClassificationTilesDrawn}");
+                                System.Console.WriteLine($"  Sun Opacity Samples Drawn: {renderer.SunOpacitySamplesDrawn}");
+                                System.Console.WriteLine($"  Local Opacity Samples Drawn: {renderer.LocalOpacitySamplesDrawn}");
+                                System.Console.WriteLine($"  Sample Grid Points Drawn: {renderer.SampleGridPointsDrawn}");
+                            }
                         }
                         else
                         {
@@ -487,13 +497,13 @@ namespace Nyvorn.Source.Game.States
                         spriteBatch.End();
                     }
 
-                    // Fixed overlay always visible: "V3 FOUNDATION ACTIVE" proof
+                    // Fixed overlay always visible: Dark box proof (text rendering not available without SpriteFont)
                     if (session.ViewCoordinator.LightingV3Foundation != null)
                     {
                         spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
 
-                        // Draw semi-transparent background for text
-                        spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 250, 40), new Color(0, 0, 0, 128));
+                        // Draw semi-transparent background for overlay
+                        spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 350, 90), new Color(0, 0, 0, 200));
 
                         spriteBatch.End();
                     }
