@@ -1,20 +1,31 @@
 using System;
+using System.Collections.Generic;
 
 namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 {
     /// <summary>
     /// Automatic capture of sun state dumps at Morning, Noon, Evening, Night.
-    /// Ensures each period is captured only once per cycle.
-    /// Detects period crossing with proper wrapping (0.99 → 0.01).
+    /// Maintains two separate cycle collections:
+    /// - currentCycleDumps: building up during current cycle
+    /// - lastCompletedCycleDumps: validated results from previous cycle
+    /// Uses mathematical marker crossing detection (no windows).
     /// MUST be called from PlayingState.Update(), not Draw().
     /// </summary>
     public static class Phase3_1RuntimeDumpCapture
     {
-        private static bool _isConnected = false;
+        private const bool ENABLE_DIAGNOSTICS = false; // Set to true for Phase3_1Clock logging
+
+        // Current cycle being built
+        private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _currentCycleDumps = new();
         private static bool _capturedMorning = false;
         private static bool _capturedNoon = false;
         private static bool _capturedEvening = false;
         private static bool _capturedNight = false;
+
+        // Last completed and validated cycle
+        private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _lastCompletedCycleDumps = null;
+
+        private static bool _isConnected = false;
         private static float _lastTimeOfDay = 0f;
         private static long _lastClockLogTicks = 0;
 
@@ -34,18 +45,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 System.Console.WriteLine("[Phase3_1Capture] Runtime capture update connected");
             }
 
-            // Log clock state once per second (not every frame)
-            long nowTicks = System.DateTime.UtcNow.Ticks;
-            if ((nowTicks - _lastClockLogTicks) / 10_000_000.0 >= 1.0) // Ticks to seconds
+            // Log clock state once per second (diagnostic only)
+            if (ENABLE_DIAGNOSTICS)
             {
-                _lastClockLogTicks = nowTicks;
-                float delta = timeOfDay01 - _lastTimeOfDay;
-                if (delta < -0.5f) delta += 1.0f; // Wrap correction
-                System.Console.WriteLine($"[Phase3_1Clock] PreviousTimeOfDay={_lastTimeOfDay:F4} CurrentTimeOfDay={timeOfDay01:F4} " +
-                    $"Delta={delta:F6} UpdateId={updateId}");
+                long nowTicks = System.DateTime.UtcNow.Ticks;
+                if ((nowTicks - _lastClockLogTicks) / 10_000_000.0 >= 1.0)
+                {
+                    _lastClockLogTicks = nowTicks;
+                    float delta = timeOfDay01 - _lastTimeOfDay;
+                    if (delta < -0.5f) delta += 1.0f;
+                    System.Console.WriteLine($"[Phase3_1Clock] PreviousTimeOfDay={_lastTimeOfDay:F4} CurrentTimeOfDay={timeOfDay01:F4} " +
+                        $"Delta={delta:F6} UpdateId={updateId}");
+                }
             }
 
-            // Detect period crossings with wrapping support
+            // Detect period crossings using mathematical method
             CheckPeriodCrossing(timeOfDay01, sunState, updateId, "Morning", 0.25f);
             CheckPeriodCrossing(timeOfDay01, sunState, updateId, "Noon", 0.50f);
             CheckPeriodCrossing(timeOfDay01, sunState, updateId, "Evening", 0.75f);
@@ -53,14 +67,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             _lastTimeOfDay = timeOfDay01;
 
-            // Auto-validate when all 4 captured
+            // Auto-complete cycle when all 4 captured
             if (_capturedMorning && _capturedNoon && _capturedEvening && _capturedNight)
             {
                 System.Console.WriteLine("\n[Phase3_1Capture] All 4 periods captured automatically during gameplay!\n");
-                Phase3_1RuntimeValidator.PrintDumps();
-                Phase3_1RuntimeValidator.Validate();
+
+                // Copy current dumps to completed, by value
+                _lastCompletedCycleDumps = new List<(string, float, LightingV3SunState, int)>(_currentCycleDumps);
+
+                // Validate and print completed cycle
+                Phase3_1RuntimeValidator.ValidateCompletedCycle(_lastCompletedCycleDumps);
 
                 // Reset for next cycle
+                _currentCycleDumps.Clear();
                 _capturedMorning = false;
                 _capturedNoon = false;
                 _capturedEvening = false;
@@ -69,38 +88,32 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Check if we crossed a period marker (Morning, Noon, Evening, Night).
-        /// Handles wrapping: 0.99 → 0.01 crosses 0.00 (Night).
+        /// Mathematically detect if we crossed a marker going from previousTime to currentTime.
+        /// Handles wrapping (0.99 → 0.01) correctly.
         /// </summary>
-        private static void CheckPeriodCrossing(float currentTime, LightingV3SunState sunState, int updateId, string label, float targetTime)
+        private static bool CrossedMarker(float previousTime, float currentTime, float marker)
         {
-            bool shouldCapture = false;
-            bool alreadyCaptured = GetCaptureFlag(label);
+            // No wrap: simple check
+            if (currentTime >= previousTime)
+                return marker > previousTime && marker <= currentTime;
 
+            // Wrapped: marker is crossed if before current OR after previous
+            return marker > previousTime || marker <= currentTime;
+        }
+
+        /// <summary>
+        /// Check if we crossed a period marker and capture it once.
+        /// </summary>
+        private static void CheckPeriodCrossing(float currentTime, LightingV3SunState sunState, int updateId, string label, float marker)
+        {
+            bool alreadyCaptured = GetCaptureFlag(label);
             if (alreadyCaptured)
                 return;
 
-            // Window around target (±0.02)
-            float windowStart = targetTime - 0.02f;
-            float windowEnd = targetTime + 0.02f;
-
-            // Check for crossing with wrapping
-            if (targetTime == 0.00f)
-            {
-                // Night: crosses at 0.00, wrapping from 0.99 to 0.01
-                shouldCapture = ((_lastTimeOfDay > 0.98f && currentTime < 0.05f) ||  // Wrapped
-                                (currentTime >= windowStart && currentTime <= windowEnd));  // Direct
-            }
-            else
-            {
-                // Other periods: direct check
-                shouldCapture = (currentTime >= windowStart && currentTime <= windowEnd);
-            }
-
-            if (shouldCapture)
+            if (CrossedMarker(_lastTimeOfDay, currentTime, marker))
             {
                 SetCaptureFlag(label, true);
-                Phase3_1RuntimeValidator.RecordDump(label, currentTime, sunState, updateId);
+                _currentCycleDumps.Add((label, currentTime, sunState, updateId));
                 System.Console.WriteLine($"[Phase3_1Capture] Captured {label} (timeOfDay={currentTime:F4}, updateId={updateId})");
             }
         }
@@ -128,6 +141,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
         }
 
-        public static bool AllCaptured => _capturedMorning && _capturedNoon && _capturedEvening && _capturedNight;
+        /// <summary>
+        /// Get dumps to display: prefer lastCompleted if available, fallback to current.
+        /// </summary>
+        public static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> GetDumpsForDisplay()
+        {
+            return _lastCompletedCycleDumps ?? _currentCycleDumps;
+        }
+
+        public static bool HasCompletedCycle => _lastCompletedCycleDumps != null && _lastCompletedCycleDumps.Count == 4;
+
+        public static int CurrentCycleProgress => _currentCycleDumps.Count;
     }
 }

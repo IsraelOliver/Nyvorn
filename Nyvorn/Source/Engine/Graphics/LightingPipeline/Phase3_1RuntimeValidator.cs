@@ -11,11 +11,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// </summary>
     public static class Phase3_1RuntimeValidator
     {
+        // Legacy: kept for compatibility, not actively used
         private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _dumps = new();
-        private static bool _capturedMorning = false;
-        private static bool _capturedNoon = false;
-        private static bool _capturedEvening = false;
-        private static bool _capturedNight = false;
 
         /// <summary>
         /// Record a sun state dump with label (Morning, Noon, Evening, Night).
@@ -23,15 +20,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public static void RecordDump(string label, float timeOfDay, LightingV3SunState state, int updateId)
         {
-            // Track which periods have been captured
-            if (label.Contains("Morning")) _capturedMorning = true;
-            if (label.Contains("Noon")) _capturedNoon = true;
-            if (label.Contains("Evening")) _capturedEvening = true;
-            if (label.Contains("Night")) _capturedNight = true;
-
+            // Legacy method - now handled by Phase3_1RuntimeDumpCapture
+            // Kept for compatibility
             _dumps.Add((label, timeOfDay, state, updateId));
-
-            // Print immediately upon capture
             PrintSingleDump(label, timeOfDay, state, updateId);
         }
 
@@ -56,25 +47,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public static void PrintDumps()
         {
+            var dumpsToShow = Engine.Graphics.LightingPipeline.Phase3_1RuntimeDumpCapture.GetDumpsForDisplay();
+
             System.Console.WriteLine("\n╔════════════════════════════════════════════════════════════════════════════════╗");
             System.Console.WriteLine("║ PHASE 3.1 RUNTIME - REAL GAME CYCLE DUMPS                                        ║");
             System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝");
 
-            if (_dumps.Count == 0)
+            if (dumpsToShow.Count == 0)
             {
                 System.Console.WriteLine("\nNo dumps recorded yet.");
-                System.Console.WriteLine("\nStatus:");
-                System.Console.WriteLine($"  Morning: {(_capturedMorning ? "✓ captured" : "⏳ waiting (6:00 AM, timeOfDay ≈ 0.25)")}");
-                System.Console.WriteLine($"  Noon:    {(_capturedNoon ? "✓ captured" : "⏳ waiting (12:00 PM, timeOfDay ≈ 0.50)")}");
-                System.Console.WriteLine($"  Evening: {(_capturedEvening ? "✓ captured" : "⏳ waiting (6:00 PM, timeOfDay ≈ 0.75)")}");
-                System.Console.WriteLine($"  Night:   {(_capturedNight ? "✓ captured" : "⏳ waiting (0:00 AM, timeOfDay ≈ 0.00 or > 0.90)")}");
                 System.Console.WriteLine("\nTo speed up time capture:");
                 System.Console.WriteLine("  Open console (~) and type: /tick speed 100");
                 System.Console.WriteLine("  This accelerates time 100x, completing full cycle in ~30 seconds");
                 return;
             }
 
-            foreach (var (label, timeOfDay, state, updateId) in _dumps)
+            foreach (var (label, timeOfDay, state, updateId) in dumpsToShow)
             {
                 System.Console.WriteLine($"\n═══════════════════════════════════════════════════════════");
                 System.Console.WriteLine($"TIME: {label} (TimeOfDay={timeOfDay:F3})");
@@ -91,32 +79,55 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Validate completed cycle dumps passed directly.
+        /// Called automatically when 4 periods captured.
+        /// </summary>
+        public static void ValidateCompletedCycle(System.Collections.Generic.List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> completedDumps)
+        {
+            if (completedDumps == null || completedDumps.Count < 4)
+                return;
+
+            DoValidation(completedDumps);
+        }
+
+        /// <summary>
         /// Validate all recorded dumps against phase 3.1 requirements.
         /// Only runs if all 4 periods (Morning, Noon, Evening, Night) are captured.
         /// </summary>
         public static void Validate()
         {
+            var dumpsToValidate = Engine.Graphics.LightingPipeline.Phase3_1RuntimeDumpCapture.GetDumpsForDisplay();
+
             // Check if all 4 periods were captured
-            if (_dumps.Count < 4)
+            if (dumpsToValidate.Count < 4)
             {
                 System.Console.WriteLine("╔════════════════════════════════════════════════════════════════════════════════╗");
                 System.Console.WriteLine("║ VALIDATION SKIPPED - NOT ALL PERIODS CAPTURED                                  ║");
                 System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝");
-                System.Console.WriteLine($"\nFound {_dumps.Count}/4 dumps:");
-                foreach (var (label, _, _, _) in _dumps)
+                System.Console.WriteLine($"\nFound {dumpsToValidate.Count}/4 dumps:");
+                foreach (var (label, _, _, _) in dumpsToValidate)
                 {
                     System.Console.WriteLine($"  ✓ {label}");
                 }
                 System.Console.WriteLine("\nMissing:");
-                if (!_capturedMorning) System.Console.WriteLine("  ⏳ Morning (6:00 AM, timeOfDay ≈ 0.25)");
-                if (!_capturedNoon) System.Console.WriteLine("  ⏳ Noon (12:00 PM, timeOfDay ≈ 0.50)");
-                if (!_capturedEvening) System.Console.WriteLine("  ⏳ Evening (6:00 PM, timeOfDay ≈ 0.75)");
-                if (!_capturedNight) System.Console.WriteLine("  ⏳ Night (0:00 AM, timeOfDay ≈ 0.00 or > 0.90)");
+                var capturedLabels = new System.Collections.Generic.HashSet<string>();
+                foreach (var (label, _, _, _) in dumpsToValidate)
+                    capturedLabels.Add(label);
+
+                if (!capturedLabels.Contains("Morning")) System.Console.WriteLine("  ⏳ Morning (6:00 AM, timeOfDay ≈ 0.25)");
+                if (!capturedLabels.Contains("Noon")) System.Console.WriteLine("  ⏳ Noon (12:00 PM, timeOfDay ≈ 0.50)");
+                if (!capturedLabels.Contains("Evening")) System.Console.WriteLine("  ⏳ Evening (6:00 PM, timeOfDay ≈ 0.75)");
+                if (!capturedLabels.Contains("Night")) System.Console.WriteLine("  ⏳ Night (0:00 AM, timeOfDay ≈ 0.00 or > 0.90)");
                 System.Console.WriteLine("\nContinue playing through full day cycle to capture remaining periods.");
                 System.Console.WriteLine();
                 return;
             }
 
+            DoValidation(dumpsToValidate);
+        }
+
+        private static void DoValidation(System.Collections.Generic.List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> dumpsList)
+        {
             System.Console.WriteLine("╔════════════════════════════════════════════════════════════════════════════════╗");
             System.Console.WriteLine("║ PHASE 3.1 VALIDATION RESULTS - ALL 4 PERIODS CAPTURED                           ║");
             System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
@@ -126,7 +137,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Validate 1: All states are valid
             System.Console.WriteLine("VALIDATION 1: All states valid (no NaN/infinity)");
             bool check1 = true;
-            foreach (var (label, _, state, _) in _dumps)
+            foreach (var (label, _, state, _) in dumpsList)
             {
                 bool valid = state.IsValid();
                 System.Console.WriteLine($"  {label}: {(valid ? "✓" : "✗")}");
@@ -138,7 +149,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Validate 2: DirectionToSun is normalized
             System.Console.WriteLine("VALIDATION 2: DirectionToSun normalized");
             bool check2 = true;
-            foreach (var (label, _, state, _) in _dumps)
+            foreach (var (label, _, state, _) in dumpsList)
             {
                 bool normalized = state.IsNormalized();
                 System.Console.WriteLine($"  {label}: {(normalized ? "✓" : "✗")}");
@@ -150,7 +161,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Validate 3: LightTravelDirection is opposite
             System.Console.WriteLine("VALIDATION 3: LightTravelDirection is exactly opposite");
             bool check3 = true;
-            foreach (var (label, _, state, _) in _dumps)
+            foreach (var (label, _, state, _) in dumpsList)
             {
                 bool opposite = state.IsLightTravelDirectionValid();
                 System.Console.WriteLine($"  {label}: {(opposite ? "✓" : "✗")}");
@@ -161,7 +172,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Validate 4: Noon has mostly upward direction
             System.Console.WriteLine("VALIDATION 4: Noon - DirectionToSun points upward");
-            var noon = _dumps.Find(d => d.label.Contains("Noon"));
+            var noon = dumpsList.Find(d => d.label.Contains("Noon"));
             bool check4 = noon.state.DirectionToSun.Y < -0.5f;  // Negative Y means up
             System.Console.WriteLine($"  Y component: {noon.state.DirectionToSun.Y:F4} {(check4 ? "✓" : "✗")}");
             allValid = allValid && check4;
@@ -169,8 +180,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Validate 5: Morning and Evening have opposite horizontal signs
             System.Console.WriteLine("VALIDATION 5: Morning/Evening have opposite horizontal components");
-            var morning = _dumps.Find(d => d.label.Contains("Morning"));
-            var evening = _dumps.Find(d => d.label.Contains("Evening"));
+            var morning = dumpsList.Find(d => d.label.Contains("Morning"));
+            var evening = dumpsList.Find(d => d.label.Contains("Evening"));
             bool check5 = System.Math.Sign(morning.state.DirectionToSun.X) !=
                          System.Math.Sign(evening.state.DirectionToSun.X);
             System.Console.WriteLine($"  Morning X: {morning.state.DirectionToSun.X:F4}");
@@ -181,7 +192,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Validate 6: Night has IsAboveHorizon=false
             System.Console.WriteLine("VALIDATION 6: Night - IsAboveHorizon=false");
-            var night = _dumps.Find(d => d.label.Contains("Night"));
+            var night = dumpsList.Find(d => d.label.Contains("Night"));
             bool check6 = !night.state.IsAboveHorizon;
             System.Console.WriteLine($"  IsAboveHorizon: {night.state.IsAboveHorizon} {(check6 ? "✓" : "✗")}");
             allValid = allValid && check6;
@@ -197,7 +208,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Validate 8: Each dump has a valid UpdateId
             System.Console.WriteLine("VALIDATION 8: Each dump has valid UpdateId (frame consistency)");
             bool check8 = true;
-            foreach (var (label, _, state, updateId) in _dumps)
+            foreach (var (label, _, state, updateId) in dumpsList)
             {
                 bool validId = updateId > 0;
                 System.Console.WriteLine($"  {label}: UpdateId={updateId} {(validId ? "✓" : "✗")}");
@@ -217,8 +228,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 System.Console.WriteLine("║ ✗ SOME VALIDATIONS FAILED - REVIEW ABOVE                                        ║");
             }
             System.Console.WriteLine("╚════════════════════════════════════════════════════════════════════════════════╝\n");
-
-            _dumps.Clear();
         }
 
         /// <summary>
