@@ -13,16 +13,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// </summary>
     public static class Phase3_1RuntimeDumpCapture
     {
-        private const bool ENABLE_DIAGNOSTICS = false; // Set to true for Phase3_1Clock logging
+        // Diagnostics disabled: zero overhead (no allocations, no collections, no checks)
+        // Diagnostics enabled: may allocate for capture, strings, collections, logging
 
-        // Current cycle being built
-        private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _currentCycleDumps = new();
+        private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _currentCycleDumps;
         private static bool _capturedMorning = false;
         private static bool _capturedNoon = false;
         private static bool _capturedEvening = false;
         private static bool _capturedNight = false;
 
-        // Last completed and validated cycle
         private static List<(string label, float timeOfDay, LightingV3SunState state, int updateId)> _lastCompletedCycleDumps = null;
 
         private static bool _isConnected = false;
@@ -35,8 +34,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             int updateId,
             GameSolarProvider solarProvider)
         {
+            // When diagnostics disabled: zero overhead, immediate return
+            if (!LightingV3Diagnostics.EnablePhase31RuntimeValidation)
+                return;
+
             if (solarProvider == null)
                 return;
+
+            // Lazy initialize collections (only when diagnostics enabled)
+            if (_currentCycleDumps == null)
+                _currentCycleDumps = new List<(string, float, LightingV3SunState, int)>();
 
             // Log connection once
             if (!_isConnected)
@@ -46,17 +53,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
 
             // Log clock state once per second (diagnostic only)
-            if (ENABLE_DIAGNOSTICS)
+            long nowTicks = System.DateTime.UtcNow.Ticks;
+            if ((nowTicks - _lastClockLogTicks) / 10_000_000.0 >= 1.0)
             {
-                long nowTicks = System.DateTime.UtcNow.Ticks;
-                if ((nowTicks - _lastClockLogTicks) / 10_000_000.0 >= 1.0)
-                {
-                    _lastClockLogTicks = nowTicks;
-                    float delta = timeOfDay01 - _lastTimeOfDay;
-                    if (delta < -0.5f) delta += 1.0f;
-                    System.Console.WriteLine($"[Phase3_1Clock] PreviousTimeOfDay={_lastTimeOfDay:F4} CurrentTimeOfDay={timeOfDay01:F4} " +
-                        $"Delta={delta:F6} UpdateId={updateId}");
-                }
+                _lastClockLogTicks = nowTicks;
+                float delta = timeOfDay01 - _lastTimeOfDay;
+                if (delta < -0.5f) delta += 1.0f;
+                System.Console.WriteLine($"[Phase3_1Clock] PreviousTimeOfDay={_lastTimeOfDay:F4} CurrentTimeOfDay={timeOfDay01:F4} " +
+                    $"Delta={delta:F6} UpdateId={updateId}");
             }
 
             // Detect period crossings using mathematical method

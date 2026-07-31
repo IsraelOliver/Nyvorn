@@ -355,17 +355,20 @@ namespace Nyvorn.Source.Game.States
                         session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount);
                 }
 
-                // Phase 3.1: Auto-capture sun state dumps (must be in Update, not Draw)
-                var frameData = session.ViewCoordinator.LightingV3Foundation.GetFrameData();
-                if (frameData.HasValue && session.ViewCoordinator.SunCycleProvider != null)
+                // Phase 3.1: Auto-capture sun state dumps (diagnostics only)
+                if (Engine.Graphics.LightingPipeline.LightingV3Diagnostics.EnablePhase31RuntimeValidation)
                 {
-                    var solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(session.ViewCoordinator.SunCycleProvider);
-                    float timeOfDay01 = solarProvider.GetTimeOfDay01();
-                    Engine.Graphics.LightingPipeline.Phase3_1RuntimeDumpCapture.Update(
-                        timeOfDay01,
-                        frameData.Value.SunState,
-                        frameData.Value.UpdateId,
-                        solarProvider);
+                    var frameData = session.ViewCoordinator.LightingV3Foundation.GetFrameData();
+                    if (frameData.HasValue && session.ViewCoordinator.SunCycleProvider != null)
+                    {
+                        var solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(session.ViewCoordinator.SunCycleProvider);
+                        float timeOfDay01 = solarProvider.GetTimeOfDay01();
+                        Engine.Graphics.LightingPipeline.Phase3_1RuntimeDumpCapture.Update(
+                            timeOfDay01,
+                            frameData.Value.SunState,
+                            frameData.Value.UpdateId,
+                            solarProvider);
+                    }
                 }
 
                 // Ctrl+Alt+1: Cycle debug visualization
