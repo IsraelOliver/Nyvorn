@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.World;
 using System;
@@ -107,8 +108,14 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         // brighten or tint warm.
         public void Update(float dt, Vector2 cameraPosition, float cameraZoom, int screenWidth, int screenHeight, Color skyColor)
         {
+            // PHASE 0: Pipeline isolation - skip execution if not in Legacy mode
+            if (!LightingPipelineCoordinator.I.IsLegacyMode)
+                return;
+
             if (worldMap == null || screenWidth <= 0 || screenHeight <= 0 || cameraZoom <= 0f)
                 return;
+
+            LightingPipelineCoordinator.I.RecordLegacyLightingUpdate();
 
             int tileSize = worldMap.TileSize;
             // Rounded up to a whole multiple of the tile size (instead of the raw screenWidth/Zoom,
@@ -207,6 +214,8 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         // (geometry/stencil-based masking), not a change to what value open tiles hold.
         public void CopyLightGridTo(Color[] destination)
         {
+            LightingPipelineCoordinator.I.RecordLegacyLightGridCopy();
+
             for (int localY = 0; localY < bufferHeight; localY++)
             {
                 int tileY = bufferOriginTileY + localY;
@@ -229,6 +238,8 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
         // multiply to apply to.
         public void CopyGlowGridTo(Color[] destination)
         {
+            LightingPipelineCoordinator.I.RecordLegacyGlowGridCopy();
+
             int cellCount = bufferWidth * bufferHeight;
             for (int i = 0; i < cellCount; i++)
                 destination[i] = ToColor(glowR[i], glowG[i], glowB[i]);

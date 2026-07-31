@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Input;
 using System;
 using Nyvorn.Source.Engine.Graphics;
+using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.Combat;
@@ -608,6 +609,8 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
+            LightingPipelineCoordinator.I.RecordLegacyNightOverlayDraw();
+
             Color tint = EnvironmentSystem.SkyState.NightOverlayTint;
 
             // Soften the darkening while it's raining and the player has a roof over them -

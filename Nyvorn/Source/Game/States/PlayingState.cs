@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using Nyvorn.Source.Engine.Graphics.LightingV2;
 using Nyvorn.Source.Engine.Input;
 using System;
@@ -214,25 +215,26 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && input.ToggleConstructionModePressed)
                 session.ToggleConstructionMode();
 
-            // DEBUG HOTKEY: Ctrl+L to toggle lighting pipeline (toggles both independently)
-            // Presets:
-            //   Legacy mode: Pipeline=OLD, NightOverlay=ON
-            //   New mode:    Pipeline=NEW, NightOverlay=OFF
+            // DEBUG HOTKEY: Ctrl+Shift+L to toggle lighting pipeline (PHASE 0: Isolated modes)
+            // Legacy mode: Standard rendering path with WorldLightingSystem
+            // V3 mode: New architecture (not yet implemented, uses composition neutral)
             lightingPipelineToggleCooldown -= dt;
             if (!handledConsoleThisFrame && lightingPipelineToggleCooldown <= 0f)
             {
                 bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
                 bool lPressed = keyboard.IsKeyDown(Keys.L);
 
-                if (ctrlPressed && lPressed && !previousConsoleKeyboard.IsKeyDown(Keys.L))
+                if (ctrlPressed && shiftPressed && lPressed && !previousConsoleKeyboard.IsKeyDown(Keys.L))
                 {
-                    session.UseNewLightingPipeline = !session.UseNewLightingPipeline;
-                    session.LegacyNightOverlayMode = !session.LegacyNightOverlayMode;
+                    var newMode = LightingPipelineCoordinator.I.ActiveMode == Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy
+                        ? Engine.Graphics.LightingPipeline.LightingPipelineMode.V3
+                        : Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
+
+                    LightingPipelineCoordinator.I.SetMode(newMode);
                     lightingPipelineToggleCooldown = 0.2f;
 
-                    string pipelineMode = session.UseNewLightingPipeline ? "NEW" : "OLD";
-                    string overlayMode = session.LegacyNightOverlayMode ? "ON" : "OFF";
-                    consoleMessage = $"[DEBUG] Lighting Pipeline: {pipelineMode} | Night Overlay: {overlayMode}";
+                    consoleMessage = $"[DEBUG] Lighting Pipeline Mode: {newMode}";
                 }
             }
 
@@ -320,6 +322,8 @@ namespace Nyvorn.Source.Game.States
 
         public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
         {
+            // PHASE 0: Start frame for pipeline isolation tracking
+            LightingPipelineCoordinator.I.BeginFrame();
 
             // Real wall-clock time between Draw calls, not GameTime - MonoGame's default fixed
             // timestep can report a near-constant ElapsedGameTime from both Update and Draw
@@ -348,21 +352,37 @@ namespace Nyvorn.Source.Game.States
 
             // Uploaded once per frame - the light data itself doesn't change between the 1-3 wrapped
             // copies drawn below, only where on screen each copy places it.
-            session.PrepareWorldLighting(graphicsDevice);
-            session.PrepareTorchGlow(graphicsDevice);
+            // PHASE 0: Only prepare legacy lighting if in Legacy mode
+            if (LightingPipelineCoordinator.I.IsLegacyMode)
+            {
+                session.PrepareWorldLighting(graphicsDevice);
+                session.PrepareTorchGlow(graphicsDevice);
+            }
 
-            // Lighting V2 (PHASE 2: Composition Neutral)
-            if (session.ViewCoordinator.LightingPipelineMode == Engine.Graphics.LightingV2.LightingPipelineMode.V2)
+            try
             {
-                DrawWithLightingV2Pipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+                // PHASE 0: Use pipeline coordinator to decide rendering path
+                if (LightingPipelineCoordinator.I.IsLegacyMode)
+                {
+                    DrawWithLegacyPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+                }
+                else  // V3 mode
+                {
+                    DrawWithCompositionNeutralPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+                }
             }
-            else if (session.UseNewLightingPipeline)
+            finally
             {
-                DrawWithNewLightingPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-            }
-            else
-            {
-                DrawWithLegacyPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+                // PHASE 0: End frame for pipeline isolation tracking
+                LightingPipelineCoordinator.I.EndFrame();
+
+                // Validate isolation in debug mode
+#if DEBUG
+                if (!LightingPipelineCoordinator.I.Metrics.IsIsolationValid)
+                {
+                    System.Console.WriteLine($"[WARNING] Pipeline isolation violation: {LightingPipelineCoordinator.I.Metrics}");
+                }
+#endif
             }
         }
 
@@ -1222,6 +1242,145 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTorchGlow(spriteBatch, worldOffset);
                 spriteBatch.End();
             }
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            session.DrawHud(spriteBatch, screenW, screenH);
+            if (minimapVisible)
+                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
+            if (showFps)
+                DrawFpsCounter(spriteBatch);
+            if (consoleOpen)
+                DrawConsole(spriteBatch, screenW);
+            spriteBatch.End();
+        }
+
+        /// <summary>
+        /// PHASE 0: Composition-neutral rendering for V3 mode validation.
+        /// Renders the scene without any lighting applied.
+        /// This is used to validate V3 is correctly isolated and not executing legacy code.
+        /// No lighting texture, no torch glow, no night overlay.
+        /// </summary>
+        private void DrawWithCompositionNeutralPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
+                                                        IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            LightingPipelineCoordinator.I.RecordV3Composite();
+
+            // Clear backbuffer
+            graphicsDevice.Clear(Color.Black);
+
+            // Atmospheric background (sky, sun, moons, mountains)
+            DrawAtmosphericBackground(spriteBatch, screenW, screenH);
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back);
+                session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                // PHASE 0: NO LIGHTING DRAWS HERE
+                // - Skipped: session.DrawWorldLighting (legacy light map multiply)
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawTerrainOverlay(spriteBatch);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
+                session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+            session.DrawEntities(spriteBatch, useNewLighting: false);
+            spriteBatch.End();
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawInteriorFocusOverlay(spriteBatch, screenW, screenH, worldOffset);
+                spriteBatch.End();
+            }
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                int loopIndex = visibleLoopOffsets[i];
+                float worldOffset = loopIndex * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.DrawTissueDebug(spriteBatch);
+                spriteBatch.End();
+            }
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            session.DrawRainFront(spriteBatch, screenW, screenH);
+            // PHASE 0: NO NIGHT OVERLAY DRAWN HERE (legacy only)
+
+            spriteBatch.End();
+
+            // PHASE 0: NO TORCH GLOW DRAWN HERE (legacy only)
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW, screenH);
