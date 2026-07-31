@@ -29,8 +29,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // Metrics
         public int ActiveTileCount { get; private set; }
         public int ActiveSampleCount { get; private set; }
-        public long ClassificationTimeMs { get; private set; }
-        public long OccluderBuildTimeMs { get; private set; }
+        public double ClassificationTimeMs { get; private set; }
+        public double OccluderBuildTimeMs { get; private set; }
         public int BufferResizeCount { get; private set; }
 
         /// <summary>
@@ -117,7 +117,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                                      _tileClassifications);
 
             startTime.Stop();
-            ClassificationTimeMs = startTime.ElapsedMilliseconds;
+            ClassificationTimeMs = startTime.Elapsed.TotalMilliseconds;
         }
 
         /// <summary>
@@ -142,7 +142,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
 
             startTime.Stop();
-            OccluderBuildTimeMs = startTime.ElapsedMilliseconds;
+            OccluderBuildTimeMs = startTime.Elapsed.TotalMilliseconds;
         }
 
         /// <summary>
@@ -175,8 +175,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine($"Active Region: {_activeRegion}");
             System.Console.WriteLine($"Active Tiles: {ActiveTileCount}");
             System.Console.WriteLine($"Active Samples: {ActiveSampleCount}");
-            System.Console.WriteLine($"Classification Time: {ClassificationTimeMs}ms");
-            System.Console.WriteLine($"Occluder Build Time: {OccluderBuildTimeMs}ms");
+            System.Console.WriteLine($"Classification Time: {ClassificationTimeMs:F3}ms");
+            System.Console.WriteLine($"Occluder Build Time: {OccluderBuildTimeMs:F3}ms");
             System.Console.WriteLine($"Buffer Resize Count: {BufferResizeCount}");
             System.Console.WriteLine($"Occluder Field: {_occluderField}");
             System.Console.WriteLine($"Active Providers: {_occluderProviders.Count}");
@@ -184,6 +184,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             {
                 System.Console.WriteLine($"  - {provider.ProviderName}");
             }
+        }
+
+        /// <summary>
+        /// Dispose foundation resources (if any).
+        /// Safe to call multiple times.
+        /// </summary>
+        public void Dispose()
+        {
+            // Currently no unmanaged resources, but available for future extensions
+            // (CUDA buffers, native memory pools, etc)
         }
     }
 }
