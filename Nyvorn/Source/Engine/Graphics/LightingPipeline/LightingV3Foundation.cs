@@ -21,6 +21,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private readonly LightingSamplingConfig _samplingConfig;
         private readonly ILightingWorldGeometryProvider _geometryProvider;
         private readonly List<IOccluderProvider> _occluderProviders;
+        private readonly ISolarProvider _solarProvider;
 
         private ActiveLightingRegion _activeRegion;
 
@@ -48,9 +49,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// Create foundation with custom sampling configuration.
         /// </summary>
         public LightingV3Foundation(ILightingWorldGeometryProvider geometryProvider, LightingSamplingConfig samplingConfig)
+            : this(geometryProvider, samplingConfig, null)
+        {
+        }
+
+        /// <summary>
+        /// Create foundation with sampling configuration and solar provider.
+        /// </summary>
+        public LightingV3Foundation(ILightingWorldGeometryProvider geometryProvider, LightingSamplingConfig samplingConfig, ISolarProvider solarProvider)
         {
             _geometryProvider = geometryProvider ?? throw new ArgumentNullException(nameof(geometryProvider));
             _samplingConfig = samplingConfig ?? throw new ArgumentNullException(nameof(samplingConfig));
+            _solarProvider = solarProvider;
             _occluderProviders = new List<IOccluderProvider>();
 
             _activeRegion = new ActiveLightingRegion(_samplingConfig);
@@ -139,6 +149,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _backSlot.ProbeSampleWorldY = probeWorldY;
             _backSlot.ProbeSunOpacity = probeSunOpacity;
             _backSlot.ProbeLocalOpacity = probeLocalOpacity;
+
+            // Get solar state from provider (Phase 3.1)
+            if (_solarProvider != null)
+            {
+                _backSlot.SunState = _solarProvider.GetSunState();
+            }
+            else
+            {
+                _backSlot.SunState = LightingV3SunState.Night();  // Default if no provider
+            }
 
             // CRITICAL: Publish frame atomically after both buffers are ready
             _updateId++;

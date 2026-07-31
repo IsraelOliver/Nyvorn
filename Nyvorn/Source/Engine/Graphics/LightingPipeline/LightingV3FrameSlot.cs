@@ -41,6 +41,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public float[] SunOpacityBuffer { get; set; }
         public float[] LocalOpacityBuffer { get; set; }
 
+        // Directional sun state (Phase 3)
+        public LightingV3SunState SunState { get; set; }
+
         // Probe for validation
         public int ProbeLocalSampleX { get; set; }
         public int ProbeLocalSampleY { get; set; }
@@ -100,6 +103,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public readonly float[] SunOpacityBuffer;
         public readonly float[] LocalOpacityBuffer;
 
+        // Directional sun state (Phase 3)
+        public readonly LightingV3SunState SunState;
+
         // Probe values
         public readonly int ProbeLocalSampleX;
         public readonly int ProbeLocalSampleY;
@@ -115,6 +121,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             TileClassifications = slot.TileClassifications;
             SunOpacityBuffer = slot.SunOpacityBuffer;
             LocalOpacityBuffer = slot.LocalOpacityBuffer;
+            SunState = slot.SunState;
             ProbeLocalSampleX = slot.ProbeLocalSampleX;
             ProbeLocalSampleY = slot.ProbeLocalSampleY;
             ProbeSampleWorldX = slot.ProbeSampleWorldX;

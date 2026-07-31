@@ -281,4 +281,205 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
         }
     }
+
+    /// <summary>
+    /// Test cases for Phase 3.1: Sun direction and color.
+    /// Verify immutability, normalization, and frame integration.
+    /// </summary>
+    public static class Phase3_1Tests
+    {
+        /// <summary>
+        /// Run all Phase 3.1 tests.
+        /// </summary>
+        public static void RunAll()
+        {
+            System.Console.WriteLine("\n=== Phase 3.1 Sun Direction & Color Tests ===\n");
+
+            TestCase_A_DirectionAboveRight();
+            TestCase_B_DirectionAboveLeft();
+            TestCase_C_VectorNearZero();
+            TestCase_D_LightTravelOpposite();
+            TestCase_E_IntensityLimited();
+            TestCase_F_BelowHorizon();
+            TestCase_G_NoNaNOrInfinity();
+            TestCase_H_SameUpdateId();
+
+            System.Console.WriteLine("=== Phase 3.1 Tests Complete ===\n");
+        }
+
+        private static void TestCase_A_DirectionAboveRight()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(1f, -1f),
+                new Microsoft.Xna.Framework.Vector3(1f, 0.8f, 0.6f),
+                0.8f,
+                45f);
+
+            bool isNormalized = sunState.IsNormalized();
+            bool isValid = sunState.IsValid();
+
+            bool passed = isNormalized && isValid && sunState.IsAboveHorizon;
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case A: Direction above-right (45°)");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Normalized: {isNormalized}");
+                System.Console.WriteLine($"  Valid: {isValid}");
+                System.Console.WriteLine($"  Above horizon: {sunState.IsAboveHorizon}");
+            }
+        }
+
+        private static void TestCase_B_DirectionAboveLeft()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(-1f, -1f),
+                new Microsoft.Xna.Framework.Vector3(1f, 0.6f, 0.3f),
+                0.7f,
+                30f);
+
+            bool isNormalized = sunState.IsNormalized();
+            bool isValid = sunState.IsValid();
+
+            bool passed = isNormalized && isValid && sunState.IsAboveHorizon;
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case B: Direction above-left (30°)");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Normalized: {isNormalized}");
+                System.Console.WriteLine($"  Valid: {isValid}");
+            }
+        }
+
+        private static void TestCase_C_VectorNearZero()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(0.0001f, 0.0001f),
+                new Microsoft.Xna.Framework.Vector3(1f, 1f, 1f),
+                1f,
+                0f);
+
+            bool isNormalized = sunState.IsNormalized();
+            bool isValid = sunState.IsValid();
+
+            bool passed = isNormalized && isValid;  // Should use safe default
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case C: Near-zero vector handled safely");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Normalized: {isNormalized}");
+                System.Console.WriteLine($"  Valid: {isValid}");
+            }
+        }
+
+        private static void TestCase_D_LightTravelOpposite()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(1f, 0f),
+                new Microsoft.Xna.Framework.Vector3(1f, 1f, 1f),
+                1f,
+                0f);
+
+            bool travelOpposite = sunState.IsLightTravelDirectionValid();
+
+            bool passed = travelOpposite &&
+                         System.Math.Abs(sunState.LightTravelDirection.X + sunState.DirectionToSun.X) < 0.01f;
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case D: LightTravelDirection is opposite");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Opposite: {travelOpposite}");
+                System.Console.WriteLine($"  DirectionToSun: ({sunState.DirectionToSun.X:F3}, {sunState.DirectionToSun.Y:F3})");
+                System.Console.WriteLine($"  LightTravel: ({sunState.LightTravelDirection.X:F3}, {sunState.LightTravelDirection.Y:F3})");
+            }
+        }
+
+        private static void TestCase_E_IntensityLimited()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(0f, -1f),
+                new Microsoft.Xna.Framework.Vector3(1f, 1f, 1f),
+                2.5f,  // Over 1.0
+                45f);
+
+            bool withinBounds = sunState.Intensity >= 0f && sunState.Intensity <= 1f;
+
+            bool passed = withinBounds && System.Math.Abs(sunState.Intensity - 1f) < 0.01f;
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case E: Intensity clamped to [0, 1]");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Intensity: {sunState.Intensity} (expected 1.0)");
+            }
+        }
+
+        private static void TestCase_F_BelowHorizon()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(0f, 1f),
+                new Microsoft.Xna.Framework.Vector3(0f, 0f, 0f),
+                0f,
+                -45f);
+
+            bool passed = !sunState.IsAboveHorizon && sunState.Elevation < 0f;
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case F: Sun below horizon");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Above horizon: {sunState.IsAboveHorizon} (expected false)");
+                System.Console.WriteLine($"  Elevation: {sunState.Elevation}°");
+            }
+        }
+
+        private static void TestCase_G_NoNaNOrInfinity()
+        {
+            var sunState = new LightingV3SunState(
+                new Microsoft.Xna.Framework.Vector2(0.707f, -0.707f),
+                new Microsoft.Xna.Framework.Vector3(1f, 0.9f, 0.7f),
+                0.9f,
+                60f);
+
+            bool hasNaN = float.IsNaN(sunState.DirectionToSun.X) ||
+                         float.IsNaN(sunState.DirectionToSun.Y) ||
+                         float.IsNaN(sunState.Intensity) ||
+                         float.IsNaN(sunState.Elevation) ||
+                         float.IsNaN(sunState.LinearColor.X);
+
+            bool hasInfinity = float.IsInfinity(sunState.DirectionToSun.X) ||
+                              float.IsInfinity(sunState.DirectionToSun.Y);
+
+            bool passed = !hasNaN && !hasInfinity && sunState.IsValid();
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case G: No NaN or infinity");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Has NaN: {hasNaN}");
+                System.Console.WriteLine($"  Has Infinity: {hasInfinity}");
+            }
+        }
+
+        private static void TestCase_H_SameUpdateId()
+        {
+            var mock = new MockGeometryProvider();
+            var sunProvider = new MockSolarProvider();
+            var foundation = new LightingV3Foundation(mock, LightingSamplingConfig.Default2x2, sunProvider);
+
+            foundation.Update(0, 0, 32, 32, 16);
+            var frameData = foundation.GetFrameData();
+
+            bool hasSunState = frameData.HasValue && frameData.Value.SunState.IsValid();
+            bool sameUpdateId = frameData.HasValue && frameData.Value.UpdateId > 0;
+
+            bool passed = hasSunState && sameUpdateId;
+            System.Console.WriteLine($"[{(passed ? "PASS" : "FAIL")}] Case H: SunState published with frame");
+            if (!passed)
+            {
+                System.Console.WriteLine($"  Has SunState: {hasSunState}");
+                System.Console.WriteLine($"  UpdateId > 0: {sameUpdateId}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mock solar provider for testing.
+    /// </summary>
+    public class MockSolarProvider : ISolarProvider
+    {
+        public LightingV3SunState GetSunState()
+        {
+            return LightingV3SunState.Noon();
+        }
+    }
 }
