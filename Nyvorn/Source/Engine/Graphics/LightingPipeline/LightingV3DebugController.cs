@@ -82,7 +82,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// <summary>
         /// Cycle to next visualization mode.
         /// </summary>
-        private void CycleMode()
+        public void CycleMode()
         {
             _currentMode = (LightingDebugMode)(((int)_currentMode + 1) % 5);
             System.Console.WriteLine($"[LightingV3Debug] Mode → {_currentMode}");

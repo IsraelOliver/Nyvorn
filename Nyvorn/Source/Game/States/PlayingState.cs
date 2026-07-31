@@ -333,8 +333,8 @@ namespace Nyvorn.Source.Game.States
 
             session.FollowCamera(dt, screenW, screenH);
 
-            // Phase 2: Update LightingV3Foundation (V3 mode only)
-            if (LightingPipelineCoordinator.I.IsV3Mode)
+            // Phase 2: Update LightingV3Foundation (V3 mode only) - ALWAYS ACTIVE FOR VALIDATION
+            if (LightingPipelineCoordinator.I.IsV3Mode && session.ViewCoordinator.LightingV3Foundation != null)
             {
                 session.ViewCoordinator.UpdateLightingV3(
                     session.Camera.Position.X,
@@ -342,15 +342,38 @@ namespace Nyvorn.Source.Game.States
                     screenW,
                     screenH);
 
-#if DEBUG
-                // F6/F7 input handling for Phase 2 debug
-                if (session.ViewCoordinator.LightingV3DebugController != null)
-                {
-                    session.ViewCoordinator.LightingV3DebugController.Update(dt);
+                System.Console.WriteLine("[LightingV3Probe] First foundation update | FrameMode: V3 | ActiveTiles: " +
+                    session.ViewCoordinator.LightingV3Foundation.ActiveTileCount + " | ActiveSamples: " +
+                    session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount);
 
-                    // F7: Dump metrics
-                    if (keyboard.IsKeyDown(Keys.F7) && !previousConsoleKeyboard.IsKeyDown(Keys.F7))
+                // Ctrl+Alt+1: Cycle debug visualization
+                if (!handledConsoleThisFrame)
+                {
+                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
+                    bool onePressed = keyboard.IsKeyDown(Keys.D1);
+
+                    if (ctrlPressed && altPressed && onePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D1))
                     {
+                        if (session.ViewCoordinator.LightingV3DebugController != null)
+                        {
+                            session.ViewCoordinator.LightingV3DebugController.CycleMode();
+                            var mode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
+                            System.Console.WriteLine("[LightingV3Probe] Debug hotkey detected | Mode: " + mode);
+                        }
+                    }
+                }
+
+                // Ctrl+Alt+2: Dump metrics
+                if (!handledConsoleThisFrame)
+                {
+                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
+                    bool twoPressed = keyboard.IsKeyDown(Keys.D2);
+
+                    if (ctrlPressed && altPressed && twoPressed && !previousConsoleKeyboard.IsKeyDown(Keys.D2))
+                    {
+                        System.Console.WriteLine("[LightingV3Probe] Metrics hotkey detected");
                         if (session.ViewCoordinator.LightingV3Foundation != null)
                         {
                             System.Console.WriteLine("\n[LightingV3 Foundation Metrics]");
@@ -362,7 +385,6 @@ namespace Nyvorn.Source.Game.States
                         }
                     }
                 }
-#endif
             }
 
             previousConsoleKeyboard = keyboard;
@@ -419,8 +441,7 @@ namespace Nyvorn.Source.Game.States
                     // PHASE 1: Use separated RenderTargets for V3 composition
                     DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
 
-                    // PHASE 2: Draw debug visualization (after composition, before effects)
-#if DEBUG
+                    // PHASE 2: Draw debug visualization (after composition, before effects) - ALWAYS VISIBLE FOR VALIDATION
                     if (session.ViewCoordinator.LightingV3DebugController != null && session.ViewCoordinator.LightingV3DebugRenderer != null)
                     {
                         var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
@@ -429,15 +450,45 @@ namespace Nyvorn.Source.Game.States
                             : "";
 
                         spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+
+                        // Fixed overlay proof: "V3 FOUNDATION ACTIVE" with update/draw counts
+                        System.Console.WriteLine("[LightingV3Probe] First debug draw callsite | Mode: " + debugMode);
+
                         session.ViewCoordinator.LightingV3DebugRenderer.Render(
                             spriteBatch,
                             session.ViewCoordinator.LightingV3Foundation,
                             debugMode,
-                            session.World.TileSize,
+                            session.WorldMap.TileSize,
                             modeConfirmation);
+
+                        // Draw magenta rectangle proof (20x20) in bottom-right corner
+                        var magentaPixel = new Color(255, 0, 255, 255);
+                        spriteBatch.Draw(
+                            consolePixel,
+                            new Rectangle(screenW - 20, screenH - 20, 20, 20),
+                            magentaPixel);
+
                         spriteBatch.End();
                     }
-#endif
+
+                    // Fixed overlay always visible: "V3 FOUNDATION ACTIVE" proof
+                    if (session.ViewCoordinator.LightingV3Foundation != null)
+                    {
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+
+                        // Draw semi-transparent background for text
+                        spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 250, 40), new Color(0, 0, 0, 128));
+
+                        // Draw fixed overlay text with update/draw proof
+                        var updateCount = session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount;
+                        var metricsText = $"V3 FOUNDATION ACTIVE | Samples: {updateCount}";
+
+                        // Using a simple text rendering approach if SpriteFont available
+                        // For now, proof is magenta rect + console logs
+                        System.Console.WriteLine($"[LightingV3Probe] Overlay draw tick | Samples: {updateCount}");
+
+                        spriteBatch.End();
+                    }
                 }
             }
             finally

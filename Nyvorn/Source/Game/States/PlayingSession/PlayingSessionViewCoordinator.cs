@@ -127,13 +127,10 @@ namespace Nyvorn.Source.Game.States
         private LightingV2Renderer lightingV2Renderer;
         private Engine.Graphics.LightingPipeline.LightingPipelineMode lightingPipelineMode = Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
 
-        // Phase 2: LightingV3Foundation
+        // Phase 2: LightingV3Foundation (Debug disabled - moved out of #if DEBUG for validation)
         private Engine.Graphics.LightingPipeline.LightingV3Foundation lightingV3Foundation;
-
-#if DEBUG
         private Engine.Graphics.LightingPipeline.LightingV3DebugController lightingV3DebugController;
         private Engine.Graphics.LightingPipeline.LightingV3DebugRenderer lightingV3DebugRenderer;
-#endif
 
         /// <summary>
         /// Lighting pipeline mode (OFFICIAL: New Pipeline):
@@ -200,10 +197,8 @@ namespace Nyvorn.Source.Game.States
 
         // Phase 2: LightingV3Foundation accessors
         public Engine.Graphics.LightingPipeline.LightingV3Foundation LightingV3Foundation => lightingV3Foundation;
-
-#if DEBUG
         public Engine.Graphics.LightingPipeline.LightingV3DebugController LightingV3DebugController => lightingV3DebugController;
-#endif
+        public Engine.Graphics.LightingPipeline.LightingV3DebugRenderer LightingV3DebugRenderer => lightingV3DebugRenderer;
 
         /// <summary>
         /// Initialize Lighting V2 subsystem with required data providers and graphics device.
@@ -251,11 +246,11 @@ namespace Nyvorn.Source.Game.States
 
             // Create foundation
             lightingV3Foundation = new Engine.Graphics.LightingPipeline.LightingV3Foundation(geometryAdapter);
+            System.Console.WriteLine("[LightingV3Probe] Foundation initialized");
 
-#if DEBUG
+            // Create debug system (always, for validation)
             lightingV3DebugController = new Engine.Graphics.LightingPipeline.LightingV3DebugController();
             lightingV3DebugRenderer = new Engine.Graphics.LightingPipeline.LightingV3DebugRenderer(graphicsDevice);
-#endif
         }
 
         /// <summary>
@@ -277,9 +272,7 @@ namespace Nyvorn.Source.Game.States
         public void DisposeLightingV3()
         {
             lightingV3Foundation?.Dispose();
-#if DEBUG
             lightingV3DebugRenderer?.Dispose();
-#endif
         }
 
         /// <summary>
