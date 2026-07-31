@@ -26,6 +26,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private LightingCellClassification[] _tileClassifications;
         private OccluderField _occluderField;
 
+        // Frame data snapshot (atomic publish after update)
+        private LightingV3FrameData _currentFrameData;
+        private int _updateId;
+        private int _tileSize;
+
         // Metrics
         public int ActiveTileCount { get; private set; }
         public int ActiveSampleCount { get; private set; }
@@ -99,6 +104,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Build occluder field
             BuildOccluderField();
+
+            // CRITICAL: Publish immutable frame data snapshot
+            // This ensures renderer never reads mismatched region/buffers
+            _tileSize = tileSize;
+            _updateId++;
+            _currentFrameData = new LightingV3FrameData(
+                _updateId,
+                _activeRegion,
+                _tileClassifications,
+                _occluderField,
+                tileSize);
+
+            System.Console.WriteLine($"[V3FoundationBuild] UpdateId: {_updateId} | WorldOrigin: ({_activeRegion.WorldOriginX}, {_activeRegion.WorldOriginY})");
         }
 
         /// <summary>
@@ -146,12 +164,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Get the active lighting region.
+        /// Get immutable frame data for current update.
+        /// Renderer MUST use this method, not GetActiveRegion/GetOccluderField separately.
+        /// </summary>
+        public LightingV3FrameData GetFrameData() => _currentFrameData;
+
+        /// <summary>
+        /// Get the active lighting region (DEPRECATED: use GetFrameData).
         /// </summary>
         public ActiveLightingRegion GetActiveRegion() => _activeRegion;
 
         /// <summary>
-        /// Get the occluder field (sun and local light opacity).
+        /// Get the occluder field (DEPRECATED: use GetFrameData).
         /// </summary>
         public OccluderField GetOccluderField() => _occluderField;
 
