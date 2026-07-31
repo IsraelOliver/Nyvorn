@@ -95,14 +95,14 @@ _lightingV3Foundation?.Dispose();
 
 **Hotkeys to Implement:**
 ```
-Ctrl+Shift+D  → Cycle debug modes:
+Ctrl+Shift+D  → Cycle Phase 2 debug visualization modes:
                 None
                 Classification (Blue/Green/Red)
                 SunOpacity (Grayscale)
                 LocalLightOpacity (Grayscale)
                 SampleGrid (Crosshairs)
 
-Ctrl+Shift+F  → Dump metrics to console
+Ctrl+Shift+F  → Dump Phase 2 foundation metrics to console
 ```
 
 **On-Screen Overlay (top-left corner, debug only):**

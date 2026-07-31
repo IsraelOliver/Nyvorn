@@ -7,8 +7,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// Handles hotkeys and state management.
     ///
     /// Hotkeys (only active in DEBUG):
-    /// - Ctrl+Shift+V: Cycle visualization modes
-    /// - Ctrl+Shift+F: Dump metrics to console
+    /// - Ctrl+Shift+D: Cycle Phase 2 visualization modes
+    /// - Ctrl+Shift+F: Dump Phase 2 foundation metrics to console
     /// </summary>
     public class LightingV3DebugController
     {
@@ -45,8 +45,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             var currentKeyboardState = Keyboard.GetState();
 
-            // Ctrl+Shift+V: Cycle debug modes
-            if (IsKeyPressed(Keys.V, currentKeyboardState, _lastKeyboardState))
+            // Ctrl+Shift+D: Cycle debug modes
+            if (IsKeyPressed(Keys.D, currentKeyboardState, _lastKeyboardState))
             {
                 CycleMode();
             }
