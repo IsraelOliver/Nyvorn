@@ -127,6 +127,14 @@ namespace Nyvorn.Source.Game.States
         private LightingV2Renderer lightingV2Renderer;
         private Engine.Graphics.LightingPipeline.LightingPipelineMode lightingPipelineMode = Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
 
+        // Phase 2: LightingV3Foundation
+        private Engine.Graphics.LightingPipeline.LightingV3Foundation lightingV3Foundation;
+
+#if DEBUG
+        private Engine.Graphics.LightingPipeline.LightingV3DebugController lightingV3DebugController;
+        private Engine.Graphics.LightingPipeline.LightingV3DebugRenderer lightingV3DebugRenderer;
+#endif
+
         /// <summary>
         /// Lighting pipeline mode (OFFICIAL: New Pipeline):
         /// - false (Legacy): Old pipeline (direct backbuffer rendering, night overlay always on)
@@ -190,6 +198,13 @@ namespace Nyvorn.Source.Game.States
         public LightingV2Renderer LightingV2Renderer => lightingV2Renderer;
         public LightingV2Resources LightingV2Resources => lightingV2Resources;
 
+        // Phase 2: LightingV3Foundation accessors
+        public Engine.Graphics.LightingPipeline.LightingV3Foundation LightingV3Foundation => lightingV3Foundation;
+
+#if DEBUG
+        public Engine.Graphics.LightingPipeline.LightingV3DebugController LightingV3DebugController => lightingV3DebugController;
+#endif
+
         /// <summary>
         /// Initialize Lighting V2 subsystem with required data providers and graphics device.
         /// Called once after PlayingSessionViewCoordinator is fully constructed.
@@ -219,6 +234,52 @@ namespace Nyvorn.Source.Game.States
 
             // Default to Legacy mode
             lightingPipelineMode = Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
+        }
+
+        /// <summary>
+        /// Initialize Phase 2: LightingV3Foundation with real geometry provider.
+        /// Called once after PlayingSessionViewCoordinator is constructed.
+        /// </summary>
+        public void InitializeLightingV3(GraphicsDevice graphicsDevice)
+        {
+            if (graphicsDevice == null)
+                return;
+
+            // Create geometry provider adapter
+            var worldDataProvider = new WorldDataAdapter(WorldMap);
+            var geometryAdapter = new Engine.Graphics.LightingPipeline.WorldDataGeometryAdapter(worldDataProvider);
+
+            // Create foundation
+            lightingV3Foundation = new Engine.Graphics.LightingPipeline.LightingV3Foundation(geometryAdapter);
+
+#if DEBUG
+            lightingV3DebugController = new Engine.Graphics.LightingPipeline.LightingV3DebugController();
+            lightingV3DebugRenderer = new Engine.Graphics.LightingPipeline.LightingV3DebugRenderer(graphicsDevice);
+#endif
+        }
+
+        /// <summary>
+        /// Update Phase 2 foundation (only in V3 mode).
+        /// Called from PlayingState.Update.
+        /// </summary>
+        public void UpdateLightingV3(float cameraX, float cameraY, int logicalWidth, int logicalHeight)
+        {
+            if (lightingV3Foundation == null)
+                return;
+
+            lightingV3Foundation.Update(cameraX, cameraY, logicalWidth, logicalHeight, WorldMap.TileSize);
+        }
+
+        /// <summary>
+        /// Dispose Phase 2 resources.
+        /// Called from PlayingState.OnExit.
+        /// </summary>
+        public void DisposeLightingV3()
+        {
+            lightingV3Foundation?.Dispose();
+#if DEBUG
+            lightingV3DebugRenderer?.Dispose();
+#endif
         }
 
         /// <summary>

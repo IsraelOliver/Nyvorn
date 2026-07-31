@@ -868,6 +868,9 @@ namespace Nyvorn.Source.Game.States
             // Initialize Lighting V2 subsystem (PHASE 1: structure only, no visual changes yet)
             viewCoordinator.InitializeLightingV2(graphicsDevice, dayNightCycle, environmentSystem);
 
+            // Initialize Phase 2: LightingV3Foundation (spatial and geometric foundation)
+            viewCoordinator.InitializeLightingV3(graphicsDevice);
+
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
                 RuntimeContext = runtimeContext,

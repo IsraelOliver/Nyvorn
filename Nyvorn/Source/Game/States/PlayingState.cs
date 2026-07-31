@@ -142,6 +142,7 @@ namespace Nyvorn.Source.Game.States
             session.ViewCoordinator.DisposePenumbraMap();
             session.ViewCoordinator.DisposeLightingV2();
             session.ViewCoordinator.DisposeV3RenderTargets();  // PHASE 1: Dispose V3 RenderTargets
+            session.ViewCoordinator.DisposeLightingV3();  // PHASE 2: Dispose V3 Foundation
         }
 
         public void Update(GameTime gameTime)
@@ -331,6 +332,39 @@ namespace Nyvorn.Source.Game.States
             }
 
             session.FollowCamera(dt, screenW, screenH);
+
+            // Phase 2: Update LightingV3Foundation (V3 mode only)
+            if (LightingPipelineCoordinator.I.IsV3Mode)
+            {
+                session.ViewCoordinator.UpdateLightingV3(
+                    session.Camera.Position.X,
+                    session.Camera.Position.Y,
+                    screenW,
+                    screenH);
+
+#if DEBUG
+                // F6/F7 input handling for Phase 2 debug
+                if (session.ViewCoordinator.LightingV3DebugController != null)
+                {
+                    session.ViewCoordinator.LightingV3DebugController.Update(dt);
+
+                    // F7: Dump metrics
+                    if (keyboard.IsKeyDown(Keys.F7) && !previousConsoleKeyboard.IsKeyDown(Keys.F7))
+                    {
+                        if (session.ViewCoordinator.LightingV3Foundation != null)
+                        {
+                            System.Console.WriteLine("\n[LightingV3 Foundation Metrics]");
+                            session.ViewCoordinator.LightingV3Foundation.DumpMetricsToConsole();
+                        }
+                        else
+                        {
+                            System.Console.WriteLine("[LightingV3] Foundation is not initialized.");
+                        }
+                    }
+                }
+#endif
+            }
+
             previousConsoleKeyboard = keyboard;
         }
 
@@ -384,6 +418,26 @@ namespace Nyvorn.Source.Game.States
                 {
                     // PHASE 1: Use separated RenderTargets for V3 composition
                     DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+
+                    // PHASE 2: Draw debug visualization (after composition, before effects)
+#if DEBUG
+                    if (session.ViewCoordinator.LightingV3DebugController != null && session.ViewCoordinator.LightingV3DebugRenderer != null)
+                    {
+                        var debugMode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
+                        var modeConfirmation = session.ViewCoordinator.LightingV3DebugController.ShowModeConfirmation
+                            ? session.ViewCoordinator.LightingV3DebugController.GetModeConfirmationText()
+                            : "";
+
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+                        session.ViewCoordinator.LightingV3DebugRenderer.Render(
+                            spriteBatch,
+                            session.ViewCoordinator.LightingV3Foundation,
+                            debugMode,
+                            session.World.TileSize,
+                            modeConfirmation);
+                        spriteBatch.End();
+                    }
+#endif
                 }
             }
             finally
