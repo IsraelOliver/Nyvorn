@@ -178,15 +178,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _backSlot.FrameId = _updateId;
             _backSlot.Region = new ActiveRegionSnapshot(_activeRegion, tileSize);
 
-            // Log probe when WorldOrigin changes
+            // Log probe when WorldOrigin changes (disabled during profiling)
             bool regionChanged = prevOriginX != _activeRegion.WorldOriginX ||
                                prevOriginY != _activeRegion.WorldOriginY;
-            if (regionChanged)
-            {
-                System.Console.WriteLine($"[V3FoundationPublish] UpdateId={_updateId} WorldOrigin=({_activeRegion.WorldOriginX},{_activeRegion.WorldOriginY}) " +
-                    $"ProbeIndex={probeIndex} ProbeWorld=({probeWorldX:F1},{probeWorldY:F1}) " +
-                    $"Sun={probeSunOpacity:F3} Local={probeLocalOpacity:F3}");
-            }
 
             // Swap buffers: front becomes the published data, back is next to build
             var temp = _frontSlot;
@@ -294,12 +288,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             startTime.Stop();
             SunVisibilityBuildTimeMs = startTime.Elapsed.TotalMilliseconds;
-
-            // Log metrics if diagnostics enabled
-            if (LightingV3Diagnostics.EnablePhase31RuntimeValidation && SunVisibilityRaysComputed > 0)
-            {
-                System.Console.WriteLine($"[Phase3_2A] SunVisibility: samples={SunVisibilityRaysComputed} time={SunVisibilityBuildTimeMs:F2}ms avg_cells={SunVisibilityCellsTraversed/(float)SunVisibilityRaysComputed:F1}");
-            }
         }
 
         /// <summary>

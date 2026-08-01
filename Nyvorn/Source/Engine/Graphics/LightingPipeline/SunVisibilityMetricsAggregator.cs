@@ -4,14 +4,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 {
     /// <summary>
     /// Zero-allocation metrics aggregator for Phase 3.2A SunVisibility.
-    /// Uses ring buffer for p95 calculation without allocating per update.
+    /// Ring buffers (circular) + scratch buffers (sort only) - no corruption.
+    /// P95 calculated only when requested, not every update.
     /// </summary>
     public class SunVisibilityMetricsAggregator
     {
-        private const int MaxSamples = 300;  // Ring buffer size for p95 calculation
-        private readonly float[] cellsPerRayBuffer = new float[MaxSamples];
-        private readonly float[] foundationTimeBuffer = new float[MaxSamples];
-        private readonly float[] sunVisibilityTimeBuffer = new float[MaxSamples];
+        private const int MaxSamples = 300;
+
+        // Ring buffers: preserve circular data
+        private readonly float[] cellsPerRayRing = new float[MaxSamples];
+        private readonly float[] foundationTimeRing = new float[MaxSamples];
+        private readonly float[] sunVisibilityTimeRing = new float[MaxSamples];
+
+        // Scratch buffers: used ONLY for sorting (p95 calculation)
+        private readonly float[] cellsPerRayScratch = new float[MaxSamples];
+        private readonly float[] foundationTimeScratch = new float[MaxSamples];
+        private readonly float[] sunVisibilityTimeScratch = new float[MaxSamples];
 
         private int ringBufferIndex = 0;
         private int samplesCollected = 0;
@@ -61,12 +69,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             AccumulatedFoundationTimeMs += foundationTimeMs;
             AccumulatedSunVisibilityTimeMs += sunVisibilityTimeMs;
 
-            // Add to ring buffer for p95
             if (samplesCollected < MaxSamples)
                 samplesCollected++;
 
-            foundationTimeBuffer[ringBufferIndex] = (float)foundationTimeMs;
-            sunVisibilityTimeBuffer[ringBufferIndex] = (float)sunVisibilityTimeMs;
+            foundationTimeRing[ringBufferIndex] = (float)foundationTimeMs;
+            sunVisibilityTimeRing[ringBufferIndex] = (float)sunVisibilityTimeMs;
             ringBufferIndex = (ringBufferIndex + 1) % MaxSamples;
         }
 
@@ -84,46 +91,49 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 RaysComputed++;
                 CellsTraversed += cellsVisited;
 
-                // Store for p95 calculation
                 if (samplesCollected < MaxSamples)
                     samplesCollected++;
 
-                cellsPerRayBuffer[ringBufferIndex] = cellsVisited;
+                cellsPerRayRing[ringBufferIndex] = cellsVisited;
 
                 if (wasFree) FreeRays++;
                 if (wasBlocked) BlockedRays++;
                 if (guardHit) GuardLimitHits++;
-
-                // Count early outs (if cellsVisited > 0 but blocked, likely early exit)
                 if (wasBlocked && cellsVisited > 0) EarlyOuts++;
             }
         }
 
-        public float GetP95(float[] buffer)
+        private float CalculateP95(float[] ringBuffer)
         {
             if (samplesCollected < 3)
                 return 0f;
 
+            // Copy ring buffer to scratch buffer (preserving ring, not sorting it)
+            Array.Copy(ringBuffer, 0, foundationTimeScratch, 0, samplesCollected);
+
+            // Sort ONLY scratch buffer
+            Array.Sort(foundationTimeScratch, 0, samplesCollected);
+
             int p95Index = (int)Math.Ceiling(samplesCollected * 0.95f);
-            Array.Sort(buffer, 0, samplesCollected);
-            return buffer[Math.Min(p95Index, samplesCollected - 1)];
+            return foundationTimeScratch[Math.Min(p95Index - 1, samplesCollected - 1)];
         }
 
-        public float GetMax(float[] buffer)
+        private float CalculateMax(float[] ringBuffer)
         {
             float max = 0f;
             for (int i = 0; i < samplesCollected; i++)
             {
-                if (buffer[i] > max) max = buffer[i];
+                if (ringBuffer[i] > max) max = ringBuffer[i];
             }
             return max;
         }
 
-        public float FoundationTimeP95Ms => GetP95(foundationTimeBuffer);
-        public float FoundationTimeMaxMs => GetMax(foundationTimeBuffer);
-        public float SunVisibilityTimeP95Ms => GetP95(sunVisibilityTimeBuffer);
-        public float SunVisibilityTimeMaxMs => GetMax(sunVisibilityTimeBuffer);
-        public float CellsPerRayP95 => GetP95(cellsPerRayBuffer);
-        public float CellsPerRayMax => GetMax(cellsPerRayBuffer);
+        // P95 calculated only when requested (not every update)
+        public float FoundationTimeP95Ms => CalculateP95(foundationTimeRing);
+        public float FoundationTimeMaxMs => CalculateMax(foundationTimeRing);
+        public float SunVisibilityTimeP95Ms => CalculateP95(sunVisibilityTimeRing);
+        public float SunVisibilityTimeMaxMs => CalculateMax(sunVisibilityTimeRing);
+        public float CellsPerRayP95 => CalculateP95(cellsPerRayRing);
+        public float CellsPerRayMax => CalculateMax(cellsPerRayRing);
     }
 }

@@ -257,6 +257,19 @@ namespace Nyvorn.Source.Game.States
                 }
             }
 
+            // DEBUG HOTKEY: Ctrl+Alt+T to run Phase 3.2A test suite
+            if (!handledConsoleThisFrame)
+            {
+                bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
+                bool tPressed = keyboard.IsKeyDown(Keys.T);
+
+                if (ctrlPressed && altPressed && tPressed && !previousConsoleKeyboard.IsKeyDown(Keys.T))
+                {
+                    Phase3_2ATestRunner.RunAllTests();
+                }
+            }
+
             if (minimapVisible)
             {
                 WorldMinimapInteractionResult minimapInteraction = session.UpdateMinimapInteraction(

@@ -46,9 +46,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             baselineBytes = 0;
             finalBytes = 0;
 
-            System.Console.WriteLine("[AllocationHarness] Starting measurement...");
-            System.Console.WriteLine($"[AllocationHarness] Warmup: {WarmupUpdates} updates");
-            System.Console.WriteLine($"[AllocationHarness] Measurement: {MeasurementUpdates} updates");
+            // Don't log during start to avoid allocation
         }
 
         public void RecordUpdate()
