@@ -199,12 +199,17 @@ dotnet build                  # Debug
 dotnet build --configuration Release
 ```
 
-### Debug Mode (no jogo)
+### Hotkeys (no jogo)
 ```
-Hotkey (geralmente D ou V): Cicla modo debug
-Esperado: "Debug: SunVisibility" quando ativo
-Visualização: Grayscale (preto=bloqueado, branco=livre)
+Ctrl+Shift+J: Cicla modo debug (novo)
+Ctrl+Shift+L: Toggle lighting pipeline (Legacy ↔ V3)
+Ctrl+Shift+M: Dump metrics to console
 ```
+
+### Debug Mode SunVisibility
+- **Ativação**: Ctrl+Shift+J (cicle até "Debug: SunVisibility")
+- **Visualização**: Grayscale (preto=bloqueado 0.0, branco=livre 1.0)
+- **Sem impacto visual**: Debug mode é overlay, não afeta iluminação final
 
 ### Testes
 Ver console output de Phase3_2ATests.RunAll() para verificar 20/20 passando.
