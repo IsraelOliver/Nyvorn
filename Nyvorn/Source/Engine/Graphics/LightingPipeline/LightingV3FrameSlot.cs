@@ -106,21 +106,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// Returned by value - no heap allocation beyond initial assignment.
     /// Renderer receives this and uses it exclusively during Draw.
     ///
-    /// SEMÂNTICA READ-ONLY:
-    /// - TileClassifications, SunOpacityBuffer, LocalOpacityBuffer, SunVisibilityBuffer são acessíveis como arrays mutáveis
-    ///   mas o renderer NÃO DEVE modificar seus conteúdos. Propriedade contratual.
-    /// - Region.SampleCount define a janela válida para leitura.
+    /// SEMÂNTICA READ-ONLY REAL:
+    /// - TileClassifications, SunOpacityBuffer, LocalOpacityBuffer: expostos como array (legacy)
+    /// - SunVisibility (Phase 3.2A): ReadOnlySpan (não pode ser modificado)
+    /// - SampleCount define a janela válida para leitura.
     /// - Dados fora dessa janela não participam do frame publicado.
     /// - Nenhuma cópia é feita por frame.
+    /// - Renderer NÃO pode acessar arrays internos diretamente para SunVisibility.
     /// </summary>
     public readonly struct LightingV3FrameData
     {
+        private readonly float[] _sunVisibilityBuffer;
         public readonly int UpdateId;
         public readonly ActiveRegionSnapshot Region;
         public readonly LightingCellClassification[] TileClassifications;
         public readonly float[] SunOpacityBuffer;
         public readonly float[] LocalOpacityBuffer;
-        public readonly float[] SunVisibilityBuffer;  // Phase 3.2A: Sun visibility (read-only contract, see Region.SampleCount)
 
         // Directional sun state (Phase 3)
         public readonly LightingV3SunState SunState;
@@ -143,7 +144,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             TileClassifications = slot.TileClassifications;
             SunOpacityBuffer = slot.SunOpacityBuffer;
             LocalOpacityBuffer = slot.LocalOpacityBuffer;
-            SunVisibilityBuffer = slot.SunVisibilityBuffer;
+            _sunVisibilityBuffer = slot.SunVisibilityBuffer;
             SunState = slot.SunState;
             ProbeLocalSampleX = slot.ProbeLocalSampleX;
             ProbeLocalSampleY = slot.ProbeLocalSampleY;
@@ -152,6 +153,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             ProbeSunOpacity = slot.ProbeSunOpacity;
             ProbeLocalOpacity = slot.ProbeLocalOpacity;
             SampleCount = Region.SampleWidth * Region.SampleHeight;
+        }
+
+        /// <summary>
+        /// Read-only view of sun visibility buffer (Phase 3.2A).
+        /// Returns only the valid sample window [0, SampleCount).
+        /// No copy, no allocation per frame.
+        /// </summary>
+        public ReadOnlySpan<float> SunVisibility
+        {
+            get => _sunVisibilityBuffer.AsSpan(0, SampleCount);
         }
     }
 }

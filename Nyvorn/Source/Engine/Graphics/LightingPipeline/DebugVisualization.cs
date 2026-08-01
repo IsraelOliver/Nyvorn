@@ -209,9 +209,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private void RenderSunVisibility(SpriteBatch spriteBatch, LightingV3FrameData frameData, Texture2D pixelTexture, int tileSize)
         {
             var region = frameData.Region;
-            var sunVisibilityBuffer = frameData.SunVisibilityBuffer;
+            var sunVisibility = frameData.SunVisibility;  // ReadOnlySpan - no copy, no allocation
 
-            if (sunVisibilityBuffer == null || sunVisibilityBuffer.Length == 0)
+            if (sunVisibility.Length == 0)
                 return;
 
             // Render each sample as a grayscale pixel
@@ -224,10 +224,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 for (int sx = 0; sx < region.SampleWidth; sx++)
                 {
                     int flatIndex = sy * region.SampleWidth + sx;
-                    if (flatIndex >= sunVisibilityBuffer.Length)
+                    if (flatIndex >= sunVisibility.Length)
                         continue;
 
-                    float visibility = sunVisibilityBuffer[flatIndex];
+                    float visibility = sunVisibility[flatIndex];
 
                     // Grayscale: 0=black, 1=white
                     byte value = (byte)(visibility * 255);

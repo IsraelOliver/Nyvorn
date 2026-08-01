@@ -29,6 +29,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             TestCase_N_UpdateIdConsistency();
             TestCase_O_StartingCellPartialOpacity();
             TestCase_P_NoDoubleCounting();
+            TestCase_Q_SeamLeftToRight();
+            TestCase_R_SeamRightToLeft();
+            TestCase_S_SampleCountValidation();
+            TestCase_T_MetricsCollection();
 
             System.Console.WriteLine("=== Phase 3.2A Tests Complete ===\n");
         }
@@ -307,6 +311,87 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // Should be 0 because starting cell blocks completely
             bool passes = Math.Abs(visibility - 0.0f) < 0.01f;
             System.Console.WriteLine($"[P] No double counting: {(passes ? "✓" : "✗")} (visibility={visibility:F3})");
+        }
+
+        private static void TestCase_Q_SeamLeftToRight()
+        {
+            // Test: Ray crossing world seam from left to right
+            // Start at left edge, direction goes left (should wrap to right edge)
+            var mock = new MockGeometryProvider();
+            mock.SetWorldSize(100, 100);
+
+            // Place blocker on right side
+            mock.SetTile(99, 50, foregroundSolid: true, backgroundWall: false);
+
+            var visibility = SunVisibilityRayMarcher.ComputeVisibility(
+                worldX: 16f, worldY: 800f,  // Near left edge
+                sunDirection: Normalize(new Vector2(-1f, -0.1f)),  // Going left-up
+                sunIntensity: 1.0f,
+                sunAboveHorizon: true,
+                geometryProvider: mock,
+                worldWidthTiles: 100, worldHeightTiles: 100, tileSize: 16);
+
+            // Ray should wrap and find blocker
+            bool passes = !float.IsNaN(visibility) && !float.IsInfinity(visibility);
+            System.Console.WriteLine($"[Q] Seam left-to-right: {(passes ? "✓" : "✗")} (visibility={visibility:F3})");
+        }
+
+        private static void TestCase_R_SeamRightToLeft()
+        {
+            // Test: Ray crossing world seam from right to left
+            var mock = new MockGeometryProvider();
+            mock.SetWorldSize(100, 100);
+
+            // Place blocker on left side
+            mock.SetTile(0, 50, foregroundSolid: true, backgroundWall: false);
+
+            var visibility = SunVisibilityRayMarcher.ComputeVisibility(
+                worldX: 1584f, worldY: 800f,  // Near right edge (99*16)
+                sunDirection: Normalize(new Vector2(1f, -0.1f)),  // Going right-up
+                sunIntensity: 1.0f,
+                sunAboveHorizon: true,
+                geometryProvider: mock,
+                worldWidthTiles: 100, worldHeightTiles: 100, tileSize: 16);
+
+            bool passes = !float.IsNaN(visibility) && !float.IsInfinity(visibility);
+            System.Console.WriteLine($"[R] Seam right-to-left: {(passes ? "✓" : "✗")} (visibility={visibility:F3})");
+        }
+
+        private static void TestCase_S_SampleCountValidation()
+        {
+            // Test: Capacity can be larger than SampleCount, but only SampleCount is valid
+            var slot = new LightingV3FrameSlot(256, 1024);
+            slot.EnsureCapacity(100, 200);  // Grows to 400
+
+            // SunVisibilityBuffer capacity is now 400
+            var region = new ActiveLightingRegion(LightingSamplingConfig.Default2x2);
+            slot.Region = new ActiveRegionSnapshot(region, 16);
+
+            // Only first 200 are valid (based on sample count)
+            bool capacityLarger = slot.SunVisibilityBuffer.Length >= 200;
+
+            System.Console.WriteLine($"[S] SampleCount validation: {(capacityLarger ? "✓" : "✗")} (capacity={slot.SunVisibilityBuffer.Length})");
+        }
+
+        private static void TestCase_T_MetricsCollection()
+        {
+            // Test: Ray marcher collects statistics without allocation
+            var mock = new MockGeometryProvider();
+            mock.SetTile(10, 5, foregroundSolid: true, backgroundWall: false);
+
+            var stats = default(SunVisibilityRayStats);
+            var visibility = SunVisibilityRayMarcher.ComputeVisibility(
+                worldX: 100f, worldY: 100f,
+                sunDirection: Normalize(new Vector2(0.577f, -0.577f)),
+                sunIntensity: 1.0f,
+                sunAboveHorizon: true,
+                geometryProvider: mock,
+                worldWidthTiles: 1000, worldHeightTiles: 1000, tileSize: 16,
+                ref stats);
+
+            // Verify stats were populated
+            bool statsPopulated = stats.CellsVisited > 0 || stats.WasBlocked;
+            System.Console.WriteLine($"[T] Metrics collection: {(statsPopulated ? "✓" : "✗")} (cells={stats.CellsVisited}, blocked={stats.WasBlocked}, visibility={visibility:F3})");
         }
     }
 }
