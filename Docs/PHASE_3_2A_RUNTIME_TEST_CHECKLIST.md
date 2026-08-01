@@ -11,13 +11,10 @@ Validar visualmente que o campo SunVisibility está sendo computado corretamente
 ## Ativação do Debug SunVisibility
 
 ### Hotkey
-Pressione **`Ctrl+Shift+J`** para ciclar entre modos de debug. Cicle até ver:
+Pressione a tecla que cicleia modos debug (geralmente `D` ou `V`). Cicle até ver:
 ```
 Debug: SunVisibility
 ```
-
-**Sequência de modos**:
-- None → Classification → SunOpacity → LocalLightOpacity → SampleGrid → SunVisibility → (volta para None)
 
 A visualização mostra:
 - **Preto (0.0)**: Sol completamente bloqueado por foreground sólido

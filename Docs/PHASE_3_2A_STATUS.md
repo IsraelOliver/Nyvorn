@@ -201,13 +201,12 @@ dotnet build --configuration Release
 
 ### Hotkeys (no jogo)
 ```
-Ctrl+Shift+J: Cicla modo debug (novo)
-Ctrl+Shift+L: Toggle lighting pipeline (Legacy ↔ V3)
+Ctrl+Shift+J: Toggle lighting pipeline (Legacy ↔ V3)
 Ctrl+Shift+M: Dump metrics to console
 ```
 
 ### Debug Mode SunVisibility
-- **Ativação**: Ctrl+Shift+J (cicle até "Debug: SunVisibility")
+- **Ativação**: Cicle com hotkey (geralmente D ou V até ver "Debug: SunVisibility")
 - **Visualização**: Grayscale (preto=bloqueado 0.0, branco=livre 1.0)
 - **Sem impacto visual**: Debug mode é overlay, não afeta iluminação final
 

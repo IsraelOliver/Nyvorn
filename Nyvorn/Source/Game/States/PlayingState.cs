@@ -221,7 +221,7 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && input.ToggleConstructionModePressed)
                 session.ToggleConstructionMode();
 
-            // DEBUG HOTKEY: Ctrl+Shift+L to toggle lighting pipeline (PHASE 0: Isolated modes)
+            // DEBUG HOTKEY: Ctrl+Shift+J to toggle lighting pipeline (PHASE 0: Isolated modes)
             // Legacy mode: Standard rendering path with WorldLightingSystem
             // V3 mode: New architecture (not yet implemented, uses composition neutral)
             lightingPipelineToggleCooldown -= dt;
@@ -229,9 +229,9 @@ namespace Nyvorn.Source.Game.States
             {
                 bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
                 bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool lPressed = keyboard.IsKeyDown(Keys.L);
+                bool jPressed = keyboard.IsKeyDown(Keys.J);
 
-                if (ctrlPressed && shiftPressed && lPressed && !previousConsoleKeyboard.IsKeyDown(Keys.L))
+                if (ctrlPressed && shiftPressed && jPressed && !previousConsoleKeyboard.IsKeyDown(Keys.J))
                 {
                     var newMode = LightingPipelineCoordinator.I.ActiveMode == Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy
                         ? Engine.Graphics.LightingPipeline.LightingPipelineMode.V3
@@ -254,20 +254,6 @@ namespace Nyvorn.Source.Game.States
                 if (ctrlPressed && shiftPressed && mPressed && !previousConsoleKeyboard.IsKeyDown(Keys.M))
                 {
                     LightingPipelineCoordinator.I.DumpMetricsToConsole();
-                }
-            }
-
-            // DEBUG HOTKEY: Ctrl+Shift+J to cycle lighting debug modes (Phase 3.2A: SunVisibility)
-            if (!handledConsoleThisFrame)
-            {
-                bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool jPressed = keyboard.IsKeyDown(Keys.J);
-
-                if (ctrlPressed && shiftPressed && jPressed && !previousConsoleKeyboard.IsKeyDown(Keys.J))
-                {
-                    LightingPipelineCoordinator.I.CycleDebugMode();
-                    consoleMessage = $"[DEBUG] Lighting Debug Mode: {LightingPipelineCoordinator.I.GetCurrentDebugMode()}";
                 }
             }
 

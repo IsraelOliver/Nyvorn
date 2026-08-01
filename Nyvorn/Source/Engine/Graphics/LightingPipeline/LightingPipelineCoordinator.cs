@@ -35,7 +35,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private LightingExecutionMetrics currentFrameMetrics;
         private LightingExecutionMetrics sessionMetrics;
         private int frameCount;
-        private LightingDebugMode currentDebugMode = LightingDebugMode.None;
 
         public LightingPipelineCoordinator()
         {
@@ -205,35 +204,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             Console.WriteLine();
 
             Console.WriteLine("============================================================\n");
-        }
-
-        // ========== DEBUG MODE (Phase 3.2A: SunVisibility) ==========
-
-        /// <summary>
-        /// Cycle through debug visualization modes.
-        /// Modes: None (0) → Classification (1) → SunOpacity (2) → LocalLightOpacity (3) → SampleGrid (4) → SunVisibility (5) → None
-        /// Hotkey: Ctrl+Shift+J
-        /// </summary>
-        public void CycleDebugMode()
-        {
-            currentDebugMode = (LightingDebugMode)(((int)currentDebugMode + 1) % 6);
-            Console.WriteLine($"[LightingDebugMode] Switched to: {currentDebugMode} (Ctrl+Shift+J)");
-        }
-
-        /// <summary>
-        /// Get current debug visualization mode.
-        /// </summary>
-        public LightingDebugMode GetCurrentDebugMode()
-        {
-            return currentDebugMode;
-        }
-
-        /// <summary>
-        /// Set debug mode directly.
-        /// </summary>
-        public void SetDebugMode(LightingDebugMode mode)
-        {
-            currentDebugMode = mode;
         }
     }
 }
