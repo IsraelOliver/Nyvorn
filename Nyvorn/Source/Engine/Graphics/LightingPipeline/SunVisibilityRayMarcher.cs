@@ -6,11 +6,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// <summary>
     /// Ray marcher for sun visibility computation using DDA (Amanatides & Woo grid traversal).
     /// Traces from world position along DirectionToSun to compute transmittance.
+    ///
+    /// SEMÂNTICA CRÍTICA:
+    /// - Uma única autoridade: ResolveSunOpacity (nunca duplicar)
+    /// - Starting cell contribui exatamente uma vez (opacidade parcial ou total)
+    /// - Após starting cell, DDA avança para célula subsequente
+    /// - Nenhuma célula é processada duas vezes
+    /// - Y < 0 marca saída pelo topo (raio livre)
     /// </summary>
     public static class SunVisibilityRayMarcher
     {
         private const float Epsilon = 0.001f;
-        private const float MinimumTraceElevationDegrees = 5.0f;  // Prevent near-horizontal rays
+        private const float MinimumTraceElevationDegrees = 5.0f;
 
         /// <summary>
         /// Compute sun visibility for a single world position.
@@ -35,13 +42,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             if (sunIntensity <= Epsilon)
                 return 0.0f;
 
-            // Rule 3: Check if starting position is in solid foreground
-            int tileX = (int)Math.Floor(worldX / tileSize);
-            int tileY = (int)Math.Floor(worldY / tileSize);
-            if (geometryProvider.IsForegroundSolidAt(tileX, tileY))
-                return 0.0f;
-
-            // Check elevation of sun direction
+            // Rule 3: Check elevation of sun direction before ray march
             float elevationDegrees = (float)Math.Asin(Math.Clamp(-sunDirection.Y, -1f, 1f)) * 180f / MathF.PI;
             if (elevationDegrees < MinimumTraceElevationDegrees)
                 return 0.0f;  // Direction too flat
@@ -52,7 +53,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         /// <summary>
         /// DDA-based grid traversal for ray marching.
-        /// Returns final transmittance along ray direction.
+        /// SEMÂNTICA:
+        /// 1. Resolve starting cell opacity exatamente uma vez
+        /// 2. Aplica transmittance da starting cell
+        /// 3. Avança para célula subsequente
+        /// 4. DDA processa células restantes até Y sair dos limites ou transmittance bloquear
+        /// 5. Nenhuma célula é processada duas vezes
         /// </summary>
         private static float RayMarchDDA(
             float startWorldX,
@@ -63,62 +69,79 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             int worldHeightTiles,
             int tileSize)
         {
-            float transmittance = 1.0f;
+            // Obter tile da starting cell
+            int startTileX = (int)Math.Floor(startWorldX / tileSize);
+            int startTileY = (int)Math.Floor(startWorldY / tileSize);
+
+            // Processar starting cell exatamente uma vez via ResolveSunOpacity (única autoridade)
+            int canonicalStartX = WrapTileX(startTileX, worldWidthTiles);
+            float startOpacity = Math.Clamp(ResolveSunOpacity(geometryProvider, canonicalStartX, startTileY), 0f, 1f);
+            float transmittance = 1.0f - startOpacity;
+
+            // Early exit se starting cell bloqueia completamente
+            if (transmittance <= Epsilon)
+                return 0.0f;
+
+            // Inicializar posição na starting cell
             float currentWorldX = startWorldX;
             float currentWorldY = startWorldY;
 
-            // DDA step parameters
-            float stepX = direction.X > 0 ? tileSize : (direction.X < 0 ? -tileSize : 0);
-            float stepY = direction.Y > 0 ? tileSize : (direction.Y < 0 ? -tileSize : 0);
-
-            // Handle near-zero components
-            float rayDirX = Math.Abs(direction.X) < Epsilon ? 0 : direction.X;
-            float rayDirY = Math.Abs(direction.Y) < Epsilon ? 0 : direction.Y;
-
-            // Number of cells to traverse (safety limit to prevent infinite loops)
-            int maxCells = Math.Max(worldWidthTiles, worldHeightTiles) * 2;
+            // Calcular máximo de passos derivado da geometria
+            // verticalCells = startTileY + 1 (distância até Y < 0)
+            // Para raio diagonal, adicionar cruzamentos horizontais estimados
+            int verticalStepsToTop = startTileY + 1;
+            int maxCellsEstimate = verticalStepsToTop + (int)Math.Ceiling(Math.Abs(verticalStepsToTop * direction.X / direction.Y)) + 10;
             int cellsTraversed = 0;
 
-            while (cellsTraversed < maxCells)
+            // DDA loop: avança a partir da starting cell até sair do mundo
+            while (cellsTraversed < maxCellsEstimate)
             {
-                // Get current tile
+                // Avançar para próxima célula
+                currentWorldX += direction.X * tileSize;
+                currentWorldY += direction.Y * tileSize;
+
+                // Obter tile atual
                 int tileX = (int)Math.Floor(currentWorldX / tileSize);
                 int tileY = (int)Math.Floor(currentWorldY / tileSize);
 
-                // Wrap X (world wrapping)
-                int canonicalTileX = tileX;
-                if (worldWidthTiles > 0)
-                {
-                    canonicalTileX = tileX % worldWidthTiles;
-                    if (canonicalTileX < 0) canonicalTileX += worldWidthTiles;
-                }
-
-                // Check bounds Y
-                if (tileY < 0 || tileY >= worldHeightTiles)
-                {
-                    // Ray exited top or bottom - we're free
+                // Verificar se saiu pelo topo (raio livre)
+                if (tileY < 0)
                     break;
-                }
 
-                // Query opacity at this tile
-                float opacity = ResolveSunOpacity(geometryProvider, canonicalTileX, tileY);
+                // Verificar se saiu pelas laterais (wrap X ou fora de Y)
+                if (tileY >= worldHeightTiles)
+                    break;
+
+                // Resolver opacidade na célula atual (única autoridade)
+                int canonicalTileX = WrapTileX(tileX, worldWidthTiles);
+                float opacity = Math.Clamp(ResolveSunOpacity(geometryProvider, canonicalTileX, tileY), 0f, 1f);
+
+                // Aplicar transmittance uma única vez
                 transmittance *= (1.0f - opacity);
 
-                // Early exit if fully blocked
+                // Early exit se bloqueado
                 if (transmittance <= Epsilon)
                 {
                     transmittance = 0.0f;
                     break;
                 }
 
-                // Step ray forward
-                currentWorldX += direction.X * tileSize;
-                currentWorldY += direction.Y * tileSize;
-
                 cellsTraversed++;
             }
 
             return Math.Clamp(transmittance, 0.0f, 1.0f);
+        }
+
+        /// <summary>
+        /// Wrap tile X coordinate using positive modulo (world wrapping).
+        /// </summary>
+        private static int WrapTileX(int tileX, int worldWidthTiles)
+        {
+            if (worldWidthTiles <= 0)
+                return tileX;
+
+            int wrapped = tileX % worldWidthTiles;
+            return wrapped < 0 ? wrapped + worldWidthTiles : wrapped;
         }
 
         /// <summary>

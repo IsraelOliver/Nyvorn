@@ -40,6 +40,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// Show sample grid points (sub-tile sampling positions).
         /// </summary>
         SampleGrid = 4,
+
+        /// <summary>
+        /// Show sun visibility as grayscale (Phase 3.2A):
+        /// - Black: 0 (completely blocked)
+        /// - White: 1 (completely free)
+        /// - Gray: 0.5 (partial transmission)
+        /// </summary>
+        SunVisibility = 5,
     }
 
     /// <summary>
@@ -60,7 +68,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public void CycleMode()
         {
-            _mode = (LightingDebugMode)(((int)_mode + 1) % 5);
+            _mode = (LightingDebugMode)(((int)_mode + 1) % 6);
         }
 
         /// <summary>
@@ -90,6 +98,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     break;
                 case LightingDebugMode.SampleGrid:
                     RenderSampleGrid(spriteBatch, frameData.Value, pixelTexture, tileSize);
+                    break;
+                case LightingDebugMode.SunVisibility:
+                    RenderSunVisibility(spriteBatch, frameData.Value, pixelTexture, tileSize);
                     break;
             }
 
@@ -191,6 +202,43 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                     spriteBatch.Draw(pixelTexture, new Rectangle((int)(x - size), (int)y, size * 2 + 1, 1), Color.Yellow);
                     spriteBatch.Draw(pixelTexture, new Rectangle((int)x, (int)(y - size), 1, size * 2 + 1), Color.Yellow);
+                }
+            }
+        }
+
+        private void RenderSunVisibility(SpriteBatch spriteBatch, LightingV3FrameData frameData, Texture2D pixelTexture, int tileSize)
+        {
+            var region = frameData.Region;
+            var sunVisibilityBuffer = frameData.SunVisibilityBuffer;
+
+            if (sunVisibilityBuffer == null || sunVisibilityBuffer.Length == 0)
+                return;
+
+            // Render each sample as a grayscale pixel
+            // 0 = black (blocked), 1 = white (free)
+            int sampleSize = tileSize / region.SampleWidth * region.TileWidth;
+            if (sampleSize < 1) sampleSize = 1;
+
+            for (int sy = 0; sy < region.SampleHeight; sy++)
+            {
+                for (int sx = 0; sx < region.SampleWidth; sx++)
+                {
+                    int flatIndex = sy * region.SampleWidth + sx;
+                    if (flatIndex >= sunVisibilityBuffer.Length)
+                        continue;
+
+                    float visibility = sunVisibilityBuffer[flatIndex];
+
+                    // Grayscale: 0=black, 1=white
+                    byte value = (byte)(visibility * 255);
+                    Color color = new Color((float)value / 255f, (float)value / 255f, (float)value / 255f, 200f / 255f);
+
+                    // Calculate world position
+                    float worldX = region.WorldOriginX + (sx + 0.5f) * (region.TileWidth * tileSize) / region.SampleWidth;
+                    float worldY = region.WorldOriginY + (sy + 0.5f) * (region.TileHeight * tileSize) / region.SampleHeight;
+
+                    var rect = new Rectangle((int)worldX, (int)worldY, sampleSize, sampleSize);
+                    spriteBatch.Draw(pixelTexture, rect, color);
                 }
             }
         }

@@ -95,7 +95,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             Array.Clear(TileClassifications, 0, tileCount);
             Array.Clear(SunOpacityBuffer, 0, sampleCount);
             Array.Clear(LocalOpacityBuffer, 0, sampleCount);
-            Array.Clear(SunVisibilityBuffer, 0, sampleCount);
+            // NOTE: SunVisibilityBuffer is NOT cleared here because every sample is written in BuildSunVisibilityFieldToSlot.
+            // Clearing the entire buffer would waste CPU when all sampleCount values are overwritten.
+            // The unused capacity (beyond sampleCount) is not published to renderer.
         }
     }
 
@@ -103,6 +105,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// Public immutable view of frame data for renderer consumption (value type).
     /// Returned by value - no heap allocation beyond initial assignment.
     /// Renderer receives this and uses it exclusively during Draw.
+    ///
+    /// SEMÂNTICA READ-ONLY:
+    /// - TileClassifications, SunOpacityBuffer, LocalOpacityBuffer, SunVisibilityBuffer são acessíveis como arrays mutáveis
+    ///   mas o renderer NÃO DEVE modificar seus conteúdos. Propriedade contratual.
+    /// - Region.SampleCount define a janela válida para leitura.
+    /// - Dados fora dessa janela não participam do frame publicado.
+    /// - Nenhuma cópia é feita por frame.
     /// </summary>
     public readonly struct LightingV3FrameData
     {
@@ -111,7 +120,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public readonly LightingCellClassification[] TileClassifications;
         public readonly float[] SunOpacityBuffer;
         public readonly float[] LocalOpacityBuffer;
-        public readonly float[] SunVisibilityBuffer;  // Phase 3.2A: Sun visibility (read-only view)
+        public readonly float[] SunVisibilityBuffer;  // Phase 3.2A: Sun visibility (read-only contract, see Region.SampleCount)
 
         // Directional sun state (Phase 3)
         public readonly LightingV3SunState SunState;
@@ -123,6 +132,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public readonly float ProbeSampleWorldY;
         public readonly float ProbeSunOpacity;
         public readonly float ProbeLocalOpacity;
+
+        // Sample count for read-only window
+        public readonly int SampleCount;
 
         public LightingV3FrameData(LightingV3FrameSlot slot)
         {
@@ -139,6 +151,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             ProbeSampleWorldY = slot.ProbeSampleWorldY;
             ProbeSunOpacity = slot.ProbeSunOpacity;
             ProbeLocalOpacity = slot.ProbeLocalOpacity;
+            SampleCount = Region.SampleWidth * Region.SampleHeight;
         }
     }
 }

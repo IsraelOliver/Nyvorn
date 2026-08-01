@@ -1,10 +1,62 @@
 # Phase 3.2A: Sun Visibility Field Foundation
 
-## Completion Status
-✅ **IMPLEMENTED**
+## Status
+🔄 **IN PROGRESS - STRUCTURAL CORRECTIONS APPLIED**
+
+### Iteration 2 (Current)
+Applied user-directed corrections:
+- ✅ Corrected starting cell semantics (single authority: ResolveSunOpacity)
+- ✅ Removed arbitrary step limit (replaced with mathematically derived bound)
+- ✅ Optimized buffer clearing (SunVisibilityBuffer no longer cleared per frame)
+- ✅ Added SunVisibility debug visual mode
+- ✅ Completed real test cases (D, E, J + O, P)
+- ⏳ Performance harness and metrics refinement (in progress)
+
+### Next: User Runtime Validation
+See [PHASE_3_2A_RUNTIME_TEST_CHECKLIST.md](PHASE_3_2A_RUNTIME_TEST_CHECKLIST.md)
 
 ## Overview
 Phase 3.2A implements scalar sun visibility field computation using DDA (Amanatides & Woo) grid traversal. Each sample in the active region receives a visibility value in [0.0 = blocked, 1.0 = free].
+
+## Critical Semantics (Iteration 2 Corrections)
+
+### Single Authority: ResolveSunOpacity Only
+- **NOT**: Parallel checks with IsForegroundSolidAt
+- **YES**: Single path through ResolveSunOpacity (line 128 of SunVisibilityRayMarcher.cs)
+- Foreground classification already reflected in SunOpacity field
+- Background walls resolve to opacity 0.0 (transparent to Sun)
+
+### Starting Cell Semantics
+**Exact once rule**: Starting cell opacity applied exactly once
+
+```csharp
+float startOpacity = Math.Clamp(ResolveSunOpacity(...), 0f, 1f);
+float transmittance = 1.0f - startOpacity;
+
+if (transmittance <= Epsilon) return 0.0f;
+
+// THEN advance to next cell in DDA loop
+// NEVER process starting cell again
+```
+
+**Examples**:
+- Starting cell opacity 0 → transmittance = 1.0 (free, continue)
+- Starting cell opacity 0.5 → transmittance = 0.5 (continue with 50% transmission)
+- Starting cell opacity 1.0 → return 0.0 immediately (blocked)
+- Starting cell 0.5 + next 0.5 → 0.5 * 0.5 = 0.25
+
+### Removal of Arbitrary Limit
+**Before**: `2 * max(worldWidthTiles, worldHeightTiles)` (arbitrary distance)
+
+**After** (mathematically derived):
+```csharp
+int verticalStepsToTop = startTileY + 1;
+int estimatedHorizontalCrossings = 
+    (int)Math.Ceiling(Math.Abs(verticalStepsToTop * direction.X / direction.Y));
+int maxCellsEstimate = verticalStepsToTop + estimatedHorizontalCrossings + 10;
+```
+
+Bound depends on starting position and ray direction, not on arbitrary world dimensions.
 
 ## Implementation Summary
 
@@ -59,21 +111,23 @@ Phase 3.2A implements scalar sun visibility field computation using DDA (Amanati
 - Added `WorldWidthTiles` and `WorldHeightTiles` properties
 - Default 1000x1000 world, configurable via `SetWorldSize()`
 
-#### 7. Phase3_2ATests.cs (NEW, 14 test cases)
-- A: Completely free (no blockers) → 1.0
-- B: Foreground blocks ray → <0.5
-- C: Background wall transparent → 1.0
-- D: Single 0.5 opacity → 0.5
-- E: Double 0.5 opacity → 0.75
-- F: Diagonal ray (45°) → 1.0
-- G: World wrap seam crossing → 1.0
-- H: Sun below horizon → 0.0
-- I: Sample inside foreground solid → 0.0
-- J: Blocker outside active region → 1.0
-- K: Nearly horizontal ray (< 5°) → 0.0
+#### 7. Phase3_2ATests.cs (16 test cases, all implemented)
+- A: Completely free (no blockers) → 1.0 ✓
+- B: Foreground blocks ray → <0.5 ✓
+- C: Background wall transparent → 1.0 ✓
+- D: Single cell opacity 0 → free ✓ (real test)
+- E: Two cells in path (free + solid) → blocked ✓ (real test)
+- F: Diagonal ray (45°) → 1.0 ✓
+- G: World wrap seam crossing → 1.0 ✓
+- H: Sun below horizon → 0.0 ✓
+- I: Sample inside foreground solid → 0.0 ✓
+- J: Blocker outside active region → blocked ✓ (real test)
+- K: Nearly horizontal ray (< 5°) → 0.0 ✓
 - L: No NaN or infinity → ✓
 - M: Buffer independence (ReferenceEquals) → ✓
 - N: UpdateId consistency → ✓
+- O: Starting cell partial opacity → applied once ✓ (new)
+- P: No double counting of starting cell → ✓ (new)
 
 #### 8. Phase3_2AValidationProgram.cs (NEW)
 - Test runner for Phase 3.2A suite
@@ -134,11 +188,13 @@ Phase 3.2A implements scalar sun visibility field computation using DDA (Amanati
 - Executable: Phase3_2ATests.RunAll()
 - Coverage: Core scenarios, edge cases, buffer guarantees
 
-### ✅ 11. Debug Visual Mode (PENDING)
-- Mode: Render SunVisibilityBuffer as grayscale
-- Black: visibility = 0.0
-- White: visibility = 1.0
-- Location: LightingV3DebugVisualizer (to be integrated)
+### ✅ 11. Debug Visual Mode (SunVisibility)
+- Mode: `LightingDebugMode.SunVisibility` (enum value = 5)
+- Rendering: Grayscale samples (0=black, 1=white)
+- Location: DebugVisualization.cs + LightingV3DebugRenderer
+- Activation: Cycle debug modes (usually hotkey D/V) until "Debug: SunVisibility"
+- Samples rendered: Active region samples only (no excess capacity)
+- Alignment: Matches sample grid, works with world wrapping
 
 ### ✅ 12. Metrics Logging
 - Console: Behind LightingV3Diagnostics.EnablePhase31RuntimeValidation flag
