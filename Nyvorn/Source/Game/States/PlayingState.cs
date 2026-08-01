@@ -257,6 +257,20 @@ namespace Nyvorn.Source.Game.States
                 }
             }
 
+            // DEBUG HOTKEY: Ctrl+Shift+J to cycle lighting debug modes (Phase 3.2A: SunVisibility)
+            if (!handledConsoleThisFrame)
+            {
+                bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool jPressed = keyboard.IsKeyDown(Keys.J);
+
+                if (ctrlPressed && shiftPressed && jPressed && !previousConsoleKeyboard.IsKeyDown(Keys.J))
+                {
+                    LightingPipelineCoordinator.I.CycleDebugMode();
+                    consoleMessage = $"[DEBUG] Lighting Debug Mode: {LightingPipelineCoordinator.I.GetCurrentDebugMode()}";
+                }
+            }
+
             if (minimapVisible)
             {
                 WorldMinimapInteractionResult minimapInteraction = session.UpdateMinimapInteraction(
