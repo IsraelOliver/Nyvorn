@@ -214,10 +214,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             if (sunVisibility.Length == 0)
                 return;
 
-            // Render each sample as a grayscale pixel
-            // 0 = black (blocked), 1 = white (free)
-            int sampleSize = tileSize / region.SampleWidth * region.TileWidth;
-            if (sampleSize < 1) sampleSize = 1;
+            // Sample spacing in world coordinates
+            float sampleSpacingX = region.SampleWidth > 0
+                ? (float)(region.TileWidth * tileSize) / region.SampleWidth
+                : 1f;
+            float sampleSpacingY = region.SampleHeight > 0
+                ? (float)(region.TileHeight * tileSize) / region.SampleHeight
+                : 1f;
+
+            int sampleSize = (int)System.Math.Max(2, System.Math.Min(sampleSpacingX, sampleSpacingY));
 
             for (int sy = 0; sy < region.SampleHeight; sy++)
             {
@@ -229,13 +234,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                     float visibility = sunVisibility[flatIndex];
 
-                    // Grayscale: 0=black, 1=white
+                    // Grayscale: 0=black (blocked), 1=white (free)
                     byte value = (byte)(visibility * 255);
-                    Color color = new Color((float)value / 255f, (float)value / 255f, (float)value / 255f, 200f / 255f);
+                    Color color = new Color((byte)value, (byte)value, (byte)value, (byte)220);
 
-                    // Calculate world position
-                    float worldX = region.WorldOriginX + (sx + 0.5f) * (region.TileWidth * tileSize) / region.SampleWidth;
-                    float worldY = region.WorldOriginY + (sy + 0.5f) * (region.TileHeight * tileSize) / region.SampleHeight;
+                    // Calculate screen position
+                    float worldX = region.WorldOriginX + sx * sampleSpacingX;
+                    float worldY = region.WorldOriginY + sy * sampleSpacingY;
 
                     var rect = new Rectangle((int)worldX, (int)worldY, sampleSize, sampleSize);
                     spriteBatch.Draw(pixelTexture, rect, color);
