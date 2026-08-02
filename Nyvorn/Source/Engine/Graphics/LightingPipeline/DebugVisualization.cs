@@ -16,12 +16,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         None = 0,
 
         /// <summary>
+        /// Show sun visibility as grayscale (Phase 3.2A):
+        /// - Black: 0 (completely blocked)
+        /// - White: 1 (completely free)
+        /// - Gray: 0.5 (partial transmission)
+        /// </summary>
+        SunVisibility = 1,
+
+        /// <summary>
         /// Show cell classifications:
         /// - Blue: OpenAtmosphere
         /// - Green: VisibleBackground
         /// - Red: SolidForeground
         /// </summary>
-        Classification = 1,
+        Classification = 2,
 
         /// <summary>
         /// Show sun opacity as grayscale:
@@ -29,25 +37,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// - White: 1 (fully opaque)
         /// - Gray: 0.5 (partial)
         /// </summary>
-        SunOpacity = 2,
+        SunOpacity = 3,
 
         /// <summary>
         /// Show local light opacity as grayscale.
         /// </summary>
-        LocalLightOpacity = 3,
+        LocalLightOpacity = 4,
 
         /// <summary>
         /// Show sample grid points (sub-tile sampling positions).
         /// </summary>
-        SampleGrid = 4,
-
-        /// <summary>
-        /// Show sun visibility as grayscale (Phase 3.2A):
-        /// - Black: 0 (completely blocked)
-        /// - White: 1 (completely free)
-        /// - Gray: 0.5 (partial transmission)
-        /// </summary>
-        SunVisibility = 5,
+        SampleGrid = 5,
     }
 
     /// <summary>
