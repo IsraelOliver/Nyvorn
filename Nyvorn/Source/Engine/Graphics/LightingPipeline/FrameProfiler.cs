@@ -7,6 +7,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// Central frame profiler for Phase A0.0 runtime sanity baseline.
     /// Zero allocations in hot path - uses pre-allocated circular buffers.
     /// Measures Legacy, V3 Mode=None, and V3 Mode=SunVisibility timing.
+    ///
+    /// Important: Frame interval is measured externally (Game level).
+    /// This class measures CPU time only (Update + Draw phases).
     /// </summary>
     public class FrameProfiler
     {
@@ -14,10 +17,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public enum ProfileState
         {
             Inactive,
-            ValidationPass, // 30 frames per mode (sanity check)
-            SmokeTest,      // 120 frames per mode (legacy, v3none, v3sun)
-            BaselineWarmup, // 300 frames warmup
-            BaselineCapture // 600 frames measured
+            ValidationPass,    // 10 warmup + 30 measured frames per mode
+            SmokeTest,         // 30 warmup + 120 measured frames per mode
+            BaselineWarmup,    // 300 frames discarded (system stabilization)
+            BaselineCapture    // 600 frames measured
         }
 
         public enum LightingMode
@@ -29,15 +32,37 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         // Configuration
         private const int MaxFramesPerRun = 600;
-        private const int ValidationFrames = 30;
-        private const int SmokeTestFrames = 120;
-        private const int WarmupFrames = 300;
+
+        // Validation/Smoke warmup frames (discarded, not measured)
+        private const int ValidationWarmupFrames = 10;
+        private const int ValidationMeasuredFrames = 30;
+
+        private const int SmokeTestWarmupFrames = 30;
+        private const int SmokeTestMeasuredFrames = 120;
+
+        // Baseline warmup frames (discarded)
+        private const int BaselineWarmupFrames = 300;
 
         // State
         private ProfileState _state = ProfileState.Inactive;
         private LightingMode _currentMode = LightingMode.Legacy;
         private int _frameCount = 0;
-        private int _captureStartIndex = 0;
+        private int _warmupFramesRemaining = 0;
+        private int _measuredFramesRemaining = 0;
+        private bool _isFirstFrame = true;
+
+        // Configuration validation (must not change during run)
+        private int _configuredResolutionWidth = 0;
+        private int _configuredResolutionHeight = 0;
+        private float _configuredZoom = 0;
+        private int _configuredActiveRegionWidth = 0;
+        private int _configuredActiveRegionHeight = 0;
+        private int _configuredSampleCount = 0;
+        private bool _configurationLocked = false;
+
+        // Measurement validity
+        public bool MeasurementValid { get; private set; } = true;
+        public string InvalidReason { get; private set; } = "";
 
         // Circular buffers (pre-allocated)
         private FrameMetrics[] _frameMetrics = new FrameMetrics[MaxFramesPerRun];
@@ -47,16 +72,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private FrameMetrics _currentFrameMetrics;
         private CallCounts _currentFrameCalls;
 
-        // Timing snapshots
-        private long _globalFrameStartTicks;  // Start of frame (before Update)
-        private long _globalFrameEndTicks;    // End of frame (after Draw)
+        // Timing snapshots (per-frame, not wall-clock)
         private long _updateStartTicks;
         private long _drawStartTicks;
 
-        // Aggregated one-time values
-        private double _firstV3ActivationMs = 0;
-        private double _firstRenderTargetCreationMs = 0;
-        private double _firstBufferResizeMs = 0;
+        // Note: WallClockFrameInterval is NOT measured here.
+        // It must be measured externally (Game level) by:
+        // 1. Recording tick at start of frame (before Update)
+        // 2. Recording tick at start of next frame
+        // 3. Computing interval
+        // This ensures inclusion of Present, VSync, GPU waits, scheduler waits.
 
         public FrameProfiler()
         {
@@ -69,75 +94,197 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Start validation pass: 30 frames per mode to sanity-check instrumentation.
+        /// Start validation pass: 10 warmup + 30 measured frames per mode.
         /// </summary>
-        public void StartValidationPass(LightingMode initialMode)
+        public void StartValidationPass(
+            LightingMode initialMode,
+            int resolutionWidth,
+            int resolutionHeight,
+            float zoom,
+            int activeRegionWidth,
+            int activeRegionHeight,
+            int sampleCount)
         {
             _state = ProfileState.ValidationPass;
             _currentMode = initialMode;
             _frameCount = 0;
-            _captureStartIndex = 0;
+            _warmupFramesRemaining = ValidationWarmupFrames;
+            _measuredFramesRemaining = ValidationMeasuredFrames;
+            _isFirstFrame = true;
+            MeasurementValid = true;
+            InvalidReason = "";
+
+            LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
 
         /// <summary>
-        /// Start smoke test: 120 frames Legacy, then 120 V3 None, then 120 V3 SunVisibility.
+        /// Start smoke test: 30 warmup + 120 measured frames per mode.
+        /// Measured frames collected independently for Legacy, V3 None, V3 SunVisibility.
         /// </summary>
-        public void StartSmokeTest(LightingMode initialMode)
+        public void StartSmokeTest(
+            LightingMode initialMode,
+            int resolutionWidth,
+            int resolutionHeight,
+            float zoom,
+            int activeRegionWidth,
+            int activeRegionHeight,
+            int sampleCount)
         {
             _state = ProfileState.SmokeTest;
             _currentMode = initialMode;
             _frameCount = 0;
-            _captureStartIndex = 0;
+            _warmupFramesRemaining = SmokeTestWarmupFrames;
+            _measuredFramesRemaining = SmokeTestMeasuredFrames;
+            _isFirstFrame = true;
+            MeasurementValid = true;
+            InvalidReason = "";
+
+            LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
 
         /// <summary>
         /// Start baseline: 300 frames warmup, then 600 frames measured.
         /// </summary>
-        public void StartBaseline(LightingMode mode)
+        public void StartBaseline(
+            LightingMode mode,
+            int resolutionWidth,
+            int resolutionHeight,
+            float zoom,
+            int activeRegionWidth,
+            int activeRegionHeight,
+            int sampleCount)
         {
             _state = ProfileState.BaselineWarmup;
             _currentMode = mode;
             _frameCount = 0;
-            _captureStartIndex = WarmupFrames;
+            _warmupFramesRemaining = BaselineWarmupFrames;
+            _measuredFramesRemaining = MaxFramesPerRun;
+            _isFirstFrame = true;
+            MeasurementValid = true;
+            InvalidReason = "";
+
+            LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+        }
+
+        private void LockConfiguration(int resolutionWidth, int resolutionHeight, float zoom,
+            int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            _configuredResolutionWidth = resolutionWidth;
+            _configuredResolutionHeight = resolutionHeight;
+            _configuredZoom = zoom;
+            _configuredActiveRegionWidth = activeRegionWidth;
+            _configuredActiveRegionHeight = activeRegionHeight;
+            _configuredSampleCount = sampleCount;
+            _configurationLocked = true;
+        }
+
+        /// <summary>
+        /// Validate that configuration hasn't changed during measurement.
+        /// Call this each frame. Invalidates measurement if mismatch detected.
+        /// </summary>
+        public void ValidateConfiguration(int resolutionWidth, int resolutionHeight, float zoom,
+            int activeRegionWidth, int activeRegionHeight, int sampleCount, LightingMode currentMode)
+        {
+            if (!_configurationLocked || _state == ProfileState.Inactive)
+                return;
+
+            if (currentMode != _currentMode)
+            {
+                MeasurementValid = false;
+                InvalidReason = "LightingMode changed during measurement";
+                _state = ProfileState.Inactive;
+                return;
+            }
+
+            if (resolutionWidth != _configuredResolutionWidth ||
+                resolutionHeight != _configuredResolutionHeight)
+            {
+                MeasurementValid = false;
+                InvalidReason = "Resolution changed during measurement";
+                _state = ProfileState.Inactive;
+                return;
+            }
+
+            if (Math.Abs(zoom - _configuredZoom) > 0.0001f)
+            {
+                MeasurementValid = false;
+                InvalidReason = "Camera.Zoom changed during measurement";
+                _state = ProfileState.Inactive;
+                return;
+            }
+
+            if (activeRegionWidth != _configuredActiveRegionWidth ||
+                activeRegionHeight != _configuredActiveRegionHeight)
+            {
+                MeasurementValid = false;
+                InvalidReason = "ActiveRegion size changed during measurement";
+                _state = ProfileState.Inactive;
+                return;
+            }
+
+            if (sampleCount != _configuredSampleCount)
+            {
+                MeasurementValid = false;
+                InvalidReason = "SampleCount changed during measurement";
+                _state = ProfileState.Inactive;
+                return;
+            }
         }
 
         /// <summary>
         /// Stop profiling and return data for analysis.
+        /// Call only after measurement is complete (state transitioned to Inactive).
         /// </summary>
         public ProfileResult EndProfile()
         {
-            if (_state == ProfileState.Inactive)
-                return new ProfileResult { IsValid = false };
+            int framesRecorded = MaxFramesPerRun - (_measuredFramesRemaining > 0 ? _measuredFramesRemaining : 0);
 
             ProfileResult result = new ProfileResult
             {
-                IsValid = true,
+                IsValid = MeasurementValid,
+                InvalidReason = InvalidReason,
                 Mode = _currentMode,
-                FramesRecorded = Math.Min(_frameCount, MaxFramesPerRun),
-                FirstV3ActivationMs = _firstV3ActivationMs,
-                FirstRenderTargetCreationMs = _firstRenderTargetCreationMs,
-                FirstBufferResizeMs = _firstBufferResizeMs,
-                Metrics = new FrameMetrics[Math.Min(_frameCount, MaxFramesPerRun)],
-                Calls = new CallCounts[Math.Min(_frameCount, MaxFramesPerRun)]
+                ConfiguredResolutionWidth = _configuredResolutionWidth,
+                ConfiguredResolutionHeight = _configuredResolutionHeight,
+                ConfiguredZoom = _configuredZoom,
+                ConfiguredActiveRegionWidth = _configuredActiveRegionWidth,
+                ConfiguredActiveRegionHeight = _configuredActiveRegionHeight,
+                ConfiguredSampleCount = _configuredSampleCount,
+                FramesRecorded = framesRecorded,
+                Metrics = new FrameMetrics[framesRecorded],
+                Calls = new CallCounts[framesRecorded]
             };
 
-            Array.Copy(_frameMetrics, result.Metrics, result.FramesRecorded);
-            Array.Copy(_frameCalls, result.Calls, result.FramesRecorded);
+            Array.Copy(_frameMetrics, result.Metrics, framesRecorded);
+            Array.Copy(_frameCalls, result.Calls, framesRecorded);
 
             _state = ProfileState.Inactive;
+            _configurationLocked = false;
             return result;
         }
 
         /// <summary>
-        /// Called at very start of frame (before Update). Measures wall-clock time.
+        /// Called at very start of frame (before Update).
+        /// wallClockFrameIntervalMs: interval since start of previous frame
+        /// (must be computed externally at Game level, includes GPU/Present/VSync)
+        /// Pass 0.0 for first frame (will be skipped).
         /// </summary>
-        public void OnGlobalFrameStart()
+        public void OnGlobalFrameStart(double wallClockFrameIntervalMs)
         {
             if (_state == ProfileState.Inactive)
                 return;
 
-            _globalFrameStartTicks = Stopwatch.GetTimestamp();
+            // Skip first frame (no valid interval)
+            if (_isFirstFrame)
+            {
+                _isFirstFrame = false;
+                _currentFrameMetrics = new FrameMetrics();
+                _currentFrameCalls = new CallCounts();
+                return;
+            }
+
             _currentFrameMetrics = new FrameMetrics();
+            _currentFrameMetrics.WallClockFrameIntervalMs = wallClockFrameIntervalMs;
             _currentFrameCalls = new CallCounts();
         }
 
@@ -369,83 +516,68 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
-        /// Called at very end of frame (after all rendering and Present).
-        /// Computes wall-clock frame interval and handles state transitions.
+        /// Called at end of frame (after Draw, used for state management).
+        /// Records measured frames to buffer, handles warmup/measured transitions.
+        /// Note: WallClockFrameInterval was already set in OnGlobalFrameStart.
         /// </summary>
         public void OnGlobalFrameEnd()
         {
             if (_state == ProfileState.Inactive)
                 return;
 
-            long ticks = Stopwatch.GetTimestamp();
-            _currentFrameMetrics.WallClockFrameIntervalMs = TicksToMs(ticks - _globalFrameStartTicks);
+            // Skip first frame entirely (no valid interval)
+            if (_isFirstFrame)
+                return;
+
+            // Compute derived metrics
             _currentFrameMetrics.CpuUpdateDrawMs = _currentFrameMetrics.TotalUpdateMs + _currentFrameMetrics.TotalDrawMs;
             _currentFrameMetrics.UnaccountedWallTimeMs = _currentFrameMetrics.WallClockFrameIntervalMs - _currentFrameMetrics.CpuUpdateDrawMs;
 
-            // Record frame (only if in capture window)
-            if (_frameCount >= _captureStartIndex && _frameCount < MaxFramesPerRun)
+            // Determine if this frame is in warmup or measured window
+            bool isWarmupFrame = (_warmupFramesRemaining > 0);
+
+            if (isWarmupFrame)
             {
-                int bufferIndex = _frameCount - _captureStartIndex;
-                _frameMetrics[bufferIndex] = _currentFrameMetrics;
-                _frameCalls[bufferIndex] = _currentFrameCalls;
+                _warmupFramesRemaining--;
+                _frameCount++;
+                // Discard warmup frames (don't record)
+                return;
             }
 
-            _frameCount++;
+            // Measured frame: record to buffer
+            if (_measuredFramesRemaining > 0)
+            {
+                int bufferIndex = MaxFramesPerRun - _measuredFramesRemaining;
+                if (bufferIndex < MaxFramesPerRun)
+                {
+                    _frameMetrics[bufferIndex] = _currentFrameMetrics;
+                    _frameCalls[bufferIndex] = _currentFrameCalls;
+                }
+                _measuredFramesRemaining--;
+                _frameCount++;
+            }
 
-            // State transitions (no console output during capture)
-            if (_state == ProfileState.ValidationPass)
+            // Check for completion and state transitions
+            if (_measuredFramesRemaining == 0)
             {
-                if (_frameCount >= ValidationFrames)
+                if (_state == ProfileState.ValidationPass)
                 {
-                    if (_currentMode == LightingMode.Legacy)
-                    {
-                        _frameCount = 0;
-                        _currentMode = LightingMode.V3Mode_None;
-                    }
-                    else if (_currentMode == LightingMode.V3Mode_None)
-                    {
-                        _frameCount = 0;
-                        _currentMode = LightingMode.V3Mode_SunVisibility;
-                    }
-                    else
-                    {
-                        _state = ProfileState.Inactive;
-                    }
+                    _state = ProfileState.Inactive;  // End validation, must restart for next mode
                 }
-            }
-            else if (_state == ProfileState.SmokeTest)
-            {
-                if (_frameCount >= SmokeTestFrames)
+                else if (_state == ProfileState.SmokeTest)
                 {
-                    if (_currentMode == LightingMode.Legacy)
-                    {
-                        _frameCount = 0;
-                        _currentMode = LightingMode.V3Mode_None;
-                    }
-                    else if (_currentMode == LightingMode.V3Mode_None)
-                    {
-                        _frameCount = 0;
-                        _currentMode = LightingMode.V3Mode_SunVisibility;
-                    }
-                    else
-                    {
-                        _state = ProfileState.Inactive;
-                    }
+                    _state = ProfileState.Inactive;  // End smoke test, must restart for next mode
                 }
-            }
-            else if (_state == ProfileState.BaselineWarmup)
-            {
-                if (_frameCount >= WarmupFrames)
+                else if (_state == ProfileState.BaselineWarmup)
                 {
                     _state = ProfileState.BaselineCapture;
+                    _warmupFramesRemaining = 0;
+                    _measuredFramesRemaining = MaxFramesPerRun;
                     _frameCount = 0;
                 }
-            }
-            else if (_state == ProfileState.BaselineCapture)
-            {
-                if (_frameCount >= MaxFramesPerRun)
+                else if (_state == ProfileState.BaselineCapture)
                 {
-                    _state = ProfileState.Inactive;
+                    _state = ProfileState.Inactive;  // End baseline
                 }
             }
         }
@@ -454,6 +586,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         {
             return (ticks / (double)Stopwatch.Frequency) * 1000.0;
         }
+
+        public bool IsActive => _state != ProfileState.Inactive;
+        public ProfileState CurrentState => _state;
+        public LightingMode CurrentMode => _currentMode;
 
         // Data structures
         public struct FrameMetrics
@@ -499,12 +635,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         public struct ProfileResult
         {
+            // Validity
             public bool IsValid;
+            public string InvalidReason;
+
+            // Configuration (must not change during run)
             public LightingMode Mode;
+            public int ConfiguredResolutionWidth;
+            public int ConfiguredResolutionHeight;
+            public float ConfiguredZoom;
+            public int ConfiguredActiveRegionWidth;
+            public int ConfiguredActiveRegionHeight;
+            public int ConfiguredSampleCount;
+
+            // Data
             public int FramesRecorded;
-            public double FirstV3ActivationMs;
-            public double FirstRenderTargetCreationMs;
-            public double FirstBufferResizeMs;
             public FrameMetrics[] Metrics;
             public CallCounts[] Calls;
         }
