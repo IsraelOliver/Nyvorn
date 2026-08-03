@@ -37,10 +37,28 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public double OccluderBuildTimeMs { get; private set; }
         public double SunVisibilityBuildTimeMs { get; private set; }
         public int BufferResizeCount { get; private set; }
-        // Phase 3.2A metrics (behind diagnostics flag)
-        public int SunVisibilityCellsTraversed { get; private set; }
-        public int SunVisibilityRaysComputed { get; private set; }
+
+        // Phase 3.2A metrics - Semantically consistent
+        public int SunVisibilitySampleCount { get; private set; }
+        public int SunVisibilityPreTraceSkips { get; private set; }
+        public int SunVisibilityBelowHorizonSkips { get; private set; }
+        public int SunVisibilityLowIntensitySkips { get; private set; }
+        public int SunVisibilityLowElevationSkips { get; private set; }
+        public int SunVisibilityTraceCandidates { get; private set; }
+        public int SunVisibilityStartingCellBlocks { get; private set; }
+        public int SunVisibilityDdaRaysStarted { get; private set; }
+        public int SunVisibilityCellsVisited { get; private set; }
         public int SunVisibilityEarlyOuts { get; private set; }
+        public int SunVisibilityFreeRays { get; private set; }
+        public int SunVisibilityBlockedRays { get; private set; }
+        public int SunVisibilityGuardLimitHits { get; private set; }
+        public int SunVisibilityMaximumCellsPerRay { get; private set; }
+
+        // Derived
+        public float SunVisibilityAverageCellsPerTrace =>
+            SunVisibilityTraceCandidates > 0 ? (float)SunVisibilityCellsVisited / SunVisibilityTraceCandidates : 0f;
+        public float SunVisibilityAverageDdaCellsPerRay =>
+            SunVisibilityDdaRaysStarted > 0 ? (float)SunVisibilityCellsVisited / SunVisibilityDdaRaysStarted : 0f;
 
         /// <summary>
         /// Create foundation with default 2x2 sampling (4 samples per tile).
@@ -114,9 +132,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             ActiveSampleCount = _activeRegion.TotalSamples;
 
             // Reset Phase 3.2A metrics
-            SunVisibilityCellsTraversed = 0;
-            SunVisibilityRaysComputed = 0;
+            SunVisibilitySampleCount = 0;
+            SunVisibilityPreTraceSkips = 0;
+            SunVisibilityBelowHorizonSkips = 0;
+            SunVisibilityLowIntensitySkips = 0;
+            SunVisibilityLowElevationSkips = 0;
+            SunVisibilityTraceCandidates = 0;
+            SunVisibilityStartingCellBlocks = 0;
+            SunVisibilityDdaRaysStarted = 0;
+            SunVisibilityCellsVisited = 0;
             SunVisibilityEarlyOuts = 0;
+            SunVisibilityFreeRays = 0;
+            SunVisibilityBlockedRays = 0;
+            SunVisibilityGuardLimitHits = 0;
+            SunVisibilityMaximumCellsPerRay = 0;
 
             // Ensure back slot capacity
             _backSlot.EnsureCapacity(ActiveTileCount, ActiveSampleCount);
@@ -238,6 +267,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// <summary>
         /// Build sun visibility field using DDA ray marching (Phase 3.2A).
         /// Computes visibility for each sample: 0.0 = blocked, 1.0 = free.
+        /// Maintains mathematically consistent metrics with strict invariants.
         /// </summary>
         private void BuildSunVisibilityFieldToSlot(LightingV3FrameSlot slot, int tileSize)
         {
@@ -245,10 +275,29 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Get sun state
             var sunState = slot.SunState;
-            if (!sunState.IsAboveHorizon || sunState.Intensity <= 0.001f)
-                return;  // No sun, skip computation
+            int totalSamples = _activeRegion.RegionWidthSamples * _activeRegion.RegionHeightSamples;
+            SunVisibilitySampleCount = totalSamples;
 
-            // Calculate sample grid parameters (same as probe calculation)
+            // Pre-trace skip checks (no DDA)
+            if (!sunState.IsAboveHorizon)
+            {
+                SunVisibilityBelowHorizonSkips = totalSamples;
+                SunVisibilityPreTraceSkips = totalSamples;
+                startTime.Stop();
+                SunVisibilityBuildTimeMs = startTime.Elapsed.TotalMilliseconds;
+                return;
+            }
+
+            if (sunState.Intensity <= 0.001f)
+            {
+                SunVisibilityLowIntensitySkips = totalSamples;
+                SunVisibilityPreTraceSkips = totalSamples;
+                startTime.Stop();
+                SunVisibilityBuildTimeMs = startTime.Elapsed.TotalMilliseconds;
+                return;
+            }
+
+            // Calculate sample grid parameters
             float sampleSpacingX = _activeRegion.RegionWidthTiles > 0
                 ? (float)(_activeRegion.RegionWidthTiles * tileSize) / _activeRegion.RegionWidthSamples
                 : 1f;
@@ -258,9 +307,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             float sampleCenterOffsetX = sampleSpacingX / 2f;
             float sampleCenterOffsetY = sampleSpacingY / 2f;
 
-            int totalSamples = _activeRegion.RegionWidthSamples * _activeRegion.RegionHeightSamples;
-
-            // Compute visibility for each sample using DDA ray marching
+            // Compute visibility for each sample with comprehensive metrics
             for (int i = 0; i < totalSamples; i++)
             {
                 // Convert linear index to 2D coordinates
@@ -271,7 +318,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 float worldX = _activeRegion.WorldOriginX + localSampleX * sampleSpacingX + sampleCenterOffsetX;
                 float worldY = _activeRegion.WorldOriginY + localSampleY * sampleSpacingY + sampleCenterOffsetY;
 
-                // Compute visibility using ray marcher
+                // Compute visibility using ray marcher with stats
+                var stats = default(SunVisibilityRayStats);
                 float visibility = SunVisibilityRayMarcher.ComputeVisibility(
                     worldX, worldY,
                     sunState.DirectionToSun,
@@ -280,14 +328,85 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     _geometryProvider,
                     _geometryProvider.WorldWidthTiles,
                     _geometryProvider.WorldHeightTiles,
-                    tileSize);
+                    tileSize,
+                    ref stats);
 
                 slot.SunVisibilityBuffer[i] = visibility;
-                SunVisibilityRaysComputed++;
+
+                // Aggregate metrics per ray
+                if (stats.WasSkipped)
+                {
+                    SunVisibilityPreTraceSkips++;
+                    if (stats.SkipReason == SunVisibilitySkipReason.LowElevation)
+                        SunVisibilityLowElevationSkips++;
+                }
+                else
+                {
+                    // Ray entered DDA or was immediately blocked
+                    SunVisibilityTraceCandidates++;
+
+                    if (stats.CellsVisited == 0)
+                    {
+                        // Starting cell was solid
+                        SunVisibilityStartingCellBlocks++;
+                        SunVisibilityBlockedRays++;
+                    }
+                    else
+                    {
+                        // DDA was executed
+                        SunVisibilityDdaRaysStarted++;
+                        SunVisibilityCellsVisited += stats.CellsVisited;
+
+                        if (stats.EarlyOut)
+                            SunVisibilityEarlyOuts++;
+
+                        if (stats.WasFree)
+                            SunVisibilityFreeRays++;
+
+                        if (stats.WasBlocked)
+                            SunVisibilityBlockedRays++;
+
+                        if (stats.GuardLimitHit)
+                            SunVisibilityGuardLimitHits++;
+
+                        if (stats.CellsVisited > SunVisibilityMaximumCellsPerRay)
+                            SunVisibilityMaximumCellsPerRay = stats.CellsVisited;
+                    }
+                }
+            }
+
+            // Validate invariants (debug only)
+            if (LightingV3Diagnostics.EnablePhase31RuntimeValidation)
+            {
+                bool invariant1 = (SunVisibilityPreTraceSkips ==
+                    SunVisibilityBelowHorizonSkips + SunVisibilityLowIntensitySkips + SunVisibilityLowElevationSkips);
+                bool invariant2 = (SunVisibilitySampleCount == SunVisibilityPreTraceSkips + SunVisibilityTraceCandidates);
+                bool invariant3 = (SunVisibilityTraceCandidates == SunVisibilityStartingCellBlocks + SunVisibilityDdaRaysStarted);
+                bool invariant4 = (SunVisibilityFreeRays + SunVisibilityBlockedRays == SunVisibilityTraceCandidates);
+
+                if (!invariant1 || !invariant2 || !invariant3 || !invariant4)
+                {
+                    System.Console.WriteLine("[Phase3_2A] WARNING: Metric invariant violation detected!");
+                    System.Console.WriteLine($"  Invariant 1 (PreTraceSkips): {invariant1}");
+                    System.Console.WriteLine($"  Invariant 2 (SampleCount): {invariant2}");
+                    System.Console.WriteLine($"  Invariant 3 (TraceCandidates): {invariant3}");
+                    System.Console.WriteLine($"  Invariant 4 (FreeRays+BlockedRays): {invariant4}");
+                }
             }
 
             startTime.Stop();
             SunVisibilityBuildTimeMs = startTime.Elapsed.TotalMilliseconds;
+
+            // Log metrics if diagnostics enabled
+            if (LightingV3Diagnostics.EnablePhase31RuntimeValidation)
+            {
+                System.Console.WriteLine($"[Phase3_2A] Sun Elevation={sunState.Elevation:F1}deg Intensity={sunState.Intensity:F3}");
+                System.Console.WriteLine($"  Samples={SunVisibilitySampleCount} PreSkips={SunVisibilityPreTraceSkips} Candidates={SunVisibilityTraceCandidates}");
+                System.Console.WriteLine($"  StartingCellBlocks={SunVisibilityStartingCellBlocks} DdaStarted={SunVisibilityDdaRaysStarted}");
+                System.Console.WriteLine($"  CellsVisited={SunVisibilityCellsVisited} Avg={SunVisibilityAverageCellsPerTrace:F2} Max={SunVisibilityMaximumCellsPerRay}");
+                System.Console.WriteLine($"  Free={SunVisibilityFreeRays} Blocked={SunVisibilityBlockedRays} EarlyOuts={SunVisibilityEarlyOuts} GuardHits={SunVisibilityGuardLimitHits}");
+                System.Console.WriteLine($"  Time={SunVisibilityBuildTimeMs:F2}ms");
+            }
         }
 
         /// <summary>
@@ -321,10 +440,23 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine($"Sun Visibility Build Time: {SunVisibilityBuildTimeMs:F3}ms");
             System.Console.WriteLine($"Buffer Resize Count: {BufferResizeCount}");
             System.Console.WriteLine($"Frame Update Id: {_updateId}");
-            System.Console.WriteLine($"=== Phase 3.2A Metrics ===");
-            System.Console.WriteLine($"Sun Visibility Rays Computed: {SunVisibilityRaysComputed}");
-            System.Console.WriteLine($"Sun Visibility Cells Traversed: {SunVisibilityCellsTraversed}");
-            System.Console.WriteLine($"Sun Visibility Early Outs: {SunVisibilityEarlyOuts}");
+            System.Console.WriteLine($"=== Phase 3.2A Metrics (Semantically Consistent) ===");
+            System.Console.WriteLine($"Sample Count: {SunVisibilitySampleCount}");
+            System.Console.WriteLine($"Pre-Trace Skips: {SunVisibilityPreTraceSkips}");
+            System.Console.WriteLine($"  Below Horizon: {SunVisibilityBelowHorizonSkips}");
+            System.Console.WriteLine($"  Low Intensity: {SunVisibilityLowIntensitySkips}");
+            System.Console.WriteLine($"  Low Elevation: {SunVisibilityLowElevationSkips}");
+            System.Console.WriteLine($"Trace Candidates: {SunVisibilityTraceCandidates}");
+            System.Console.WriteLine($"  Starting Cell Blocks: {SunVisibilityStartingCellBlocks}");
+            System.Console.WriteLine($"  DDA Rays Started: {SunVisibilityDdaRaysStarted}");
+            System.Console.WriteLine($"Cells Visited: {SunVisibilityCellsVisited}");
+            System.Console.WriteLine($"  Average Per Trace: {SunVisibilityAverageCellsPerTrace:F2}");
+            System.Console.WriteLine($"  Average Per DDA Ray: {SunVisibilityAverageDdaCellsPerRay:F2}");
+            System.Console.WriteLine($"  Maximum: {SunVisibilityMaximumCellsPerRay}");
+            System.Console.WriteLine($"Early Outs: {SunVisibilityEarlyOuts}");
+            System.Console.WriteLine($"Free Rays: {SunVisibilityFreeRays}");
+            System.Console.WriteLine($"Blocked Rays: {SunVisibilityBlockedRays}");
+            System.Console.WriteLine($"Guard Limit Hits: {SunVisibilityGuardLimitHits}");
             System.Console.WriteLine($"Active Providers: {_occluderProviders.Count}");
             foreach (var provider in _occluderProviders)
             {
