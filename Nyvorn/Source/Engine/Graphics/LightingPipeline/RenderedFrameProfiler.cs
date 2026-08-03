@@ -113,6 +113,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private int _noRenderedFrameTimeoutCount = 0;
         private int _maxUpdatesBeforeRenderedFrame = 0;
         private long _measurementStartTicks = 0;
+        private long _lastAcceptedBeginDrawTicks = 0;
 
         public RenderedFrameProfiler()
         {
@@ -137,8 +138,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _maxUpdatesBeforeRenderedFrame = 0;
             MeasurementValid = true;
             InvalidReason = InvalidReasonEnum.None;
-            _measurementStartTicks = Stopwatch.GetTimestamp();
-            _lastUpdateTicks = Stopwatch.GetTimestamp();
+            long now = Stopwatch.GetTimestamp();
+            _measurementStartTicks = now;
+            _lastUpdateTicks = now;
+            _lastAcceptedBeginDrawTicks = now;
 
             LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
@@ -157,8 +160,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _maxUpdatesBeforeRenderedFrame = 0;
             MeasurementValid = true;
             InvalidReason = InvalidReasonEnum.None;
-            _measurementStartTicks = Stopwatch.GetTimestamp();
-            _lastUpdateTicks = Stopwatch.GetTimestamp();
+            long now = Stopwatch.GetTimestamp();
+            _measurementStartTicks = now;
+            _lastUpdateTicks = now;
+            _lastAcceptedBeginDrawTicks = now;
 
             LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
@@ -177,8 +182,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _maxUpdatesBeforeRenderedFrame = 0;
             MeasurementValid = true;
             InvalidReason = InvalidReasonEnum.None;
-            _measurementStartTicks = Stopwatch.GetTimestamp();
-            _lastUpdateTicks = Stopwatch.GetTimestamp();
+            long now = Stopwatch.GetTimestamp();
+            _measurementStartTicks = now;
+            _lastUpdateTicks = now;
+            _lastAcceptedBeginDrawTicks = now;
 
             LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
@@ -266,9 +273,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 return;
 
             long now = Stopwatch.GetTimestamp();
-            double elapsedSeconds = TicksToMs(now - _measurementStartTicks) / 1000.0;
+            double elapsedSinceLastBeginDrawSeconds = TicksToMs(now - _lastAcceptedBeginDrawTicks) / 1000.0;
 
-            if (elapsedSeconds > WatchdogTimeoutSeconds && _renderedFrameCount == 0)
+            if (elapsedSinceLastBeginDrawSeconds > WatchdogTimeoutSeconds)
             {
                 MeasurementValid = false;
                 InvalidReason = InvalidReasonEnum.NoRenderedFrameTimeout;
@@ -347,8 +354,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
 
             // BeginDraw succeeded - this is a new rendered frame boundary
+            _lastAcceptedBeginDrawTicks = Stopwatch.GetTimestamp();
 
-            long now = Stopwatch.GetTimestamp();
+            long now = _lastAcceptedBeginDrawTicks;
 
             // First frame: initialize only
             if (_isFirstFrame)

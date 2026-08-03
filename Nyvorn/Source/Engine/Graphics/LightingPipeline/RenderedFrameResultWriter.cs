@@ -72,7 +72,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                 writer.WriteLine("Frame Timing:");
                 WriteStat(writer, "  WallClockFrameIntervalMs", ExtractMetric(metrics, m => m.WallClockFrameIntervalMs));
-                WriteStat(writer, "  FPS", ExtractMetric(metrics, m => m.FPS));
+
+                var fpsStats = ExtractMetric(metrics, m => m.FPS);
+                writer.WriteLine($"  FPS:");
+                writer.WriteLine($"    Average: {fpsStats.avg:F1}");
+                writer.WriteLine($"    Minimum: {metrics.Min(m => m.FPS):F1}");
                 writer.WriteLine();
 
                 writer.WriteLine("CPU Timing:");
