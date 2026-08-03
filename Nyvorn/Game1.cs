@@ -27,6 +27,9 @@ public class Game1 : Game
     private bool _prevKeyEState = false;
     private bool _prevKey7State = false;  // Emergency V3 None
     private bool _prevKey8State = false;  // Emergency V3 SunVisibility
+    private bool _prevKey4State = false;  // Emergency V3 PipelineOnly
+    private bool _prevKey5State = false;  // Emergency V3 FoundationWithoutSunVisibility
+    private bool _prevKey6State = false;  // Emergency V3 Full
 
     // Emergency capture auto-mode switching
     private RenderedFrameProfiler.LightingMode _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.Legacy;
@@ -97,6 +100,7 @@ public class Game1 : Game
     {
         // Phase A0.0: Profiler update timing
         _renderedFrameProfiler.OnUpdateStart();
+        _renderedFrameProfiler.EmergencyLog_EnterGameUpdate();
 
         try
         {
@@ -131,6 +135,7 @@ public class Game1 : Game
         }
         finally
         {
+            _renderedFrameProfiler.EmergencyLog_ExitGameUpdate();
             _renderedFrameProfiler.OnUpdateEnd();
         }
     }
@@ -198,6 +203,36 @@ public class Game1 : Game
             StartEmergencyV3SunVisibilityCapture();
         }
         _prevKey8State = currentKey8State;
+
+        // Ctrl+Shift+4: Start Emergency V3 PipelineOnly Capture (ablation)
+        bool currentKey4State = keyboard.IsKeyDown(Keys.D4) &&
+                                keyboard.IsKeyDown(Keys.LeftControl) &&
+                                keyboard.IsKeyDown(Keys.LeftShift);
+        if (currentKey4State && !_prevKey4State && !_renderedFrameProfiler.IsActive)
+        {
+            StartEmergencyV3PipelineOnlyCapture();
+        }
+        _prevKey4State = currentKey4State;
+
+        // Ctrl+Shift+5: Start Emergency V3 FoundationWithoutSunVisibility Capture (ablation)
+        bool currentKey5State = keyboard.IsKeyDown(Keys.D5) &&
+                                keyboard.IsKeyDown(Keys.LeftControl) &&
+                                keyboard.IsKeyDown(Keys.LeftShift);
+        if (currentKey5State && !_prevKey5State && !_renderedFrameProfiler.IsActive)
+        {
+            StartEmergencyV3FoundationWithoutSunVisibilityCapture();
+        }
+        _prevKey5State = currentKey5State;
+
+        // Ctrl+Shift+6: Start Emergency V3 Full Capture (ablation reference)
+        bool currentKey6State = keyboard.IsKeyDown(Keys.D6) &&
+                                keyboard.IsKeyDown(Keys.LeftControl) &&
+                                keyboard.IsKeyDown(Keys.LeftShift);
+        if (currentKey6State && !_prevKey6State && !_renderedFrameProfiler.IsActive)
+        {
+            StartEmergencyV3FullCapture();
+        }
+        _prevKey6State = currentKey6State;
 
         // Handle emergency mode switching
         HandleEmergencyModeSwitch();
@@ -281,10 +316,56 @@ public class Game1 : Game
         var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
         _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
             snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3Full);
         _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
         _emergencyShouldExport = false;
 
         System.Console.WriteLine("[Phase A0.0] Emergency V3 SunVisibility capture started (will auto-switch mode)");
+    }
+
+    private void StartEmergencyV3PipelineOnlyCapture()
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
+        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3PipelineOnly);
+        _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+        _emergencyShouldExport = false;
+
+        System.Console.WriteLine("[Phase A0.0] Emergency V3 PipelineOnly capture started (ablation mode)");
+    }
+
+    private void StartEmergencyV3FoundationWithoutSunVisibilityCapture()
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
+        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3FoundationWithoutSunVisibility);
+        _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+        _emergencyShouldExport = false;
+
+        System.Console.WriteLine("[Phase A0.0] Emergency V3 FoundationWithoutSunVisibility capture started (ablation mode)");
+    }
+
+    private void StartEmergencyV3FullCapture()
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
+        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3Full);
+        _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+        _emergencyShouldExport = false;
+
+        System.Console.WriteLine("[Phase A0.0] Emergency V3 Full capture started (reference mode)");
     }
 
     private void HandleEmergencyModeSwitch()
@@ -435,6 +516,7 @@ public class Game1 : Game
 
         // Phase A0.0: Mark rendered frame boundary
         _renderedFrameProfiler.OnBeginDraw();
+        _renderedFrameProfiler.EmergencyLog_BeginDrawAccepted();
 
         return true;
     }
@@ -443,6 +525,7 @@ public class Game1 : Game
     {
         // Phase A0.0: Profiler draw timing
         _renderedFrameProfiler.OnDrawStart();
+        _renderedFrameProfiler.EmergencyLog_EnterDraw();
 
         try
         {
@@ -454,12 +537,14 @@ public class Game1 : Game
         }
         finally
         {
+            _renderedFrameProfiler.EmergencyLog_ExitDraw();
             _renderedFrameProfiler.OnDrawEnd();
         }
     }
 
     protected override void EndDraw()
     {
+        _renderedFrameProfiler.EmergencyLog_EnterEndDraw();
         long presentStartTicks = Stopwatch.GetTimestamp();
 
         try
@@ -476,6 +561,7 @@ public class Game1 : Game
             long presentEndTicks = Stopwatch.GetTimestamp();
             double presentMs = (presentEndTicks - presentStartTicks) / (double)Stopwatch.Frequency * 1000.0;
             _renderedFrameProfiler.OnPresentMeasured(presentMs);
+            _renderedFrameProfiler.EmergencyLog_ExitEndDraw();
         }
     }
 

@@ -191,6 +191,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Classify tiles in back slot
             if (_profiler != null)
+                _profiler.EmergencyLog_BeforeClassification();
+
+            if (_profiler != null)
                 _profiler.OnClassificationStart();
             try
             {
@@ -202,7 +205,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     _profiler.OnClassificationEnd();
             }
 
+            if (_profiler != null)
+                _profiler.EmergencyLog_AfterClassification();
+
             // Build opacities in back slot
+            if (_profiler != null)
+                _profiler.EmergencyLog_BeforeOccluderBuild();
+
             if (_profiler != null)
                 _profiler.OnOccluderBuildStart();
             try
@@ -215,18 +224,30 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     _profiler.OnOccluderBuildEnd();
             }
 
+            if (_profiler != null)
+                _profiler.EmergencyLog_AfterOccluderBuild();
+
             // Build sun visibility field (Phase 3.2A)
             if (_profiler != null)
-                _profiler.OnSunVisibilityBuildStart();
-            try
-            {
-                BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
-            }
-            finally
+                _profiler.EmergencyLog_BeforeSunVisibility();
+
+            if (!(_profiler?.ShouldSkipSunVisibilityBuild() ?? false))
             {
                 if (_profiler != null)
-                    _profiler.OnSunVisibilityBuildEnd();
+                    _profiler.OnSunVisibilityBuildStart();
+                try
+                {
+                    BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+                }
+                finally
+                {
+                    if (_profiler != null)
+                        _profiler.OnSunVisibilityBuildEnd();
+                }
             }
+
+            if (_profiler != null)
+                _profiler.EmergencyLog_AfterSunVisibility();
 
             // Calculate probe position (sample at 20,20 local coordinates)
             int probeLocalSampleX = 20;
@@ -326,6 +347,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // Classify tiles in back slot
             if (_profiler != null)
+                _profiler.EmergencyLog_BeforeClassification();
+
+            if (_profiler != null)
                 _profiler.OnClassificationStart();
             try
             {
@@ -337,7 +361,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     _profiler.OnClassificationEnd();
             }
 
+            if (_profiler != null)
+                _profiler.EmergencyLog_AfterClassification();
+
             // Build opacities in back slot
+            if (_profiler != null)
+                _profiler.EmergencyLog_BeforeOccluderBuild();
+
             if (_profiler != null)
                 _profiler.OnOccluderBuildStart();
             try
@@ -350,18 +380,30 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     _profiler.OnOccluderBuildEnd();
             }
 
+            if (_profiler != null)
+                _profiler.EmergencyLog_AfterOccluderBuild();
+
             // Build sun visibility field (Phase 3.2A)
             if (_profiler != null)
-                _profiler.OnSunVisibilityBuildStart();
-            try
-            {
-                BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
-            }
-            finally
+                _profiler.EmergencyLog_BeforeSunVisibility();
+
+            if (!(_profiler?.ShouldSkipSunVisibilityBuild() ?? false))
             {
                 if (_profiler != null)
-                    _profiler.OnSunVisibilityBuildEnd();
+                    _profiler.OnSunVisibilityBuildStart();
+                try
+                {
+                    BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+                }
+                finally
+                {
+                    if (_profiler != null)
+                        _profiler.OnSunVisibilityBuildEnd();
+                }
             }
+
+            if (_profiler != null)
+                _profiler.EmergencyLog_AfterSunVisibility();
 
             // Calculate probe position (sample at 20,20 local coordinates)
             int probeLocalSampleX = 20;

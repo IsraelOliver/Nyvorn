@@ -73,6 +73,36 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             StageException
         }
 
+        public enum EmergencyLastStage
+        {
+            None = 0,
+            EnterGameUpdate = 1,
+            EnterPlayingStateUpdate = 2,
+            BeforeFoundation = 3,
+            AfterActiveRegion = 4,
+            BeforeClassification = 5,
+            AfterClassification = 6,
+            BeforeOccluderBuild = 7,
+            AfterOccluderBuild = 8,
+            BeforeSunVisibility = 9,
+            AfterSunVisibility = 10,
+            AfterFoundation = 11,
+            ExitPlayingStateUpdate = 12,
+            ExitGameUpdate = 13,
+            BeginDrawAccepted = 14,
+            EnterDraw = 15,
+            ExitDraw = 16,
+            EnterEndDraw = 17,
+            ExitEndDraw = 18
+        }
+
+        public enum EmergencyAblationMode
+        {
+            V3Full = 0,
+            V3PipelineOnly = 1,
+            V3FoundationWithoutSunVisibility = 2
+        }
+
         // Per-rendered-frame accumulation
         private long _frameStartTicksBeginDraw;
         private long _updateStartTicks;
@@ -149,6 +179,28 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private int _starvedOccluderCalls = 0;
         private int _starvedSunVisibilityCalls = 0;
         private long _lastSuccessfulBeginDrawTimestamp = 0;
+
+        // Emergency diagnostics
+        private long _lastStageLong = (long)EmergencyLastStage.None;  // Use long for Interlocked operations
+        private EmergencyAblationMode _emergencyAblationMode = EmergencyAblationMode.V3Full;
+        private bool _emergencyLoggedEnterGameUpdate = false;
+        private bool _emergencyLoggedEnterPlayingStateUpdate = false;
+        private bool _emergencyLoggedBeforeFoundation = false;
+        private bool _emergencyLoggedAfterActiveRegion = false;
+        private bool _emergencyLoggedBeforeClassification = false;
+        private bool _emergencyLoggedAfterClassification = false;
+        private bool _emergencyLoggedBeforeOccluderBuild = false;
+        private bool _emergencyLoggedAfterOccluderBuild = false;
+        private bool _emergencyLoggedBeforeSunVisibility = false;
+        private bool _emergencyLoggedAfterSunVisibility = false;
+        private bool _emergencyLoggedAfterFoundation = false;
+        private bool _emergencyLoggedExitPlayingStateUpdate = false;
+        private bool _emergencyLoggedExitGameUpdate = false;
+        private bool _emergencyLoggedBeginDrawAccepted = false;
+        private bool _emergencyLoggedEnterDraw = false;
+        private bool _emergencyLoggedExitDraw = false;
+        private bool _emergencyLoggedEnterEndDraw = false;
+        private bool _emergencyLoggedExitEndDraw = false;
 
         public RenderedFrameProfiler()
         {
@@ -813,12 +865,137 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public LightingMode RequestedLightingMode => _requestedLightingMode;
         public bool IsEmergencyCapture => _state == ProfileState.EmergencyV3None || _state == ProfileState.EmergencyV3SunVisibility;
         public EmergencyCompletionReason CompletionReason => _emergencyCompletionReason;
+        public EmergencyAblationMode AblationMode => _emergencyAblationMode;
+
+        public void SetAblationMode(EmergencyAblationMode mode)
+        {
+            _emergencyAblationMode = mode;
+        }
+
+        public bool ShouldSkipFoundationUpdate()
+        {
+            return IsEmergencyCapture && _emergencyAblationMode == EmergencyAblationMode.V3PipelineOnly;
+        }
+
+        public bool ShouldSkipSunVisibilityBuild()
+        {
+            return IsEmergencyCapture && _emergencyAblationMode == EmergencyAblationMode.V3FoundationWithoutSunVisibility;
+        }
 
         // Signal that emergency mode has been applied
         public void NotifyEmergencyModeApplied()
         {
             if (IsEmergencyCapture)
                 _emergencyModeApplied = true;
+        }
+
+        // Atomically update last stage for watchdog visibility
+        public EmergencyLastStage GetLastStage()
+        {
+            return (EmergencyLastStage)System.Threading.Interlocked.Read(ref _lastStageLong);
+        }
+
+        private void SetLastStageAndLog(EmergencyLastStage stage, ref bool logged)
+        {
+            System.Threading.Interlocked.Exchange(ref _lastStageLong, (long)stage);
+
+            if (!IsEmergencyCapture || logged)
+                return;
+
+            logged = true;
+            string stageName = stage.ToString();
+            System.Console.WriteLine($"[Emergency] {stageName}");
+            System.Console.Out.Flush();
+        }
+
+        public void EmergencyLog_EnterGameUpdate()
+        {
+            SetLastStageAndLog(EmergencyLastStage.EnterGameUpdate, ref _emergencyLoggedEnterGameUpdate);
+        }
+
+        public void EmergencyLog_EnterPlayingStateUpdate()
+        {
+            SetLastStageAndLog(EmergencyLastStage.EnterPlayingStateUpdate, ref _emergencyLoggedEnterPlayingStateUpdate);
+        }
+
+        public void EmergencyLog_BeforeFoundation()
+        {
+            SetLastStageAndLog(EmergencyLastStage.BeforeFoundation, ref _emergencyLoggedBeforeFoundation);
+        }
+
+        public void EmergencyLog_AfterActiveRegion()
+        {
+            SetLastStageAndLog(EmergencyLastStage.AfterActiveRegion, ref _emergencyLoggedAfterActiveRegion);
+        }
+
+        public void EmergencyLog_BeforeClassification()
+        {
+            SetLastStageAndLog(EmergencyLastStage.BeforeClassification, ref _emergencyLoggedBeforeClassification);
+        }
+
+        public void EmergencyLog_AfterClassification()
+        {
+            SetLastStageAndLog(EmergencyLastStage.AfterClassification, ref _emergencyLoggedAfterClassification);
+        }
+
+        public void EmergencyLog_BeforeOccluderBuild()
+        {
+            SetLastStageAndLog(EmergencyLastStage.BeforeOccluderBuild, ref _emergencyLoggedBeforeOccluderBuild);
+        }
+
+        public void EmergencyLog_AfterOccluderBuild()
+        {
+            SetLastStageAndLog(EmergencyLastStage.AfterOccluderBuild, ref _emergencyLoggedAfterOccluderBuild);
+        }
+
+        public void EmergencyLog_BeforeSunVisibility()
+        {
+            SetLastStageAndLog(EmergencyLastStage.BeforeSunVisibility, ref _emergencyLoggedBeforeSunVisibility);
+        }
+
+        public void EmergencyLog_AfterSunVisibility()
+        {
+            SetLastStageAndLog(EmergencyLastStage.AfterSunVisibility, ref _emergencyLoggedAfterSunVisibility);
+        }
+
+        public void EmergencyLog_AfterFoundation()
+        {
+            SetLastStageAndLog(EmergencyLastStage.AfterFoundation, ref _emergencyLoggedAfterFoundation);
+        }
+
+        public void EmergencyLog_ExitPlayingStateUpdate()
+        {
+            SetLastStageAndLog(EmergencyLastStage.ExitPlayingStateUpdate, ref _emergencyLoggedExitPlayingStateUpdate);
+        }
+
+        public void EmergencyLog_ExitGameUpdate()
+        {
+            SetLastStageAndLog(EmergencyLastStage.ExitGameUpdate, ref _emergencyLoggedExitGameUpdate);
+        }
+
+        public void EmergencyLog_BeginDrawAccepted()
+        {
+            SetLastStageAndLog(EmergencyLastStage.BeginDrawAccepted, ref _emergencyLoggedBeginDrawAccepted);
+        }
+
+        public void EmergencyLog_EnterDraw()
+        {
+            SetLastStageAndLog(EmergencyLastStage.EnterDraw, ref _emergencyLoggedEnterDraw);
+        }
+
+        public void EmergencyLog_ExitDraw()
+        {
+            SetLastStageAndLog(EmergencyLastStage.ExitDraw, ref _emergencyLoggedExitDraw);
+        }
+
+        public void EmergencyLog_EnterEndDraw()
+        {
+            SetLastStageAndLog(EmergencyLastStage.EnterEndDraw, ref _emergencyLoggedEnterEndDraw);
+        }
+
+        public void EmergencyLog_ExitEndDraw()
+        {
+            SetLastStageAndLog(EmergencyLastStage.ExitEndDraw, ref _emergencyLoggedExitEndDraw);
         }
 
         // Data structures for RENDERED FRAMES

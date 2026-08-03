@@ -401,6 +401,10 @@ namespace Nyvorn.Source.Game.States
 
             session.FollowCamera(dt, screenW, screenH);
 
+            // Phase A0.0: Emergency logging
+            if (_renderedFrameProfiler != null)
+                _renderedFrameProfiler.EmergencyLog_EnterPlayingStateUpdate();
+
             // Phase 2: Update LightingV3Foundation (V3 mode only) - ALWAYS ACTIVE FOR VALIDATION
             if (LightingPipelineCoordinator.I.IsV3Mode && session.ViewCoordinator.LightingV3Foundation != null)
             {
@@ -412,7 +416,19 @@ namespace Nyvorn.Source.Game.States
                     screenH,
                     session.Camera.Zoom);
 
-                session.ViewCoordinator.UpdateLightingV3(visibleWorldRect);
+                if (_renderedFrameProfiler != null)
+                    _renderedFrameProfiler.EmergencyLog_AfterActiveRegion();
+
+                if (_renderedFrameProfiler != null)
+                    _renderedFrameProfiler.EmergencyLog_BeforeFoundation();
+
+                if (!_renderedFrameProfiler?.ShouldSkipFoundationUpdate() ?? true)
+                {
+                    session.ViewCoordinator.UpdateLightingV3(visibleWorldRect);
+                }
+
+                if (_renderedFrameProfiler != null)
+                    _renderedFrameProfiler.EmergencyLog_AfterFoundation();
 
                 _foundationUpdateCount++;
                 if (!_hasLoggedFirstFoundationUpdate)
@@ -579,6 +595,9 @@ namespace Nyvorn.Source.Game.States
                     }
                 }
             }
+
+            if (_renderedFrameProfiler != null)
+                _renderedFrameProfiler.EmergencyLog_ExitPlayingStateUpdate();
 
             previousConsoleKeyboard = keyboard;
         }
