@@ -122,19 +122,128 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// </summary>
         public void UpdateFromVisibleWorldRect(VisibleWorldRect visibleWorldRect, int tileSize)
         {
-            // Convert visible world rect to screen-space coordinates for the old Update() path
-            // This temporary adapter ensures we use the correct visible rect without changing ActiveRegion yet
-            float viewWidthPixels = visibleWorldRect.Width;
-            float viewHeightPixels = visibleWorldRect.Height;
+            // Capture previous origin for change detection
+            float prevOriginX = _activeRegion.WorldOriginX;
+            float prevOriginY = _activeRegion.WorldOriginY;
 
-            // Camera position is center of visible rect
-            float cameraX = visibleWorldRect.Left + viewWidthPixels / 2f;
-            float cameraY = visibleWorldRect.Top + viewHeightPixels / 2f;
+            // Convert float boundaries to tile indices (floor/ceil preserve precision)
+            float minTileXFloat = visibleWorldRect.Left / tileSize;
+            float maxTileXFloat = visibleWorldRect.Right / tileSize;
+            float minTileYFloat = visibleWorldRect.Top / tileSize;
+            float maxTileYFloat = visibleWorldRect.Bottom / tileSize;
 
-            // Call the existing Update with converted values
-            // NOTE: This is a temporary adapter. Eventually, ActiveRegion should be refactored
-            // to take VisibleWorldRect directly, but for now we adapt to the existing API.
-            Update(cameraX, cameraY, (int)viewWidthPixels, (int)viewHeightPixels, tileSize);
+            int minTileX = (int)System.Math.Floor(minTileXFloat);
+            int maxTileXInclusive = (int)System.Math.Ceiling(maxTileXFloat) - 1;
+            int minTileY = (int)System.Math.Floor(minTileYFloat);
+            int maxTileYInclusive = (int)System.Math.Ceiling(maxTileYFloat) - 1;
+
+            // Calculate region dimensions before margin
+            int visibleTileCountX = maxTileXInclusive - minTileX + 1;
+            int visibleTileCountY = maxTileYInclusive - minTileY + 1;
+
+            // Apply margin (1 tile default) exactly once
+            int marginTiles = 1;
+            int regionWidthTiles = visibleTileCountX + (marginTiles * 2);
+            int regionHeightTiles = visibleTileCountY + (marginTiles * 2);
+
+            // Calculate final region origin (top-left corner in world pixels)
+            int leftTileWithMargin = minTileX - marginTiles;
+            int topTileWithMargin = minTileY - marginTiles;
+            float regionOriginX = leftTileWithMargin * tileSize;
+            float regionOriginY = topTileWithMargin * tileSize;
+
+            // Update active region dimensions using direct assignment
+            // NOTE: We pass the values to Update() which sets them internally
+            _activeRegion.UpdateFromTiles(regionWidthTiles, regionHeightTiles, regionOriginX, regionOriginY, tileSize);
+
+            ActiveTileCount = regionWidthTiles * regionHeightTiles;
+            ActiveSampleCount = _activeRegion.TotalSamples;
+
+            // Reset Phase 3.2A metrics
+            SunVisibilitySampleCount = 0;
+            SunVisibilityPreTraceSkips = 0;
+            SunVisibilityBelowHorizonSkips = 0;
+            SunVisibilityLowIntensitySkips = 0;
+            SunVisibilityLowElevationSkips = 0;
+            SunVisibilityTraceCandidates = 0;
+            SunVisibilityStartingCellBlocks = 0;
+            SunVisibilityDdaRaysStarted = 0;
+            SunVisibilityCellsVisited = 0;
+            SunVisibilityEarlyOuts = 0;
+            SunVisibilityFullyFreeRays = 0;
+            SunVisibilityPartiallyTransmittedRays = 0;
+            SunVisibilityFullyBlockedRays = 0;
+            SunVisibilityGuardLimitHits = 0;
+            SunVisibilityMaximumCellsPerRay = 0;
+
+            // Ensure back slot capacity
+            _backSlot.EnsureCapacity(ActiveTileCount, ActiveSampleCount);
+            _backSlot.ClearBuffers(ActiveTileCount, ActiveSampleCount);
+
+            // Classify tiles in back slot
+            ClassifyRegionToSlot(_backSlot, tileSize);
+
+            // Build opacities in back slot
+            BuildOpacityFieldsToSlot(_backSlot, tileSize);
+
+            // Build sun visibility field (Phase 3.2A)
+            BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+
+            // Calculate probe position (sample at 20,20 local coordinates)
+            int probeLocalSampleX = 20;
+            int probeLocalSampleY = 20;
+            int probeIndex = probeLocalSampleY * _activeRegion.RegionWidthSamples + probeLocalSampleX;
+
+            float sampleSpacingX = _activeRegion.RegionWidthTiles > 0
+                ? (float)(_activeRegion.RegionWidthTiles * tileSize) / _activeRegion.RegionWidthSamples
+                : 1f;
+            float sampleSpacingY = _activeRegion.RegionHeightTiles > 0
+                ? (float)(_activeRegion.RegionHeightTiles * tileSize) / _activeRegion.RegionHeightSamples
+                : 1f;
+            float sampleCenterOffsetX = sampleSpacingX / 2f;
+            float sampleCenterOffsetY = sampleSpacingY / 2f;
+
+            float probeWorldX = _activeRegion.WorldOriginX + probeLocalSampleX * sampleSpacingX + sampleCenterOffsetX;
+            float probeWorldY = _activeRegion.WorldOriginY + probeLocalSampleY * sampleSpacingY + sampleCenterOffsetY;
+
+            float probeSunOpacity = probeIndex >= 0 && probeIndex < _backSlot.SunOpacityBuffer.Length
+                ? _backSlot.SunOpacityBuffer[probeIndex]
+                : 0f;
+            float probeLocalOpacity = probeIndex >= 0 && probeIndex < _backSlot.LocalOpacityBuffer.Length
+                ? _backSlot.LocalOpacityBuffer[probeIndex]
+                : 0f;
+
+            // Store probe data in back slot
+            _backSlot.ProbeLocalSampleX = probeLocalSampleX;
+            _backSlot.ProbeLocalSampleY = probeLocalSampleY;
+            _backSlot.ProbeSampleWorldX = probeWorldX;
+            _backSlot.ProbeSampleWorldY = probeWorldY;
+            _backSlot.ProbeSunOpacity = probeSunOpacity;
+            _backSlot.ProbeLocalOpacity = probeLocalOpacity;
+
+            // Get solar state from provider (Phase 3.1)
+            if (_solarProvider != null)
+            {
+                _backSlot.SunState = _solarProvider.GetSunState();
+            }
+            else
+            {
+                _backSlot.SunState = LightingV3SunState.Night();  // Default if no provider
+            }
+
+            // CRITICAL: Publish frame atomically after both buffers are ready
+            _updateId++;
+            _backSlot.FrameId = _updateId;
+            _backSlot.Region = new ActiveRegionSnapshot(_activeRegion, tileSize);
+
+            // Log probe when WorldOrigin changes (disabled during profiling)
+            bool regionChanged = prevOriginX != _activeRegion.WorldOriginX ||
+                               prevOriginY != _activeRegion.WorldOriginY;
+
+            // Swap buffers: front becomes the published data, back is next to build
+            var temp = _frontSlot;
+            _frontSlot = _backSlot;
+            _backSlot = temp;
         }
 
         /// <summary>

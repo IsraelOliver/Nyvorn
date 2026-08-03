@@ -115,6 +115,28 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Update the active lighting region from pre-calculated tile dimensions and origin (Task 2.1).
+        /// This path accepts dimensions already derived from VisibleWorldRect (zoom-adjusted).
+        /// Bypasses the old camera-based calculation entirely.
+        /// </summary>
+        public void UpdateFromTiles(int regionWidthTiles, int regionHeightTiles, float originX, float originY, int tileSize)
+        {
+            // Logical render size is not directly available from tile dimensions + margin
+            // We derive it from: visibleTileCount = regionTiles - 2*margin
+            int visibleWidthTiles = regionWidthTiles - (MarginTiles * 2);
+            int visibleHeightTiles = regionHeightTiles - (MarginTiles * 2);
+
+            LogicalRenderWidth = visibleWidthTiles * tileSize;
+            LogicalRenderHeight = visibleHeightTiles * tileSize;
+
+            RegionWidthTiles = regionWidthTiles;
+            RegionHeightTiles = regionHeightTiles;
+
+            WorldOriginX = originX;
+            WorldOriginY = originY;
+        }
+
+        /// <summary>
         /// Convert world tile coordinate to local tile coordinate (within region).
         /// Returns -1 if tile is outside region.
         /// </summary>
