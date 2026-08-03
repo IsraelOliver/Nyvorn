@@ -23,7 +23,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             ValidationPass,
             SmokeTest,
             BaselineWarmup,
-            BaselineCapture
+            BaselineCapture,
+            EmergencyV3None,
+            EmergencyV3SunVisibility
         }
 
         public enum LightingMode
@@ -45,11 +47,31 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // State
         private ProfileState _state = ProfileState.Inactive;
         private LightingMode _currentMode = LightingMode.Legacy;
+        private LightingMode _requestedLightingMode = LightingMode.Legacy;  // For emergency auto-mode switch
         private long _lastBeginDrawTicks = 0;
         private long _lastUpdateTicks = 0;
         private int _warmupFramesRemaining = 0;
         private int _measuredFramesRemaining = 0;
         private bool _isFirstFrame = true;
+
+        // Emergency capture state
+        private int _emergencyRenderedFramesRemaining = 0;
+        private int _emergencyUpdateCountRemaining = 0;
+        private long _emergencyMeasurementStartTicks = 0;
+        private double _emergencyMaxUpdateMs = 0;
+        private bool _emergencyModeApplied = false;
+        private EmergencyCompletionReason _emergencyCompletionReason = EmergencyCompletionReason.None;
+
+        public enum EmergencyCompletionReason
+        {
+            None,
+            CompletedRenderedFrameLimit,
+            CompletedUpdateLimit,
+            NoRenderedFrameTimeout,
+            SingleUpdateBudgetExceeded,
+            EndDrawFailed,
+            StageException
+        }
 
         // Per-rendered-frame accumulation
         private long _frameStartTicksBeginDraw;
@@ -114,6 +136,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private int _maxUpdatesBeforeRenderedFrame = 0;
         private long _measurementStartTicks = 0;
         private long _lastAcceptedBeginDrawTicks = 0;
+
+        // Starvation accumulators (for emergency capture without rendered frames)
+        private int _starvedUpdateCount = 0;
+        private double _starvedTotalUpdateMs = 0.0;
+        private double _starvedTotalFoundationMs = 0.0;
+        private double _starvedTotalClassificationMs = 0.0;
+        private double _starvedTotalOccluderMs = 0.0;
+        private double _starvedTotalSunVisibilityMs = 0.0;
+        private int _starvedFoundationCalls = 0;
+        private int _starvedClassificationCalls = 0;
+        private int _starvedOccluderCalls = 0;
+        private int _starvedSunVisibilityCalls = 0;
+        private long _lastSuccessfulBeginDrawTimestamp = 0;
 
         public RenderedFrameProfiler()
         {
@@ -190,6 +225,66 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
 
+        public void StartEmergencyV3None(int resolutionWidth, int resolutionHeight,
+            float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            _state = ProfileState.EmergencyV3None;
+            _currentMode = LightingMode.Legacy;  // Start in Legacy
+            _requestedLightingMode = LightingMode.V3Mode_None;  // Request V3 None
+            _emergencyRenderedFramesRemaining = 5;
+            _emergencyUpdateCountRemaining = 20;
+            _emergencyModeApplied = false;
+            _emergencyCompletionReason = EmergencyCompletionReason.None;
+            _emergencyMaxUpdateMs = 0;
+            ResetStarvationAccumulators();
+
+            _isFirstFrame = true;
+            _beginDrawRejectedCount = 0;
+            _renderedFrameCount = 0;
+            _noRenderedFrameTimeoutCount = 0;
+            _maxUpdatesBeforeRenderedFrame = 0;
+            MeasurementValid = true;
+            InvalidReason = InvalidReasonEnum.None;
+            long now = Stopwatch.GetTimestamp();
+            _measurementStartTicks = now;
+            _emergencyMeasurementStartTicks = now;
+            _lastUpdateTicks = now;
+            _lastAcceptedBeginDrawTicks = now;
+            _lastSuccessfulBeginDrawTimestamp = now;
+
+            LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+        }
+
+        public void StartEmergencyV3SunVisibility(int resolutionWidth, int resolutionHeight,
+            float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            _state = ProfileState.EmergencyV3SunVisibility;
+            _currentMode = LightingMode.Legacy;  // Start in Legacy
+            _requestedLightingMode = LightingMode.V3Mode_SunVisibility;  // Request V3 SunVisibility
+            _emergencyRenderedFramesRemaining = 5;
+            _emergencyUpdateCountRemaining = 20;
+            _emergencyModeApplied = false;
+            _emergencyCompletionReason = EmergencyCompletionReason.None;
+            _emergencyMaxUpdateMs = 0;
+            ResetStarvationAccumulators();
+
+            _isFirstFrame = true;
+            _beginDrawRejectedCount = 0;
+            _renderedFrameCount = 0;
+            _noRenderedFrameTimeoutCount = 0;
+            _maxUpdatesBeforeRenderedFrame = 0;
+            MeasurementValid = true;
+            InvalidReason = InvalidReasonEnum.None;
+            long now = Stopwatch.GetTimestamp();
+            _measurementStartTicks = now;
+            _emergencyMeasurementStartTicks = now;
+            _lastUpdateTicks = now;
+            _lastAcceptedBeginDrawTicks = now;
+            _lastSuccessfulBeginDrawTimestamp = now;
+
+            LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+        }
+
         private void LockConfiguration(int resolutionWidth, int resolutionHeight, float zoom,
             int activeRegionWidth, int activeRegionHeight, int sampleCount)
         {
@@ -253,9 +348,34 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             if (_state == ProfileState.Inactive)
                 return;
             long ticks = Stopwatch.GetTimestamp();
-            _updateCpuMsThisFrame += TicksToMs(ticks - _updateStartTicks);
+            double updateMs = TicksToMs(ticks - _updateStartTicks);
+            _updateCpuMsThisFrame += updateMs;
             _updateCallsThisFrame++;
             _lastUpdateTicks = ticks;
+
+            // Emergency capture: track individual update times and accumulated starvation
+            if (IsEmergencyCapture && _emergencyModeApplied)
+            {
+                _starvedUpdateCount++;
+                _starvedTotalUpdateMs += updateMs;
+
+                // Check if single update exceeded budget
+                if (updateMs > 500.0)
+                {
+                    _emergencyCompletionReason = EmergencyCompletionReason.SingleUpdateBudgetExceeded;
+                    _emergencyMaxUpdateMs = updateMs;
+                    _state = ProfileState.Inactive;
+                }
+
+                // Check if update count exceeded
+                if (_emergencyUpdateCountRemaining > 0)
+                    _emergencyUpdateCountRemaining--;
+                if (_emergencyUpdateCountRemaining == 0)
+                {
+                    _emergencyCompletionReason = EmergencyCompletionReason.CompletedUpdateLimit;
+                    _state = ProfileState.Inactive;
+                }
+            }
         }
 
         public void OnUpdateSetIsRunningSlowly(bool isRunningSlowly)
@@ -277,8 +397,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             if (elapsedSinceLastBeginDrawSeconds > WatchdogTimeoutSeconds)
             {
-                MeasurementValid = false;
-                InvalidReason = InvalidReasonEnum.NoRenderedFrameTimeout;
+                if (IsEmergencyCapture)
+                {
+                    // Emergency capture: freeze on starvation
+                    _emergencyCompletionReason = EmergencyCompletionReason.NoRenderedFrameTimeout;
+                }
+                else
+                {
+                    // Normal capture: invalidate
+                    MeasurementValid = false;
+                    InvalidReason = InvalidReasonEnum.NoRenderedFrameTimeout;
+                }
                 _state = ProfileState.Inactive;
                 _noRenderedFrameTimeoutCount++;
             }
@@ -294,7 +423,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void OnFoundationUpdateEnd()
         {
             if (_state == ProfileState.Inactive) return;
-            _foundationUpdateMsThisFrame += TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            double ms = TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            _foundationUpdateMsThisFrame += ms;
+
+            // Starvation tracking for emergency
+            if (IsEmergencyCapture && _emergencyModeApplied)
+            {
+                _starvedTotalFoundationMs += ms;
+                _starvedFoundationCalls++;
+            }
         }
 
         public void OnClassificationStart()
@@ -306,7 +443,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void OnClassificationEnd()
         {
             if (_state == ProfileState.Inactive) return;
-            _classificationMsThisFrame += TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            double ms = TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            _classificationMsThisFrame += ms;
+
+            // Starvation tracking for emergency
+            if (IsEmergencyCapture && _emergencyModeApplied)
+            {
+                _starvedTotalClassificationMs += ms;
+                _starvedClassificationCalls++;
+            }
         }
 
         public void OnOccluderBuildStart()
@@ -318,7 +463,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void OnOccluderBuildEnd()
         {
             if (_state == ProfileState.Inactive) return;
-            _occluderBuildMsThisFrame += TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            double ms = TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            _occluderBuildMsThisFrame += ms;
+
+            // Starvation tracking for emergency
+            if (IsEmergencyCapture && _emergencyModeApplied)
+            {
+                _starvedTotalOccluderMs += ms;
+                _starvedOccluderCalls++;
+            }
         }
 
         public void OnSunVisibilityBuildStart()
@@ -330,8 +483,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void OnSunVisibilityBuildEnd()
         {
             if (_state == ProfileState.Inactive) return;
-            _sunVisibilityBuildMsThisFrame += TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            double ms = TicksToMs(Stopwatch.GetTimestamp() - _updateStartTicks);
+            _sunVisibilityBuildMsThisFrame += ms;
             _sunVisibilityBuildCallsThisFrame++;
+
+            // Starvation tracking for emergency
+            if (IsEmergencyCapture && _emergencyModeApplied)
+            {
+                _starvedTotalSunVisibilityMs += ms;
+                _starvedSunVisibilityCalls++;
+            }
         }
 
         // BeginDraw - marks rendered frame boundary
@@ -447,6 +608,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 }
             }
 
+            // Emergency capture: check rendered frame limit
+            if (IsEmergencyCapture && _emergencyModeApplied)
+            {
+                if (_emergencyRenderedFramesRemaining > 0)
+                    _emergencyRenderedFramesRemaining--;
+                if (_emergencyRenderedFramesRemaining == 0)
+                {
+                    _emergencyCompletionReason = EmergencyCompletionReason.CompletedRenderedFrameLimit;
+                    _state = ProfileState.Inactive;
+                }
+            }
+
+            _lastSuccessfulBeginDrawTimestamp = now;
             return true;
         }
 
@@ -551,8 +725,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void OnEndDrawFailed()
         {
             if (_state == ProfileState.Inactive) return;
-            MeasurementValid = false;
-            InvalidReason = InvalidReasonEnum.EndDrawFailed;
+            if (IsEmergencyCapture)
+            {
+                _emergencyCompletionReason = EmergencyCompletionReason.EndDrawFailed;
+            }
+            else
+            {
+                MeasurementValid = false;
+                InvalidReason = InvalidReasonEnum.EndDrawFailed;
+            }
             _state = ProfileState.Inactive;
         }
 
@@ -573,6 +754,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _hudDrawMsThisFrame = 0.0;
             _presentMsThisFrame = 0.0;
             _beginDrawGateMsThisFrame = 0.0;
+        }
+
+        private void ResetStarvationAccumulators()
+        {
+            _starvedUpdateCount = 0;
+            _starvedTotalUpdateMs = 0.0;
+            _starvedTotalFoundationMs = 0.0;
+            _starvedTotalClassificationMs = 0.0;
+            _starvedTotalOccluderMs = 0.0;
+            _starvedTotalSunVisibilityMs = 0.0;
+            _starvedFoundationCalls = 0;
+            _starvedClassificationCalls = 0;
+            _starvedOccluderCalls = 0;
+            _starvedSunVisibilityCalls = 0;
         }
 
         public ProfileResult EndProfile()
@@ -615,6 +810,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public bool IsActive => _state != ProfileState.Inactive;
         public ProfileState CurrentState => _state;
         public LightingMode CurrentMode => _currentMode;
+        public LightingMode RequestedLightingMode => _requestedLightingMode;
+        public bool IsEmergencyCapture => _state == ProfileState.EmergencyV3None || _state == ProfileState.EmergencyV3SunVisibility;
+        public EmergencyCompletionReason CompletionReason => _emergencyCompletionReason;
+
+        // Signal that emergency mode has been applied
+        public void NotifyEmergencyModeApplied()
+        {
+            if (IsEmergencyCapture)
+                _emergencyModeApplied = true;
+        }
 
         // Data structures for RENDERED FRAMES
         public struct RenderedFrameMetrics

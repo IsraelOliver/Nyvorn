@@ -1,0 +1,145 @@
+==========================================================
+RENDERED FRAME BASELINE: Legacy
+==========================================================
+
+CONFIGURATION:
+  Mode: Legacy
+  Resolution: 1920x1009
+  Camera.Zoom: 2,00
+  ActiveRegion: 0x0
+  SampleCount: 0
+
+CAPTURE:
+  Rendered Frames: 600
+  BeginDraw Rejected Count: 0
+  Max Updates Before Rendered Frame: 1
+
+==========================================================
+OBSERVED (from measurements):
+==========================================================
+
+Frame Timing:
+  WallClockFrameIntervalMs:
+    Average: 0,833 ms
+    P95:     0,000 ms
+    Max:     16,804 ms
+  FPS:
+    Average: 3,0
+    Minimum: 0,0
+
+CPU Timing:
+  TotalUpdateCpuMs:
+    Average: 0,029 ms
+    P95:     0,000 ms
+    Max:     0,701 ms
+  DrawCpuMs:
+    Average: 0,080 ms
+    P95:     0,000 ms
+    Max:     1,900 ms
+  PresentMs:
+    Average: 0,002 ms
+    P95:     0,000 ms
+    Max:     0,053 ms
+
+Update Accumulation:
+  UpdateCallsSinceLastDraw:
+    Average: 0,050
+    Max:     1
+  CatchUpUpdateCount:
+    Average: 0,000
+    Max:     0
+  IsRunningSlowlyUpdateCount:
+    Average: 0,000
+    Max:     0
+
+Foundation Stages (nested in Update):
+  FoundationUpdateMs:
+    Average: 0,029 ms
+    P95:     0,000 ms
+    Max:     0,700 ms
+    ClassificationMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+    OccluderBuildMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+    SunVisibilityBuildMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+    SunVisibilityBuildCalls:
+    Average: 0,000
+    Max:     0
+
+Draw Stages:
+  WorldRenderMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+  DebugRendererMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+    RenderSunVisibilityMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+    DebugCompositeMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+  HudDrawMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+  BeginDrawGateMs:
+    Average: 0,000 ms
+    P95:     0,000 ms
+    Max:     0,000 ms
+
+==========================================================
+INFERIDO (derived from observations):
+==========================================================
+
+UnaccountedWallTimeMs:
+    Average: 0,728 ms
+    P95:     14,235 ms
+    Max:     16,126 ms
+  This is wall-clock time not accounted by CPU (GPU waits, VSync, etc).
+
+TotalCpuMs:
+    Average: 0,109 ms
+    P95:     0,530 ms
+    Max:     2,499 ms
+  This is TotalUpdateCpuMs + DrawCpuMs (CPU-only measurement).
+
+==========================================================
+ANOMALIES & DIAGNOSTICS:
+==========================================================
+
+⚠ High Unaccounted Time: max 16,13ms
+  Possible: GPU waits, VSync stalls, scheduler delays.
+
+⚠ Low FPS: minimum 0,0 FPS
+  System may be overloaded or blocked.
+
+==========================================================
+AINDA NÃO COMPROVADO (hypotheses to validate):
+==========================================================
+
+Hypothesis: <1 FPS caused by Update loop cascade
+  Would require: UpdateCallsSinceLastDraw >> 1
+               SunVisibilityBuildCalls >> 1 (proportional)
+               IsRunningSlowlyUpdateCount high
+               RenderedFrameInterval >> 16.67ms
+  Status: NO EVIDENCE FOR THIS HYPOTHESIS
+
+Next Steps:
+  1. Run all three modes (Legacy, V3 None, V3 SunVisibility)
+  2. Compare metrics across modes
+  3. Identify which mode shows <1 FPS signature
+  4. Correlate with SunVisibilityBuildCalls to confirm hypothesis
+
+==========================================================

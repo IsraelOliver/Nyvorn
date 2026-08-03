@@ -25,6 +25,12 @@ public class Game1 : Game
     private bool _prevKeyOState = false;
     private bool _prevKeyUState = false;
     private bool _prevKeyEState = false;
+    private bool _prevKey7State = false;  // Emergency V3 None
+    private bool _prevKey8State = false;  // Emergency V3 SunVisibility
+
+    // Emergency capture auto-mode switching
+    private RenderedFrameProfiler.LightingMode _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.Legacy;
+    private bool _emergencyShouldExport = false;
 
     // Phase A0.0: Configuration snapshot for consistent measurements
     private struct CaptureEnvironmentSnapshot
@@ -172,6 +178,29 @@ public class Game1 : Game
             EndMeasurementAndWrite();
         }
         _prevKeyEState = currentKeyEState;
+
+        // Ctrl+Shift+7: Start Emergency V3 None Capture
+        bool currentKey7State = keyboard.IsKeyDown(Keys.D7) &&
+                                keyboard.IsKeyDown(Keys.LeftControl) &&
+                                keyboard.IsKeyDown(Keys.LeftShift);
+        if (currentKey7State && !_prevKey7State && !_renderedFrameProfiler.IsActive)
+        {
+            StartEmergencyV3NoneCapture();
+        }
+        _prevKey7State = currentKey7State;
+
+        // Ctrl+Shift+8: Start Emergency V3 SunVisibility Capture
+        bool currentKey8State = keyboard.IsKeyDown(Keys.D8) &&
+                                keyboard.IsKeyDown(Keys.LeftControl) &&
+                                keyboard.IsKeyDown(Keys.LeftShift);
+        if (currentKey8State && !_prevKey8State && !_renderedFrameProfiler.IsActive)
+        {
+            StartEmergencyV3SunVisibilityCapture();
+        }
+        _prevKey8State = currentKey8State;
+
+        // Handle emergency mode switching
+        HandleEmergencyModeSwitch();
     }
 
     private void StartValidationPass()
@@ -228,6 +257,149 @@ public class Game1 : Game
         RenderedFrameResultWriter.WriteToFile(result, outputPath);
 
         System.Console.WriteLine($"[Phase A0.0] Results written to {outputPath}");
+    }
+
+    private void StartEmergencyV3NoneCapture()
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
+        _renderedFrameProfiler.StartEmergencyV3None(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_None;
+        _emergencyShouldExport = false;
+
+        System.Console.WriteLine("[Phase A0.0] Emergency V3 None capture started (will auto-switch mode)");
+    }
+
+    private void StartEmergencyV3SunVisibilityCapture()
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
+        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+        _emergencyShouldExport = false;
+
+        System.Console.WriteLine("[Phase A0.0] Emergency V3 SunVisibility capture started (will auto-switch mode)");
+    }
+
+    private void HandleEmergencyModeSwitch()
+    {
+        if (!_renderedFrameProfiler.IsEmergencyCapture)
+            return;
+
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        // Check if profiler has already applied the mode
+        if (!_renderedFrameProfiler.IsActive || _emergencyShouldExport)
+        {
+            // Capture is done, switch back to Legacy and export
+            if (_emergencyRequestedMode != RenderedFrameProfiler.LightingMode.Legacy)
+            {
+                // Request return to Legacy
+                RequestLightingMode(RenderedFrameProfiler.LightingMode.Legacy);
+                _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.Legacy;
+                _emergencyShouldExport = true;
+            }
+            else if (_emergencyShouldExport)
+            {
+                // Safely export results
+                ExportEmergencyCapture();
+                _emergencyShouldExport = false;
+            }
+        }
+        else if (!_renderedFrameProfiler.IsActive == false)
+        {
+            // Still capturing - check if mode needs to be applied
+            var currentMode = GetCurrentLightingMode();
+            var requestedMode = _renderedFrameProfiler.RequestedLightingMode;
+
+            if (requestedMode != currentMode && requestedMode != RenderedFrameProfiler.LightingMode.Legacy)
+            {
+                // Request the mode switch
+                RequestLightingMode(requestedMode);
+            }
+            else if (requestedMode == currentMode && requestedMode != RenderedFrameProfiler.LightingMode.Legacy)
+            {
+                // Mode has been applied - notify profiler
+                _renderedFrameProfiler.NotifyEmergencyModeApplied();
+            }
+        }
+    }
+
+    private void RequestLightingMode(RenderedFrameProfiler.LightingMode mode)
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        if (mode == RenderedFrameProfiler.LightingMode.Legacy)
+        {
+            // Request Legacy mode
+            LightingPipelineCoordinator.I.SetMode(LightingPipelineMode.Legacy);
+        }
+        else if (mode == RenderedFrameProfiler.LightingMode.V3Mode_None || mode == RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility)
+        {
+            // Request V3 mode (if not already there)
+            if (LightingPipelineCoordinator.I.IsLegacyMode)
+            {
+                LightingPipelineCoordinator.I.SetMode(LightingPipelineMode.V3);
+            }
+
+            // Then set debug visualization mode
+            var debugCtrl = playingState.Session.ViewCoordinator.LightingV3DebugController;
+            if (debugCtrl != null)
+            {
+                LightingDebugMode targetMode = (mode == RenderedFrameProfiler.LightingMode.V3Mode_None) ?
+                    LightingDebugMode.None : LightingDebugMode.SunVisibility;
+
+                // Cycle to the target mode if needed
+                LightingDebugMode currentMode = debugCtrl.GetCurrentMode();
+                while (currentMode != targetMode)
+                {
+                    debugCtrl.CycleMode();
+                    currentMode = debugCtrl.GetCurrentMode();
+                    if (currentMode == targetMode) break;
+                }
+            }
+        }
+    }
+
+    private void ExportEmergencyCapture()
+    {
+        var result = _renderedFrameProfiler.EndProfile();
+
+        string modeStr = result.Mode switch
+        {
+            RenderedFrameProfiler.LightingMode.Legacy => "LEGACY",
+            RenderedFrameProfiler.LightingMode.V3Mode_None => "V3_NONE",
+            RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility => "V3_SUN_VISIBILITY",
+            _ => "UNKNOWN"
+        };
+
+        string filename = $"EMERGENCY_{modeStr}.txt";
+        string outputPath = System.IO.Path.Combine("Measurements", filename);
+
+        System.IO.Directory.CreateDirectory("Measurements");
+
+        // Write emergency capture results
+        using (var writer = new System.IO.StreamWriter(outputPath))
+        {
+            writer.WriteLine($"EMERGENCY CAPTURE REPORT");
+            writer.WriteLine($"Mode: {modeStr}");
+            writer.WriteLine($"Completion Reason: {_renderedFrameProfiler.CompletionReason}");
+            writer.WriteLine($"Frames Recorded: {result.FramesRecorded}");
+            writer.WriteLine($"Begin Draw Rejected: {result.BeginDrawRejectedCount}");
+            writer.WriteLine($"Rendered Frame Count: {result.RenderedFrameCount}");
+            writer.WriteLine($"Max Updates Before Rendered Frame: {result.MaxUpdatesBeforeRenderedFrame}");
+            writer.WriteLine();
+        }
+
+        System.Console.WriteLine($"[Phase A0.0] Emergency results written to {outputPath}");
     }
 
     private PlayingState GetCurrentPlayingState()

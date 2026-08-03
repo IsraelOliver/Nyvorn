@@ -24,6 +24,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private readonly ISolarProvider _solarProvider;
 
         private ActiveLightingRegion _activeRegion;
+        private RenderedFrameProfiler _profiler;  // Optional profiler for Phase A0.0
 
         // Double-buffered frame slots (true immutability via independent buffers)
         private LightingV3FrameSlot _backSlot;  // Being built during Update
@@ -106,6 +107,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Set profiler for Phase A0.0 Emergency Starvation Capture.
+        /// </summary>
+        public void SetProfiler(RenderedFrameProfiler profiler)
+        {
+            _profiler = profiler;
+        }
+
+        /// <summary>
         /// Register an additional occluder provider (trees, structures, etc).
         /// </summary>
         public void RegisterOccluderProvider(IOccluderProvider provider)
@@ -181,13 +190,43 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _backSlot.ClearBuffers(ActiveTileCount, ActiveSampleCount);
 
             // Classify tiles in back slot
-            ClassifyRegionToSlot(_backSlot, tileSize);
+            if (_profiler != null)
+                _profiler.OnClassificationStart();
+            try
+            {
+                ClassifyRegionToSlot(_backSlot, tileSize);
+            }
+            finally
+            {
+                if (_profiler != null)
+                    _profiler.OnClassificationEnd();
+            }
 
             // Build opacities in back slot
-            BuildOpacityFieldsToSlot(_backSlot, tileSize);
+            if (_profiler != null)
+                _profiler.OnOccluderBuildStart();
+            try
+            {
+                BuildOpacityFieldsToSlot(_backSlot, tileSize);
+            }
+            finally
+            {
+                if (_profiler != null)
+                    _profiler.OnOccluderBuildEnd();
+            }
 
             // Build sun visibility field (Phase 3.2A)
-            BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+            if (_profiler != null)
+                _profiler.OnSunVisibilityBuildStart();
+            try
+            {
+                BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+            }
+            finally
+            {
+                if (_profiler != null)
+                    _profiler.OnSunVisibilityBuildEnd();
+            }
 
             // Calculate probe position (sample at 20,20 local coordinates)
             int probeLocalSampleX = 20;
@@ -286,13 +325,43 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _backSlot.ClearBuffers(ActiveTileCount, ActiveSampleCount);
 
             // Classify tiles in back slot
-            ClassifyRegionToSlot(_backSlot, tileSize);
+            if (_profiler != null)
+                _profiler.OnClassificationStart();
+            try
+            {
+                ClassifyRegionToSlot(_backSlot, tileSize);
+            }
+            finally
+            {
+                if (_profiler != null)
+                    _profiler.OnClassificationEnd();
+            }
 
             // Build opacities in back slot
-            BuildOpacityFieldsToSlot(_backSlot, tileSize);
+            if (_profiler != null)
+                _profiler.OnOccluderBuildStart();
+            try
+            {
+                BuildOpacityFieldsToSlot(_backSlot, tileSize);
+            }
+            finally
+            {
+                if (_profiler != null)
+                    _profiler.OnOccluderBuildEnd();
+            }
 
             // Build sun visibility field (Phase 3.2A)
-            BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+            if (_profiler != null)
+                _profiler.OnSunVisibilityBuildStart();
+            try
+            {
+                BuildSunVisibilityFieldToSlot(_backSlot, tileSize);
+            }
+            finally
+            {
+                if (_profiler != null)
+                    _profiler.OnSunVisibilityBuildEnd();
+            }
 
             // Calculate probe position (sample at 20,20 local coordinates)
             int probeLocalSampleX = 20;

@@ -142,6 +142,11 @@ namespace Nyvorn.Source.Game.States
         public void SetProfiler(RenderedFrameProfiler profiler)
         {
             _renderedFrameProfiler = profiler;
+            // Also pass profiler to Foundation for timing ClassifyRegionToSlot, etc.
+            if (session?.ViewCoordinator?.LightingV3Foundation != null && profiler != null)
+            {
+                session.ViewCoordinator.LightingV3Foundation.SetProfiler(profiler);
+            }
         }
 
         private RenderedFrameProfiler.LightingMode GetProfilerLightingMode()
