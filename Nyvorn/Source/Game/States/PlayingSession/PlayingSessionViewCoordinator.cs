@@ -280,6 +280,7 @@ namespace Nyvorn.Source.Game.States
         /// <summary>
         /// Update Phase 2 foundation (only in V3 mode).
         /// Called from PlayingState.Update.
+        /// DEPRECATED: Use UpdateLightingV3(in VisibleWorldRect) instead.
         /// </summary>
         public void UpdateLightingV3(float cameraX, float cameraY, int logicalWidth, int logicalHeight)
         {
@@ -287,6 +288,18 @@ namespace Nyvorn.Source.Game.States
                 return;
 
             lightingV3Foundation.Update(cameraX, cameraY, logicalWidth, logicalHeight, WorldMap.TileSize);
+        }
+
+        /// <summary>
+        /// Update Phase 2 foundation with authoritative visible world rect (Task 2.1).
+        /// This is the preferred API - uses the same VisibleWorldRect as the renderer.
+        /// </summary>
+        public void UpdateLightingV3(Engine.Graphics.LightingPipeline.VisibleWorldRect visibleWorldRect)
+        {
+            if (lightingV3Foundation == null)
+                return;
+
+            lightingV3Foundation.UpdateFromVisibleWorldRect(visibleWorldRect, WorldMap.TileSize);
         }
 
         /// <summary>

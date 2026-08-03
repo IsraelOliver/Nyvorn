@@ -117,8 +117,30 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Update foundation from authoritative visible world rect (Task 2.1).
+        /// This is the preferred path - uses shared VisibleWorldRect from renderer.
+        /// </summary>
+        public void UpdateFromVisibleWorldRect(VisibleWorldRect visibleWorldRect, int tileSize)
+        {
+            // Convert visible world rect to screen-space coordinates for the old Update() path
+            // This temporary adapter ensures we use the correct visible rect without changing ActiveRegion yet
+            float viewWidthPixels = visibleWorldRect.Width;
+            float viewHeightPixels = visibleWorldRect.Height;
+
+            // Camera position is center of visible rect
+            float cameraX = visibleWorldRect.Left + viewWidthPixels / 2f;
+            float cameraY = visibleWorldRect.Top + viewHeightPixels / 2f;
+
+            // Call the existing Update with converted values
+            // NOTE: This is a temporary adapter. Eventually, ActiveRegion should be refactored
+            // to take VisibleWorldRect directly, but for now we adapt to the existing API.
+            Update(cameraX, cameraY, (int)viewWidthPixels, (int)viewHeightPixels, tileSize);
+        }
+
+        /// <summary>
         /// Update foundation for current camera position and render size.
         /// Called once per frame before rendering.
+        /// DEPRECATED: Use UpdateFromVisibleWorldRect instead.
         /// </summary>
         public void Update(float cameraWorldX, float cameraWorldY, int logicalRenderWidth, int logicalRenderHeight, int tileSize)
         {
@@ -126,11 +148,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             float prevOriginX = _activeRegion.WorldOriginX;
             float prevOriginY = _activeRegion.WorldOriginY;
 
-            // Update active region
+            // Update active region (old path - ignores zoom)
             _activeRegion.Update(cameraWorldX, cameraWorldY, logicalRenderWidth, logicalRenderHeight, tileSize);
 
             ActiveTileCount = _activeRegion.RegionWidthTiles * _activeRegion.RegionHeightTiles;
             ActiveSampleCount = _activeRegion.TotalSamples;
+
 
             // Reset Phase 3.2A metrics
             SunVisibilitySampleCount = 0;
