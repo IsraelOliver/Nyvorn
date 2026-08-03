@@ -135,24 +135,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             snapshot.ExpectedHeightSamples = snapshot.ExpectedHeightTiles * samplingConfig.SamplesPerAxis;
             snapshot.ExpectedTotalSamples = snapshot.ExpectedWidthSamples * snapshot.ExpectedHeightSamples;
 
-            // ACTUAL ActiveRegion (what Foundation currently uses)
+            // ACTUAL ActiveRegion (what Foundation currently uses) - read from source of truth
             if (foundation != null)
             {
-                snapshot.ActualTotalSamples = foundation.ActiveSampleCount;
-                snapshot.SamplesPerAxis = samplingConfig.SamplesPerAxis;
-
-                // Back-calculate tile dimensions from sample count
-                // SampleCount = (WidthTiles * SamplesPerAxis) * (HeightTiles * SamplesPerAxis)
-                // For 2x2 sampling: SampleCount = WidthTiles * 2 * HeightTiles * 2
-                int samplesPerAxis = samplingConfig.SamplesPerAxis;
-                int totalTilesUsed = snapshot.ActualTotalSamples / (samplesPerAxis * samplesPerAxis);
-
-                // Approximate: assume roughly square region or use known pattern
-                // For now, report the values that were actually used
-                snapshot.ActualWidthSamples = (int)System.Math.Sqrt(snapshot.ActualTotalSamples);
-                snapshot.ActualHeightSamples = snapshot.ActualTotalSamples / snapshot.ActualWidthSamples;
-                snapshot.ActualWidthTiles = snapshot.ActualWidthSamples / samplingConfig.SamplesPerAxis;
-                snapshot.ActualHeightTiles = snapshot.ActualHeightSamples / samplingConfig.SamplesPerAxis;
+                var auditData = foundation.GetActiveRegionAuditData();
+                snapshot.ActualWidthTiles = auditData.RegionWidthTiles;
+                snapshot.ActualHeightTiles = auditData.RegionHeightTiles;
+                snapshot.ActualWidthSamples = auditData.RegionWidthSamples;
+                snapshot.ActualHeightSamples = auditData.RegionHeightSamples;
+                snapshot.ActualTotalSamples = auditData.TotalSamples;
+                snapshot.ActualOriginX = auditData.OriginX;
+                snapshot.ActualOriginY = auditData.OriginY;
             }
 
             // Check if zoom is being ignored

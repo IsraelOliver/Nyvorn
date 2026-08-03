@@ -422,10 +422,41 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Audit data for Active Region diagnostics.
+        /// </summary>
+        public struct ActiveRegionAuditData
+        {
+            public int RegionWidthTiles;
+            public int RegionHeightTiles;
+            public int RegionWidthSamples;
+            public int RegionHeightSamples;
+            public int TotalSamples;
+            public float OriginX;
+            public float OriginY;
+        }
+
+        /// <summary>
         /// Get immutable frame data for current frame (value type returned by value, no allocation).
         /// Renderer MUST capture this ONCE at start of Draw and use exclusively.
         /// </summary>
         public LightingV3FrameData? GetFrameData() => _frontSlot != null ? new LightingV3FrameData(_frontSlot) : null;
+
+        /// <summary>
+        /// Get Active Region audit data for diagnostics (TASK 2).
+        /// </summary>
+        public ActiveRegionAuditData GetActiveRegionAuditData()
+        {
+            return new ActiveRegionAuditData
+            {
+                RegionWidthTiles = _activeRegion.RegionWidthTiles,
+                RegionHeightTiles = _activeRegion.RegionHeightTiles,
+                RegionWidthSamples = _activeRegion.RegionWidthSamples,
+                RegionHeightSamples = _activeRegion.RegionHeightSamples,
+                TotalSamples = _activeRegion.TotalSamples,
+                OriginX = _activeRegion.WorldOriginX,
+                OriginY = _activeRegion.WorldOriginY
+            };
+        }
 
         /// <summary>
         /// Get the active lighting region (for compatibility only, use GetFrameData).
