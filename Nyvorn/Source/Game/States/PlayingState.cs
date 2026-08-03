@@ -353,11 +353,15 @@ namespace Nyvorn.Source.Game.States
             // Phase 2: Update LightingV3Foundation (V3 mode only) - ALWAYS ACTIVE FOR VALIDATION
             if (LightingPipelineCoordinator.I.IsV3Mode && session.ViewCoordinator.LightingV3Foundation != null)
             {
-                session.ViewCoordinator.UpdateLightingV3(
+                // Use authoritative VisibleWorldRect (Task 2.1) instead of camera-based calculation
+                var visibleWorldRect = VisibleWorldRect.FromCamera(
                     session.Camera.Position.X,
                     session.Camera.Position.Y,
                     screenW,
-                    screenH);
+                    screenH,
+                    session.Camera.Zoom);
+
+                session.ViewCoordinator.UpdateLightingV3(visibleWorldRect);
 
                 _foundationUpdateCount++;
                 if (!_hasLoggedFirstFoundationUpdate)
