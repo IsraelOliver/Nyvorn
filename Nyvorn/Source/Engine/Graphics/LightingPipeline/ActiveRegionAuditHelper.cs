@@ -47,21 +47,29 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             public int VisibleTileCountX;
             public int VisibleTileCountY;
 
-            // ActiveRegion state
-            public int ActiveRegionMarginTiles;
-            public int ActiveRegionWidthTiles;
-            public int ActiveRegionHeightTiles;
-            public int ActiveRegionWidthSamples;
-            public int ActiveRegionHeightSamples;
-            public int ActiveRegionTotalSamples;
-            public float ActiveRegionOriginX;
-            public float ActiveRegionOriginY;
+            // EXPECTED ActiveRegion (correct calculation with zoom)
+            public int ExpectedMarginTiles;
+            public int ExpectedWidthTiles;
+            public int ExpectedHeightTiles;
+            public int ExpectedWidthSamples;
+            public int ExpectedHeightSamples;
+            public int ExpectedTotalSamples;
+
+            // ACTUAL ActiveRegion (what Foundation actually uses)
+            public int ActualWidthTiles;
+            public int ActualHeightTiles;
+            public int ActualWidthSamples;
+            public int ActualHeightSamples;
+            public int ActualTotalSamples;
+            public float ActualOriginX;
+            public float ActualOriginY;
 
             // Sampling
             public int SamplesPerAxis;
             public float SampleSpacingTiles;
 
-            // Comparison
+            // Diagnostics
+            public bool ZoomIsBeingIgnored;
             public string Summary;
         }
 
@@ -119,21 +127,36 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             snapshot.VisibleTileCountX = snapshot.VisibleMaxTileX - snapshot.VisibleMinTileX;
             snapshot.VisibleTileCountY = snapshot.VisibleMaxTileY - snapshot.VisibleMinTileY;
 
-            // ActiveRegion state
+            // EXPECTED ActiveRegion (correct with zoom)
+            snapshot.ExpectedMarginTiles = 1;
+            snapshot.ExpectedWidthTiles = snapshot.VisibleTileCountX + (snapshot.ExpectedMarginTiles * 2);
+            snapshot.ExpectedHeightTiles = snapshot.VisibleTileCountY + (snapshot.ExpectedMarginTiles * 2);
+            snapshot.ExpectedWidthSamples = snapshot.ExpectedWidthTiles * samplingConfig.SamplesPerAxis;
+            snapshot.ExpectedHeightSamples = snapshot.ExpectedHeightTiles * samplingConfig.SamplesPerAxis;
+            snapshot.ExpectedTotalSamples = snapshot.ExpectedWidthSamples * snapshot.ExpectedHeightSamples;
+
+            // ACTUAL ActiveRegion (what Foundation currently uses)
             if (foundation != null)
             {
-                // Use public metrics from Foundation
-                snapshot.ActiveRegionTotalSamples = foundation.ActiveSampleCount;
+                snapshot.ActualTotalSamples = foundation.ActiveSampleCount;
+                snapshot.SamplesPerAxis = samplingConfig.SamplesPerAxis;
 
-                // Compute tile dimensions from active metrics
-                // This requires knowledge of SamplesPerAxis
-                int samplesPerAxis = samplingConfig != null ? samplingConfig.SamplesPerAxis : 2;
-                snapshot.ActiveRegionWidthTiles = snapshot.VisibleTileCountX + 2;  // +2 for default margin
-                snapshot.ActiveRegionHeightTiles = snapshot.VisibleTileCountY + 2;
-                snapshot.ActiveRegionWidthSamples = snapshot.ActiveRegionWidthTiles * samplesPerAxis;
-                snapshot.ActiveRegionHeightSamples = snapshot.ActiveRegionHeightTiles * samplesPerAxis;
-                snapshot.ActiveRegionMarginTiles = 1;  // Default value
+                // Back-calculate tile dimensions from sample count
+                // SampleCount = (WidthTiles * SamplesPerAxis) * (HeightTiles * SamplesPerAxis)
+                // For 2x2 sampling: SampleCount = WidthTiles * 2 * HeightTiles * 2
+                int samplesPerAxis = samplingConfig.SamplesPerAxis;
+                int totalTilesUsed = snapshot.ActualTotalSamples / (samplesPerAxis * samplesPerAxis);
+
+                // Approximate: assume roughly square region or use known pattern
+                // For now, report the values that were actually used
+                snapshot.ActualWidthSamples = (int)System.Math.Sqrt(snapshot.ActualTotalSamples);
+                snapshot.ActualHeightSamples = snapshot.ActualTotalSamples / snapshot.ActualWidthSamples;
+                snapshot.ActualWidthTiles = snapshot.ActualWidthSamples / samplingConfig.SamplesPerAxis;
+                snapshot.ActualHeightTiles = snapshot.ActualHeightSamples / samplingConfig.SamplesPerAxis;
             }
+
+            // Check if zoom is being ignored
+            snapshot.ZoomIsBeingIgnored = (snapshot.ExpectedTotalSamples != snapshot.ActualTotalSamples);
 
             // Generate summary
             snapshot.Summary = FormatSnapshot(snapshot);
@@ -182,12 +205,27 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             sb.AppendLine($"  Y: {s.VisibleMinTileY} to {s.VisibleMaxTileY} ({s.VisibleTileCountY} tiles)");
             sb.AppendLine();
 
-            sb.AppendLine("ACTIVE REGION (used by Lighting V3):");
-            sb.AppendLine($"  Margin: {s.ActiveRegionMarginTiles} tiles");
-            sb.AppendLine($"  Width:  {s.ActiveRegionWidthTiles} tiles ({s.ActiveRegionWidthSamples} samples)");
-            sb.AppendLine($"  Height: {s.ActiveRegionHeightTiles} tiles ({s.ActiveRegionHeightSamples} samples)");
-            sb.AppendLine($"  Total samples: {s.ActiveRegionTotalSamples}");
-            sb.AppendLine($"  Origin: ({s.ActiveRegionOriginX:F1}, {s.ActiveRegionOriginY:F1})");
+            sb.AppendLine("ACTIVE REGION - EXPECTED (with Camera.Zoom applied correctly):");
+            sb.AppendLine($"  Margin: {s.ExpectedMarginTiles} tiles");
+            sb.AppendLine($"  Width:  {s.ExpectedWidthTiles} tiles ({s.ExpectedWidthSamples} samples)");
+            sb.AppendLine($"  Height: {s.ExpectedHeightTiles} tiles ({s.ExpectedHeightSamples} samples)");
+            sb.AppendLine($"  Total samples: {s.ExpectedTotalSamples}");
+            sb.AppendLine();
+
+            sb.AppendLine("ACTIVE REGION - ACTUAL (what Foundation currently uses):");
+            sb.AppendLine($"  Width:  {s.ActualWidthTiles} tiles ({s.ActualWidthSamples} samples)");
+            sb.AppendLine($"  Height: {s.ActualHeightTiles} tiles ({s.ActualHeightSamples} samples)");
+            sb.AppendLine($"  Total samples: {s.ActualTotalSamples}");
+            sb.AppendLine($"  Origin: ({s.ActualOriginX:F1}, {s.ActualOriginY:F1})");
+            sb.AppendLine();
+
+            sb.AppendLine("COMPARISON:");
+            sb.AppendLine($"  Expected width:  {s.ExpectedWidthTiles} tiles");
+            sb.AppendLine($"  Actual width:    {s.ActualWidthTiles} tiles");
+            sb.AppendLine($"  Expected height: {s.ExpectedHeightTiles} tiles");
+            sb.AppendLine($"  Actual height:   {s.ActualHeightTiles} tiles");
+            sb.AppendLine($"  Expected samples: {s.ExpectedTotalSamples}");
+            sb.AppendLine($"  Actual samples:   {s.ActualTotalSamples}");
             sb.AppendLine();
 
             sb.AppendLine("SAMPLING:");
@@ -195,12 +233,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             sb.AppendLine($"  SampleSpacingTiles: {s.SampleSpacingTiles}");
             sb.AppendLine();
 
-            sb.AppendLine("FORMULA CHECK:");
-            // Expected: ActiveRegionWidthTiles = VisibleTileCountX + 2*MarginTiles
-            int expectedWidth = s.VisibleTileCountX + 2 * s.ActiveRegionMarginTiles;
-            sb.AppendLine($"  Expected width = {s.VisibleTileCountX} + 2*{s.ActiveRegionMarginTiles} = {expectedWidth}");
-            sb.AppendLine($"  Actual width = {s.ActiveRegionWidthTiles}");
-            sb.AppendLine($"  Match: {(expectedWidth == s.ActiveRegionWidthTiles ? "YES" : "NO")}");
+            sb.AppendLine("DIAGNOSIS:");
+            if (s.ZoomIsBeingIgnored)
+            {
+                sb.AppendLine("  ⚠ CAMERA ZOOM IS BEING IGNORED!");
+                sb.AppendLine($"  Expected: {s.ExpectedTotalSamples} samples");
+                sb.AppendLine($"  Actual:   {s.ActualTotalSamples} samples");
+                sb.AppendLine($"  Ratio:    {s.ActualTotalSamples / (double)s.ExpectedTotalSamples:F2}x oversample");
+                sb.AppendLine($"  The Foundation is using BackBuffer dimensions ({s.BackBufferWidth}x{s.BackBufferHeight})");
+                sb.AppendLine($"  instead of zoom-adjusted ({s.VisibleWorldWidth:F0}x{s.VisibleWorldHeight:F0})");
+            }
+            else
+            {
+                sb.AppendLine("  ✓ Camera zoom is being applied correctly");
+            }
             sb.AppendLine();
 
             sb.AppendLine("PIXEL-PER-WORLD-TILE AT CURRENT ZOOM:");
