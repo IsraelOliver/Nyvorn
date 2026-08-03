@@ -494,6 +494,35 @@ namespace Nyvorn.Source.Game.States
                         Engine.Graphics.LightingPipeline.Phase3_1SimpleValidator.RunFullCycleValidation();
                     }
                 }
+
+                // Ctrl+Shift+Alt+A: Capture ActiveRegion audit snapshot (TASK 2)
+                if (!handledConsoleThisFrame)
+                {
+                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+                    bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
+                    bool aPressed = keyboard.IsKeyDown(Keys.A);
+
+                    if (ctrlPressed && shiftPressed && altPressed && aPressed && !previousConsoleKeyboard.IsKeyDown(Keys.A))
+                    {
+                        System.Console.WriteLine("\n[ActiveRegionAudit] Capturing snapshot...");
+                        if (session.ViewCoordinator.LightingV3Foundation != null)
+                        {
+                            var snapshot = Engine.Graphics.LightingPipeline.ActiveRegionAuditHelper.CaptureSnapshot(
+                                graphicsDevice,
+                                session.Camera,
+                                session.WorldMap,
+                                session.ViewCoordinator.LightingV3Foundation,
+                                LightingSamplingConfig.Default2x2
+                            );
+                            System.Console.Write(snapshot.Summary);
+                        }
+                        else
+                        {
+                            System.Console.WriteLine("[ActiveRegionAudit] LightingV3Foundation not initialized.");
+                        }
+                    }
+                }
             }
 
             previousConsoleKeyboard = keyboard;
