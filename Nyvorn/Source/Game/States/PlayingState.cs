@@ -623,6 +623,7 @@ namespace Nyvorn.Source.Game.States
                                 LightingDebugMode.SunOpacity => $"Drawn: {renderer.SunOpacitySamplesDrawn} samples",
                                 LightingDebugMode.LocalLightOpacity => $"Drawn: {renderer.LocalOpacitySamplesDrawn} samples",
                                 LightingDebugMode.SampleGrid => $"Drawn: {renderer.SampleGridPointsDrawn} points",
+                                LightingDebugMode.SunVisibility => $"Drawn: {renderer.SunVisibilitySamplesDrawn} samples",
                                 _ => "Drawn: 0"
                             };
                             spriteBatch.DrawString(consoleFont, counterText, textPos, textColor);
