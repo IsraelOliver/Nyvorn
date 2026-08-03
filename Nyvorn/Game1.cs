@@ -27,9 +27,10 @@ public class Game1 : Game
     private bool _prevKeyEState = false;
     private bool _prevKey7State = false;  // Emergency V3 None
     private bool _prevKey8State = false;  // Emergency V3 SunVisibility
-    private bool _prevKey4State = false;  // Emergency V3 PipelineOnly
-    private bool _prevKey5State = false;  // Emergency V3 FoundationWithoutSunVisibility
-    private bool _prevKey6State = false;  // Emergency V3 Full
+    private bool _prevKey4State = false;  // Ablation Test A - Pipeline Pure
+    private bool _prevKey5State = false;  // Ablation Test B - Full Debug None
+    private bool _prevKey6State = false;  // Ablation Test C - Full SunVisibility Debug
+    private bool _prevKeyAltWState = false;  // Ablation Test D - Foundation Without SunVisibility
 
     // Emergency capture auto-mode switching
     private RenderedFrameProfiler.LightingMode _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.Legacy;
@@ -204,35 +205,45 @@ public class Game1 : Game
         }
         _prevKey8State = currentKey8State;
 
-        // Ctrl+Shift+4: Start Emergency V3 PipelineOnly Capture (ablation)
+        // Ctrl+Shift+4: Start Ablation Test A - Pipeline Pure
         bool currentKey4State = keyboard.IsKeyDown(Keys.D4) &&
                                 keyboard.IsKeyDown(Keys.LeftControl) &&
                                 keyboard.IsKeyDown(Keys.LeftShift);
         if (currentKey4State && !_prevKey4State && !_renderedFrameProfiler.IsActive)
         {
-            StartEmergencyV3PipelineOnlyCapture();
+            StartAblationTestA();
         }
         _prevKey4State = currentKey4State;
 
-        // Ctrl+Shift+5: Start Emergency V3 FoundationWithoutSunVisibility Capture (ablation)
+        // Ctrl+Shift+5: Start Ablation Test B - Full Debug None
         bool currentKey5State = keyboard.IsKeyDown(Keys.D5) &&
                                 keyboard.IsKeyDown(Keys.LeftControl) &&
                                 keyboard.IsKeyDown(Keys.LeftShift);
         if (currentKey5State && !_prevKey5State && !_renderedFrameProfiler.IsActive)
         {
-            StartEmergencyV3FoundationWithoutSunVisibilityCapture();
+            StartAblationTestB();
         }
         _prevKey5State = currentKey5State;
 
-        // Ctrl+Shift+6: Start Emergency V3 Full Capture (ablation reference)
+        // Ctrl+Shift+6: Start Ablation Test C - Full SunVisibility Debug
         bool currentKey6State = keyboard.IsKeyDown(Keys.D6) &&
                                 keyboard.IsKeyDown(Keys.LeftControl) &&
                                 keyboard.IsKeyDown(Keys.LeftShift);
         if (currentKey6State && !_prevKey6State && !_renderedFrameProfiler.IsActive)
         {
-            StartEmergencyV3FullCapture();
+            StartAblationTestC();
         }
         _prevKey6State = currentKey6State;
+
+        // Ctrl+Shift+W: Start Ablation Test D - Foundation Without SunVisibility Debug None
+        bool currentKeyAltWState = keyboard.IsKeyDown(Keys.W) &&
+                                   keyboard.IsKeyDown(Keys.LeftControl) &&
+                                   keyboard.IsKeyDown(Keys.LeftShift);
+        if (currentKeyAltWState && !_prevKeyAltWState && !_renderedFrameProfiler.IsActive)
+        {
+            StartAblationTestD();
+        }
+        _prevKeyAltWState = currentKeyAltWState;
 
         // Handle emergency mode switching
         HandleEmergencyModeSwitch();
@@ -323,49 +334,64 @@ public class Game1 : Game
         System.Console.WriteLine("[Phase A0.0] Emergency V3 SunVisibility capture started (will auto-switch mode)");
     }
 
-    private void StartEmergencyV3PipelineOnlyCapture()
+    private void StartAblationTestA()
     {
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
         var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
-        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+        _renderedFrameProfiler.StartAblationTestA_PipelinePure(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
             snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
-        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3PipelineOnly);
         _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
         _emergencyShouldExport = false;
 
-        System.Console.WriteLine("[Phase A0.0] Emergency V3 PipelineOnly capture started (ablation mode)");
+        System.Console.WriteLine("[Ablation Test A] Pipeline Pure - starting (5 second wall-clock timeout)");
+        System.Console.WriteLine("[Ablation] Mode=PipelinePure | Foundation=OFF | SunBuild=OFF | Debug=None | DebugRenderer=OFF");
     }
 
-    private void StartEmergencyV3FoundationWithoutSunVisibilityCapture()
+    private void StartAblationTestB()
     {
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
         var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
-        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+        _renderedFrameProfiler.StartAblationTestB_FullDebugNone(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
             snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
-        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3FoundationWithoutSunVisibility);
         _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
         _emergencyShouldExport = false;
 
-        System.Console.WriteLine("[Phase A0.0] Emergency V3 FoundationWithoutSunVisibility capture started (ablation mode)");
+        System.Console.WriteLine("[Ablation Test B] Full Debug None - starting (5 second wall-clock timeout)");
+        System.Console.WriteLine("[Ablation] Mode=FullDebugNone | Foundation=ON | SunBuild=ON | Debug=None | DebugRenderer=OFF");
     }
 
-    private void StartEmergencyV3FullCapture()
+    private void StartAblationTestC()
     {
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
         var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
-        _renderedFrameProfiler.StartEmergencyV3SunVisibility(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+        _renderedFrameProfiler.StartAblationTestC_FullSunVisibilityDebug(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
             snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
-        _renderedFrameProfiler.SetAblationMode(RenderedFrameProfiler.EmergencyAblationMode.V3Full);
         _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
         _emergencyShouldExport = false;
 
-        System.Console.WriteLine("[Phase A0.0] Emergency V3 Full capture started (reference mode)");
+        System.Console.WriteLine("[Ablation Test C] Full SunVisibility Debug - starting (5 second wall-clock timeout)");
+        System.Console.WriteLine("[Ablation] Mode=FullSunVisibilityDebug | Foundation=ON | SunBuild=ON | Debug=SunVisibility | DebugRenderer=ON");
+    }
+
+    private void StartAblationTestD()
+    {
+        var playingState = GetCurrentPlayingState();
+        if (playingState == null) return;
+
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
+        _renderedFrameProfiler.StartAblationTestD_FoundationWithoutSunVisibilityDebugNone(snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
+        _emergencyRequestedMode = RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+        _emergencyShouldExport = false;
+
+        System.Console.WriteLine("[Ablation Test D] Foundation Without SunVisibility Debug None - starting (5 second wall-clock timeout)");
+        System.Console.WriteLine("[Ablation] Mode=FoundationWithoutSunVisibilityDebugNone | Foundation=ON | SunBuild=OFF | Debug=None | DebugRenderer=OFF");
     }
 
     private void HandleEmergencyModeSwitch()

@@ -25,7 +25,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             BaselineWarmup,
             BaselineCapture,
             EmergencyV3None,
-            EmergencyV3SunVisibility
+            EmergencyV3SunVisibility,
+            EmergencyAblationA_PipelinePure,
+            EmergencyAblationB_FullDebugNone,
+            EmergencyAblationC_FullSunVisibilityDebug,
+            EmergencyAblationD_FoundationWithoutSunVisibilityDebugNone
         }
 
         public enum LightingMode
@@ -101,6 +105,26 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             V3Full = 0,
             V3PipelineOnly = 1,
             V3FoundationWithoutSunVisibility = 2
+        }
+
+        public enum AblationTest
+        {
+            None = 0,
+            A_PipelinePure = 1,
+            B_FullDebugNone = 2,
+            C_FullSunVisibilityDebug = 3,
+            D_FoundationWithoutSunVisibilityDebugNone = 4
+        }
+
+        public struct AblationConfiguration
+        {
+            public bool FoundationEnabled;
+            public bool ClassificationEnabled;
+            public bool OccluderBuildEnabled;
+            public bool SunVisibilityBuildEnabled;
+            public LightingDebugMode DebugMode;
+            public bool DebugRendererEnabled;
+            public bool DebugCompositeEnabled;
         }
 
         // Per-rendered-frame accumulation
@@ -183,6 +207,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // Emergency diagnostics
         private long _lastStageLong = (long)EmergencyLastStage.None;  // Use long for Interlocked operations
         private EmergencyAblationMode _emergencyAblationMode = EmergencyAblationMode.V3Full;
+        private AblationTest _ablationTestType = AblationTest.None;
+        private AblationConfiguration _ablationConfig = new AblationConfiguration();
+        private long _ablationStartWallClockTicks = 0;
+        private const double AblationWallClockTimeoutSeconds = 5.0;
+
+        // Ablation counters
+        private int _ablationFoundationCalls = 0;
+        private int _ablationClassificationCalls = 0;
+        private int _ablationOccluderBuildCalls = 0;
+        private int _ablationSunVisibilityBuildCalls = 0;
+        private int _ablationDebugRendererCalls = 0;
+        private int _ablationRenderSunVisibilityCalls = 0;
+        private int _ablationDebugCompositeCalls = 0;
         private bool _emergencyLoggedEnterGameUpdate = false;
         private bool _emergencyLoggedEnterPlayingStateUpdate = false;
         private bool _emergencyLoggedBeforeFoundation = false;
@@ -337,6 +374,99 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
         }
 
+        public void StartAblationTestA_PipelinePure(int resolutionWidth, int resolutionHeight, float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            InitializeAblationTest(AblationTest.A_PipelinePure, ProfileState.EmergencyAblationA_PipelinePure, resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+            _ablationConfig = new AblationConfiguration
+            {
+                FoundationEnabled = false,
+                ClassificationEnabled = false,
+                OccluderBuildEnabled = false,
+                SunVisibilityBuildEnabled = false,
+                DebugMode = LightingDebugMode.None,
+                DebugRendererEnabled = false,
+                DebugCompositeEnabled = false
+            };
+        }
+
+        public void StartAblationTestB_FullDebugNone(int resolutionWidth, int resolutionHeight, float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            InitializeAblationTest(AblationTest.B_FullDebugNone, ProfileState.EmergencyAblationB_FullDebugNone, resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+            _ablationConfig = new AblationConfiguration
+            {
+                FoundationEnabled = true,
+                ClassificationEnabled = true,
+                OccluderBuildEnabled = true,
+                SunVisibilityBuildEnabled = true,
+                DebugMode = LightingDebugMode.None,
+                DebugRendererEnabled = false,
+                DebugCompositeEnabled = false
+            };
+        }
+
+        public void StartAblationTestC_FullSunVisibilityDebug(int resolutionWidth, int resolutionHeight, float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            InitializeAblationTest(AblationTest.C_FullSunVisibilityDebug, ProfileState.EmergencyAblationC_FullSunVisibilityDebug, resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+            _ablationConfig = new AblationConfiguration
+            {
+                FoundationEnabled = true,
+                ClassificationEnabled = true,
+                OccluderBuildEnabled = true,
+                SunVisibilityBuildEnabled = true,
+                DebugMode = LightingDebugMode.SunVisibility,
+                DebugRendererEnabled = true,
+                DebugCompositeEnabled = true
+            };
+        }
+
+        public void StartAblationTestD_FoundationWithoutSunVisibilityDebugNone(int resolutionWidth, int resolutionHeight, float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            InitializeAblationTest(AblationTest.D_FoundationWithoutSunVisibilityDebugNone, ProfileState.EmergencyAblationD_FoundationWithoutSunVisibilityDebugNone, resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+            _ablationConfig = new AblationConfiguration
+            {
+                FoundationEnabled = true,
+                ClassificationEnabled = true,
+                OccluderBuildEnabled = true,
+                SunVisibilityBuildEnabled = false,
+                DebugMode = LightingDebugMode.None,
+                DebugRendererEnabled = false,
+                DebugCompositeEnabled = false
+            };
+        }
+
+        private void InitializeAblationTest(AblationTest testType, ProfileState state, int resolutionWidth, int resolutionHeight, float zoom, int activeRegionWidth, int activeRegionHeight, int sampleCount)
+        {
+            _ablationTestType = testType;
+            _state = state;
+            _currentMode = LightingMode.Legacy;
+            _requestedLightingMode = LightingMode.V3Mode_SunVisibility;
+
+            _ablationFoundationCalls = 0;
+            _ablationClassificationCalls = 0;
+            _ablationOccluderBuildCalls = 0;
+            _ablationSunVisibilityBuildCalls = 0;
+            _ablationDebugRendererCalls = 0;
+            _ablationRenderSunVisibilityCalls = 0;
+            _ablationDebugCompositeCalls = 0;
+
+            _isFirstFrame = true;
+            _beginDrawRejectedCount = 0;
+            _renderedFrameCount = 0;
+            _noRenderedFrameTimeoutCount = 0;
+            _maxUpdatesBeforeRenderedFrame = 0;
+            MeasurementValid = true;
+            InvalidReason = InvalidReasonEnum.None;
+
+            long now = Stopwatch.GetTimestamp();
+            _measurementStartTicks = now;
+            _ablationStartWallClockTicks = now;
+            _lastUpdateTicks = now;
+            _lastAcceptedBeginDrawTicks = now;
+            _lastSuccessfulBeginDrawTimestamp = now;
+
+            LockConfiguration(resolutionWidth, resolutionHeight, zoom, activeRegionWidth, activeRegionHeight, sampleCount);
+        }
+
         private void LockConfiguration(int resolutionWidth, int resolutionHeight, float zoom,
             int activeRegionWidth, int activeRegionHeight, int sampleCount)
         {
@@ -445,6 +575,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 return;
 
             long now = Stopwatch.GetTimestamp();
+
+            // Ablation tests use wall-clock timeout (5 seconds)
+            if (IsAblationTest)
+            {
+                double elapsedWallClockSeconds = TicksToMs(now - _ablationStartWallClockTicks) / 1000.0;
+                if (elapsedWallClockSeconds > AblationWallClockTimeoutSeconds)
+                {
+                    _emergencyCompletionReason = EmergencyCompletionReason.NoRenderedFrameTimeout;
+                    _state = ProfileState.Inactive;
+                    _noRenderedFrameTimeoutCount++;
+                    return;
+                }
+            }
+
+            // Normal emergency capture: check for starvation without rendered frames
             double elapsedSinceLastBeginDrawSeconds = TicksToMs(now - _lastAcceptedBeginDrawTicks) / 1000.0;
 
             if (elapsedSinceLastBeginDrawSeconds > WatchdogTimeoutSeconds)
@@ -881,6 +1026,29 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         {
             return IsEmergencyCapture && _emergencyAblationMode == EmergencyAblationMode.V3FoundationWithoutSunVisibility;
         }
+
+        public AblationTest CurrentAblationTest => _ablationTestType;
+        public AblationConfiguration CurrentAblationConfig => _ablationConfig;
+
+        public bool IsAblationTest => _state >= ProfileState.EmergencyAblationA_PipelinePure && _state <= ProfileState.EmergencyAblationD_FoundationWithoutSunVisibilityDebugNone;
+
+        public bool ShouldSkipFoundationInAblation()
+        {
+            return IsAblationTest && !_ablationConfig.FoundationEnabled;
+        }
+
+        public bool ShouldSkipSunVisibilityBuildInAblation()
+        {
+            return IsAblationTest && !_ablationConfig.SunVisibilityBuildEnabled;
+        }
+
+        public void AblationLog_FoundationCall() { if (IsAblationTest) _ablationFoundationCalls++; }
+        public void AblationLog_ClassificationCall() { if (IsAblationTest) _ablationClassificationCalls++; }
+        public void AblationLog_OccluderBuildCall() { if (IsAblationTest) _ablationOccluderBuildCalls++; }
+        public void AblationLog_SunVisibilityBuildCall() { if (IsAblationTest) _ablationSunVisibilityBuildCalls++; }
+        public void AblationLog_DebugRendererCall() { if (IsAblationTest) _ablationDebugRendererCalls++; }
+        public void AblationLog_RenderSunVisibilityCall() { if (IsAblationTest) _ablationRenderSunVisibilityCalls++; }
+        public void AblationLog_DebugCompositeCall() { if (IsAblationTest) _ablationDebugCompositeCalls++; }
 
         // Signal that emergency mode has been applied
         public void NotifyEmergencyModeApplied()
