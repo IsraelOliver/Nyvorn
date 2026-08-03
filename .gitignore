@@ -8,3 +8,5 @@ project.assets.json
 _codex_build_check/
 build-verify/
 .vs/
+*.md
+.claude/
