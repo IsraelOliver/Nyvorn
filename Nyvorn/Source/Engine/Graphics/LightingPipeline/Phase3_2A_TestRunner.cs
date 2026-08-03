@@ -105,6 +105,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine(new string('=', 70));
             System.Console.WriteLine($"Suite finished in {stopwatch.ElapsedMilliseconds}ms");
             System.Console.WriteLine();
+
+            // Run allocation isolation harness
+            System.Console.WriteLine();
+            AllocationIsolationHarness.RunAllScenarios();
         }
     }
 }
