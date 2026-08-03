@@ -27,6 +27,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public bool WasSkipped;
         public SunVisibilitySkipReason SkipReason;
         public float FinalTransmittance;
+        public bool GuardLimitHit;
     }
 
     /// <summary>
@@ -68,6 +69,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             stats.WasBlocked = false;
             stats.WasSkipped = false;
             stats.SkipReason = SunVisibilitySkipReason.None;
+            stats.GuardLimitHit = false;
 
             // Rule 1: Sun below horizon = no visibility
             if (!sunAboveHorizon)
@@ -211,6 +213,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             {
                 // Use resultado conservador (bloqueado)
                 transmittance = 0.0f;
+                stats.GuardLimitHit = true;
             }
 
             return Math.Clamp(transmittance, 0.0f, 1.0f);

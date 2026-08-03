@@ -12,6 +12,36 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private static int passCount = 0;
         private static int failCount = 0;
 
+        // Wrapper methods for test runner access
+        public static void Test_CompletelyFreePathPublic() => Test_CompletelyFreePath();
+        public static void Test_ForegroundBlocksPublic() => Test_ForegroundBlocks();
+        public static void Test_BackgroundWallDoesNotBlockPublic() => Test_BackgroundWallDoesNotBlock();
+        public static void Test_DiagonalRayPublic() => Test_DiagonalRay();
+        public static void Test_SeamLeftToRightPublic() => Test_SeamLeftToRight();
+        public static void Test_SeamRightToLeftPublic() => Test_SeamRightToLeft();
+        public static void Test_SunBelowHorizonPublic() => Test_SunBelowHorizon();
+        public static void Test_StartingCellSolidPublic() => Test_StartingCellSolid();
+        public static void Test_StartingCellPartialOncePublic() => Test_StartingCellPartialOnce();
+        public static void Test_SinglePartialOpacityPublic() => Test_SinglePartialOpacity();
+        public static void Test_TwoPartialOpacitiesPublic() => Test_TwoPartialOpacities();
+        public static void Test_NextCellPartialOncePublic() => Test_NextCellPartialOnce();
+        public static void Test_CanonicalBlockerAfterSeamPublic() => Test_CanonicalBlockerAfterSeam();
+        public static void Test_BlockerOutsideActiveRegionPublic() => Test_BlockerOutsideActiveRegion();
+        public static void Test_NearHorizontalSkippedPublic() => Test_NearHorizontalSkipped();
+        public static void Test_NearMinimumTraceElevationPublic() => Test_NearMinimumTraceElevation();
+        public static void Test_TallWorldTraversalPublic() => Test_TallWorldTraversal();
+        public static void Test_MathematicalGuardIsSufficientPublic() => Test_MathematicalGuardIsSufficient();
+        public static void Test_GuardFailureIsConservativePublic() => Test_GuardFailureIsConservative();
+        public static void Test_CustomSunOpacityProviderPublic() => Test_CustomSunOpacityProvider();
+        public static void Test_SlotBuffersIndependentPublic() => Test_SlotBuffersIndependent();
+        public static void Test_SlotBuffersIndependentAfterResizePublic() => Test_SlotBuffersIndependentAfterResize();
+        public static void Test_CapacityGreaterThanSampleCountPublic() => Test_CapacityGreaterThanSampleCount();
+        public static void Test_ConsumersRespectSampleCountPublic() => Test_ConsumersRespectSampleCount();
+        public static void Test_FrameUpdateIdConsistentPublic() => Test_FrameUpdateIdConsistent();
+        public static void Test_NoNaNOrInfinityPublic() => Test_NoNaNOrInfinity();
+        public static void Test_MetricsCollectionPublic() => Test_MetricsCollection();
+        public static void Test_GuardLimitHitsZeroInValidTestsPublic() => Test_GuardLimitHitsZeroInValidTests();
+
         public static void RunAll()
         {
             System.Console.WriteLine("\n" + new string('=', 70));
@@ -338,6 +368,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             var visibility = SunVisibilityRayMarcher.ComputeVisibility(100f, 100f, Normalize(new Vector2(0.577f, -0.577f)), 1f, true, mock, 1000, 1000, 16, ref stats);
             bool statsCollected = stats.CellsVisited >= 0;
             AssertTrue("MetricsCollection", statsCollected);
+        }
+
+        // Validation: Guard limit hits zero in valid tests
+        private static void Test_GuardLimitHitsZeroInValidTests()
+        {
+            var mock = new MockGeometryProvider();
+            // Test with valid sun state (above horizon, good elevation, high intensity)
+            var stats = default(SunVisibilityRayStats);
+            var visibility = SunVisibilityRayMarcher.ComputeVisibility(100f, 100f, Normalize(new Vector2(0.577f, -0.707f)), 1f, true, mock, 1000, 1000, 16, ref stats);
+            // Guard limit should never be hit in valid scenarios (empty world)
+            bool guardLimitNotHit = stats.GuardLimitHit == false;
+            AssertTrue("GuardLimitHitsZeroInValidTests", guardLimitNotHit);
         }
     }
 }
