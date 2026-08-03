@@ -26,6 +26,43 @@ public class Game1 : Game
     private bool _prevKeyUState = false;
     private bool _prevKeyEState = false;
 
+    // Phase A0.0: Configuration snapshot for consistent measurements
+    private struct CaptureEnvironmentSnapshot
+    {
+        public int BackBufferWidth;
+        public int BackBufferHeight;
+        public int ViewportWidth;
+        public int ViewportHeight;
+        public int ClientWidth;
+        public int ClientHeight;
+        public float Zoom;
+        public int ActiveRegionCount;
+        public int SampleCount;
+        public bool IsDebuggerAttached;
+
+        public static CaptureEnvironmentSnapshot Capture(GraphicsDevice gd, PlayingState ps, float zoom)
+        {
+            return new CaptureEnvironmentSnapshot
+            {
+                // Canonical source: PresentationParameters (actual rendered resolution)
+                BackBufferWidth = gd.PresentationParameters.BackBufferWidth,
+                BackBufferHeight = gd.PresentationParameters.BackBufferHeight,
+
+                // Diagnostic only (may differ from BackBuffer if window resized)
+                ViewportWidth = gd.Viewport.Width,
+                ViewportHeight = gd.Viewport.Height,
+                ClientWidth = gd.DisplayMode.Width,
+                ClientHeight = gd.DisplayMode.Height,
+
+                // State
+                Zoom = zoom,
+                ActiveRegionCount = ps?.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0,
+                SampleCount = (ps?.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0) * 4,
+                IsDebuggerAttached = System.Diagnostics.Debugger.IsAttached
+            };
+        }
+    }
+
     public Game1()
     {
         _graphics = new GraphicsDeviceManager(this);
@@ -142,17 +179,11 @@ public class Game1 : Game
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
-        int screenWidth = _graphics.PreferredBackBufferWidth;
-        int screenHeight = _graphics.PreferredBackBufferHeight;
-        float zoom = playingState.Session.Camera.Zoom;
-
-        // Get ActiveRegion
-        int arWidth = playingState.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
-        int arHeight = arWidth > 0 ? arWidth : 0;  // Placeholder
-        int sampleCount = arWidth * 4 * arHeight;  // Approximate
-
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
         var mode = GetCurrentLightingMode();
-        _renderedFrameProfiler.StartValidationPass(mode, screenWidth, screenHeight, zoom, arWidth, arHeight, sampleCount);
+
+        _renderedFrameProfiler.StartValidationPass(mode, snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
     }
 
     private void StartSmokeTest()
@@ -160,15 +191,11 @@ public class Game1 : Game
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
-        int screenWidth = _graphics.PreferredBackBufferWidth;
-        int screenHeight = _graphics.PreferredBackBufferHeight;
-        float zoom = playingState.Session.Camera.Zoom;
-        int arWidth = playingState.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
-        int arHeight = arWidth > 0 ? arWidth : 0;
-        int sampleCount = arWidth * 4 * arHeight;
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
         var mode = GetCurrentLightingMode();
 
-        _renderedFrameProfiler.StartSmokeTest(mode, screenWidth, screenHeight, zoom, arWidth, arHeight, sampleCount);
+        _renderedFrameProfiler.StartSmokeTest(mode, snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
     }
 
     private void StartBaseline()
@@ -176,15 +203,11 @@ public class Game1 : Game
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
-        int screenWidth = _graphics.PreferredBackBufferWidth;
-        int screenHeight = _graphics.PreferredBackBufferHeight;
-        float zoom = playingState.Session.Camera.Zoom;
-        int arWidth = playingState.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
-        int arHeight = arWidth > 0 ? arWidth : 0;
-        int sampleCount = arWidth * 4 * arHeight;
+        var snap = CaptureEnvironmentSnapshot.Capture(GraphicsDevice, playingState, playingState.Session.Camera.Zoom);
         var mode = GetCurrentLightingMode();
 
-        _renderedFrameProfiler.StartBaseline(mode, screenWidth, screenHeight, zoom, arWidth, arHeight, sampleCount);
+        _renderedFrameProfiler.StartBaseline(mode, snap.BackBufferWidth, snap.BackBufferHeight, snap.Zoom,
+            snap.ActiveRegionCount, snap.ActiveRegionCount, snap.SampleCount);
     }
 
     private void EndMeasurementAndWrite()

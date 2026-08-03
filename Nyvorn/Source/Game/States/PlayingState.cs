@@ -181,14 +181,16 @@ namespace Nyvorn.Source.Game.States
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
 
             // Phase A0.0: Validate configuration if profiler active
+            // Use PresentationParameters as canonical source (actual rendered resolution)
             if (_renderedFrameProfiler != null)
             {
                 float zoom = session.Camera.Zoom;
-                int arWidth = session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
-                int arHeight = arWidth > 0 ? arWidth : 0;
-                int sampleCount = arWidth * 4 * arHeight;
+                int arCount = session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
+                int sampleCount = arCount * 4;
                 var mode = GetProfilerLightingMode();
-                _renderedFrameProfiler.ValidateConfiguration(screenW, screenH, zoom, arWidth, arHeight, sampleCount, mode);
+                // Note: Legacy mode passes arCount=0, which tells profiler that ActiveRegion is N/A
+                int arCountForValidation = (mode == RenderedFrameProfiler.LightingMode.Legacy) ? 0 : arCount;
+                _renderedFrameProfiler.ValidateConfiguration(screenW, screenH, zoom, arCountForValidation, arCountForValidation, sampleCount, mode);
             }
 
             InputState input = inputService.Update();
