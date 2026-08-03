@@ -1823,7 +1823,15 @@ namespace Nyvorn.Source.Game.States
         private void DrawFpsCounter(SpriteBatch spriteBatch)
         {
             string text = $"FPS: {fpsSmoothed:0}";
-            Vector2 position = new Vector2(8f, 8f);
+
+            // Measure text size to position it properly
+            var textSize = consoleFont.MeasureString(text);
+            int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
+            int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
+
+            // Bottom-right corner with 8px margin
+            Vector2 position = new Vector2(screenW - textSize.X - 8f, screenH - textSize.Y - 8f);
+
             spriteBatch.DrawString(consoleFont, text, position + Vector2.One, Color.Black);
             spriteBatch.DrawString(consoleFont, text, position, Color.White);
         }
