@@ -57,6 +57,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     {
         private LightingDebugMode _mode = LightingDebugMode.None;
 
+        // Debug instrumentation for SunVisibility mode
+        public int SunVisibilitySamplesDrawn { get; set; }
+        public float SunVisibilityMinimumWorldX { get; set; }
+        public float SunVisibilityMaximumWorldX { get; set; }
+        public float SunVisibilityMinimumWorldY { get; set; }
+        public float SunVisibilityMaximumWorldY { get; set; }
+        public float SunVisibilityMinimumValue { get; set; }
+        public float SunVisibilityMaximumValue { get; set; }
+        public float SunVisibilityAverageValue { get; set; }
+
         public LightingDebugMode Mode
         {
             get => _mode;
@@ -210,9 +220,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         {
             var region = frameData.Region;
             var sunVisibility = frameData.SunVisibility;  // ReadOnlySpan - no copy, no allocation
+            int sampleCount = frameData.SampleCount;
 
-            if (sunVisibility.Length == 0)
+            if (sampleCount == 0 || sunVisibility.Length == 0)
                 return;
+
+            // Reset instrumentation
+            SunVisibilitySamplesDrawn = 0;
+            SunVisibilityMinimumWorldX = float.MaxValue;
+            SunVisibilityMaximumWorldX = float.MinValue;
+            SunVisibilityMinimumWorldY = float.MaxValue;
+            SunVisibilityMaximumWorldY = float.MinValue;
+            SunVisibilityMinimumValue = float.MaxValue;
+            SunVisibilityMaximumValue = float.MinValue;
+            double sumVisibility = 0.0;
 
             // Sample spacing in world coordinates
             float sampleSpacingX = region.SampleWidth > 0
@@ -224,12 +245,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             int sampleSize = (int)System.Math.Max(2, System.Math.Min(sampleSpacingX, sampleSpacingY));
 
+            // Draw and track metrics
             for (int sy = 0; sy < region.SampleHeight; sy++)
             {
                 for (int sx = 0; sx < region.SampleWidth; sx++)
                 {
                     int flatIndex = sy * region.SampleWidth + sx;
-                    if (flatIndex >= sunVisibility.Length)
+                    if (flatIndex >= sampleCount || flatIndex >= sunVisibility.Length)
                         continue;
 
                     float visibility = sunVisibility[flatIndex];
@@ -244,7 +266,37 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                     var rect = new Rectangle((int)worldX, (int)worldY, sampleSize, sampleSize);
                     spriteBatch.Draw(pixelTexture, rect, color);
+
+                    // Track instrumentation
+                    SunVisibilitySamplesDrawn++;
+                    sumVisibility += visibility;
+
+                    if (worldX < SunVisibilityMinimumWorldX)
+                        SunVisibilityMinimumWorldX = worldX;
+                    if (worldX > SunVisibilityMaximumWorldX)
+                        SunVisibilityMaximumWorldX = worldX;
+
+                    if (worldY < SunVisibilityMinimumWorldY)
+                        SunVisibilityMinimumWorldY = worldY;
+                    if (worldY > SunVisibilityMaximumWorldY)
+                        SunVisibilityMaximumWorldY = worldY;
+
+                    if (visibility < SunVisibilityMinimumValue)
+                        SunVisibilityMinimumValue = visibility;
+                    if (visibility > SunVisibilityMaximumValue)
+                        SunVisibilityMaximumValue = visibility;
                 }
+            }
+
+            // Calculate average
+            SunVisibilityAverageValue = SunVisibilitySamplesDrawn > 0
+                ? (float)(sumVisibility / SunVisibilitySamplesDrawn)
+                : 0f;
+
+            // Validate that we drew exactly the expected number of samples
+            if (LightingV3Diagnostics.EnablePhase31RuntimeValidation && SunVisibilitySamplesDrawn != sampleCount)
+            {
+                System.Console.WriteLine($"[Phase3_2A] WARNING: SunVisibility drew {SunVisibilitySamplesDrawn} samples, expected {sampleCount}");
             }
         }
 

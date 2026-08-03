@@ -430,12 +430,26 @@ namespace Nyvorn.Source.Game.States
                                 System.Console.WriteLine($"  Sun Opacity Samples Drawn: {renderer.SunOpacitySamplesDrawn}");
                                 System.Console.WriteLine($"  Local Opacity Samples Drawn: {renderer.LocalOpacitySamplesDrawn}");
                                 System.Console.WriteLine($"  Sample Grid Points Drawn: {renderer.SampleGridPointsDrawn}");
+                                System.Console.WriteLine($"  Sun Visibility Samples Drawn: {renderer.SunVisibilitySamplesDrawn}");
+
+                                System.Console.WriteLine($"\n[LightingV3 Sun Visibility Instrumentation (last frame)]");
+                                System.Console.WriteLine($"  Value: [{renderer.SunVisibilityMinimumValue:F3}, {renderer.SunVisibilityMaximumValue:F3}]");
+                                System.Console.WriteLine($"  Average Value: {renderer.SunVisibilityAverageValue:F3}");
 
                                 System.Console.WriteLine($"\n[LightingV3 Renderer World-Space Bounds (last frame)]");
                                 System.Console.WriteLine($"  X: [{renderer.MinDrawWorldX}, {renderer.MaxDrawWorldX}]");
                                 System.Console.WriteLine($"  Y: [{renderer.MinDrawWorldY}, {renderer.MaxDrawWorldY}]");
                                 System.Console.WriteLine($"  Width: {renderer.MaxDrawWorldX - renderer.MinDrawWorldX}");
                                 System.Console.WriteLine($"  Height: {renderer.MaxDrawWorldY - renderer.MinDrawWorldY}");
+
+                                if (controller.GetCurrentMode() == LightingDebugMode.SunVisibility)
+                                {
+                                    System.Console.WriteLine($"\n[LightingV3 Sun Visibility Bounds (last frame)]");
+                                    System.Console.WriteLine($"  World X: [{renderer.SunVisibilityMinimumWorldX:F1}, {renderer.SunVisibilityMaximumWorldX:F1}]");
+                                    System.Console.WriteLine($"  World Y: [{renderer.SunVisibilityMinimumWorldY:F1}, {renderer.SunVisibilityMaximumWorldY:F1}]");
+                                    System.Console.WriteLine($"  Width: {renderer.SunVisibilityMaximumWorldX - renderer.SunVisibilityMinimumWorldX:F1}");
+                                    System.Console.WriteLine($"  Height: {renderer.SunVisibilityMaximumWorldY - renderer.SunVisibilityMinimumWorldY:F1}");
+                                }
                             }
                         }
                         else

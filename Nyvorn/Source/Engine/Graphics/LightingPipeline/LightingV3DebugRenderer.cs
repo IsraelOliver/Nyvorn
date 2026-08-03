@@ -25,12 +25,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private int _sunOpacitySamplesDrawn = 0;
         private int _localOpacitySamplesDrawn = 0;
         private int _sampleGridPointsDrawn = 0;
+        private int _sunVisibilitySamplesDrawn = 0;
 
         // Bounds diagnostics (reset each frame)
         private int _minDrawWorldX = int.MaxValue;
         private int _maxDrawWorldX = int.MinValue;
         private int _minDrawWorldY = int.MaxValue;
         private int _maxDrawWorldY = int.MinValue;
+        private float _sunVisibilityMinWorldX = float.MaxValue;
+        private float _sunVisibilityMaxWorldX = float.MinValue;
+        private float _sunVisibilityMinWorldY = float.MaxValue;
+        private float _sunVisibilityMaxWorldY = float.MinValue;
+        private float _sunVisibilityMinValue = float.MaxValue;
+        private float _sunVisibilityMaxValue = float.MinValue;
+        private float _sunVisibilityAverageValue = 0f;
 
         // Transform matrix (set each render)
         private Matrix _worldViewTransform = Matrix.Identity;
@@ -62,6 +70,22 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public int SampleGridPointsDrawn => _sampleGridPointsDrawn;
 
         /// <summary>
+        /// Get sun visibility samples drawn from last frame (for SunVisibility mode).
+        /// </summary>
+        public int SunVisibilitySamplesDrawn => _sunVisibilitySamplesDrawn;
+
+        /// <summary>
+        /// Get sun visibility instrumentation from last frame.
+        /// </summary>
+        public float SunVisibilityMinimumWorldX => _sunVisibilityMinWorldX == float.MaxValue ? 0f : _sunVisibilityMinWorldX;
+        public float SunVisibilityMaximumWorldX => _sunVisibilityMaxWorldX == float.MinValue ? 0f : _sunVisibilityMaxWorldX;
+        public float SunVisibilityMinimumWorldY => _sunVisibilityMinWorldY == float.MaxValue ? 0f : _sunVisibilityMinWorldY;
+        public float SunVisibilityMaximumWorldY => _sunVisibilityMaxWorldY == float.MinValue ? 0f : _sunVisibilityMaxWorldY;
+        public float SunVisibilityMinimumValue => _sunVisibilityMinValue == float.MaxValue ? 0f : _sunVisibilityMinValue;
+        public float SunVisibilityMaximumValue => _sunVisibilityMaxValue == float.MinValue ? 0f : _sunVisibilityMaxValue;
+        public float SunVisibilityAverageValue => _sunVisibilityAverageValue;
+
+        /// <summary>
         /// Get world-space bounds of drawn primitives (for diagnostics).
         /// </summary>
         public int MinDrawWorldX => _minDrawWorldX == int.MaxValue ? 0 : _minDrawWorldX;
@@ -91,10 +115,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             _sunOpacitySamplesDrawn = 0;
             _localOpacitySamplesDrawn = 0;
             _sampleGridPointsDrawn = 0;
+            _sunVisibilitySamplesDrawn = 0;
             _minDrawWorldX = int.MaxValue;
             _maxDrawWorldX = int.MinValue;
             _minDrawWorldY = int.MaxValue;
             _maxDrawWorldY = int.MinValue;
+            _sunVisibilityMinWorldX = float.MaxValue;
+            _sunVisibilityMaxWorldX = float.MinValue;
+            _sunVisibilityMinWorldY = float.MaxValue;
+            _sunVisibilityMaxWorldY = float.MinValue;
+            _sunVisibilityMinValue = float.MaxValue;
+            _sunVisibilityMaxValue = float.MinValue;
+            _sunVisibilityAverageValue = 0f;
 
             if (mode == LightingDebugMode.None)
                 return;
@@ -105,6 +137,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 {
                     case LightingDebugMode.Classification:
                         RenderClassification(spriteBatch, frameData, tileSize);
+                        break;
+
+                    case LightingDebugMode.SunVisibility:
+                        RenderSunVisibility(spriteBatch, frameData, tileSize);
                         break;
 
                     case LightingDebugMode.SunOpacity:
@@ -246,6 +282,79 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     _sampleGridPointsDrawn++;
                 }
             }
+        }
+
+        /// <summary>
+        /// Render sun visibility field as grayscale (Phase 3.2A).
+        /// Instruments counters and bounds for diagnostics.
+        /// </summary>
+        private void RenderSunVisibility(SpriteBatch spriteBatch, LightingV3FrameData frameData, int tileSize)
+        {
+            var region = frameData.Region;
+            var sunVisibility = frameData.SunVisibility;
+            int sampleCount = frameData.SampleCount;
+
+            if (sampleCount == 0 || sunVisibility.Length == 0)
+                return;
+
+            // Calculate sample spacing
+            float sampleSpacingX = region.SampleWidth > 0
+                ? (float)(region.TileWidth * tileSize) / region.SampleWidth
+                : 1f;
+            float sampleSpacingY = region.SampleHeight > 0
+                ? (float)(region.TileHeight * tileSize) / region.SampleHeight
+                : 1f;
+
+            int sampleSize = (int)System.Math.Max(2, System.Math.Min(sampleSpacingX, sampleSpacingY));
+            double sumVisibility = 0.0;
+
+            // Draw and track metrics
+            for (int sy = 0; sy < region.SampleHeight; sy++)
+            {
+                for (int sx = 0; sx < region.SampleWidth; sx++)
+                {
+                    int flatIndex = sy * region.SampleWidth + sx;
+                    if (flatIndex >= sampleCount || flatIndex >= sunVisibility.Length)
+                        continue;
+
+                    float visibility = sunVisibility[flatIndex];
+
+                    // Grayscale: 0=black (blocked), 1=white (free)
+                    byte value = (byte)(visibility * 255);
+                    Color color = new Color((byte)value, (byte)value, (byte)value, (byte)220);
+
+                    // Calculate world position
+                    float worldX = region.WorldOriginX + sx * sampleSpacingX;
+                    float worldY = region.WorldOriginY + sy * sampleSpacingY;
+
+                    var rect = new Rectangle((int)worldX, (int)worldY, sampleSize, sampleSize);
+                    spriteBatch.Draw(_pixelTexture, rect, color);
+
+                    // Track instrumentation
+                    _sunVisibilitySamplesDrawn++;
+                    sumVisibility += visibility;
+
+                    if (worldX < _sunVisibilityMinWorldX)
+                        _sunVisibilityMinWorldX = worldX;
+                    if (worldX > _sunVisibilityMaxWorldX)
+                        _sunVisibilityMaxWorldX = worldX;
+
+                    if (worldY < _sunVisibilityMinWorldY)
+                        _sunVisibilityMinWorldY = worldY;
+                    if (worldY > _sunVisibilityMaxWorldY)
+                        _sunVisibilityMaxWorldY = worldY;
+
+                    if (visibility < _sunVisibilityMinValue)
+                        _sunVisibilityMinValue = visibility;
+                    if (visibility > _sunVisibilityMaxValue)
+                        _sunVisibilityMaxValue = visibility;
+                }
+            }
+
+            // Calculate average
+            _sunVisibilityAverageValue = _sunVisibilitySamplesDrawn > 0
+                ? (float)(sumVisibility / _sunVisibilitySamplesDrawn)
+                : 0f;
         }
 
         /// <summary>
