@@ -49,8 +49,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public int SunVisibilityDdaRaysStarted { get; private set; }
         public int SunVisibilityCellsVisited { get; private set; }
         public int SunVisibilityEarlyOuts { get; private set; }
-        public int SunVisibilityFreeRays { get; private set; }
-        public int SunVisibilityBlockedRays { get; private set; }
+        public int SunVisibilityFullyFreeRays { get; private set; }
+        public int SunVisibilityPartiallyTransmittedRays { get; private set; }
+        public int SunVisibilityFullyBlockedRays { get; private set; }
         public int SunVisibilityGuardLimitHits { get; private set; }
         public int SunVisibilityMaximumCellsPerRay { get; private set; }
 
@@ -142,8 +143,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             SunVisibilityDdaRaysStarted = 0;
             SunVisibilityCellsVisited = 0;
             SunVisibilityEarlyOuts = 0;
-            SunVisibilityFreeRays = 0;
-            SunVisibilityBlockedRays = 0;
+            SunVisibilityFullyFreeRays = 0;
+            SunVisibilityPartiallyTransmittedRays = 0;
+            SunVisibilityFullyBlockedRays = 0;
             SunVisibilityGuardLimitHits = 0;
             SunVisibilityMaximumCellsPerRay = 0;
 
@@ -349,7 +351,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     {
                         // Starting cell was solid
                         SunVisibilityStartingCellBlocks++;
-                        SunVisibilityBlockedRays++;
+                        SunVisibilityFullyBlockedRays++;
                     }
                     else
                     {
@@ -360,14 +362,24 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                         if (stats.EarlyOut)
                             SunVisibilityEarlyOuts++;
 
-                        if (stats.WasFree)
-                            SunVisibilityFreeRays++;
-
-                        if (stats.WasBlocked)
-                            SunVisibilityBlockedRays++;
-
                         if (stats.GuardLimitHit)
+                        {
                             SunVisibilityGuardLimitHits++;
+                            SunVisibilityFullyBlockedRays++;
+                        }
+                        else
+                        {
+                            // Classify by visibility: fully free, partially transmitted, or fully blocked
+                            const float VisibilityEpsilon = 0.001f;
+                            const float FullyFreeThreshold = 1.0f - VisibilityEpsilon;  // >= 0.999
+
+                            if (visibility >= FullyFreeThreshold)
+                                SunVisibilityFullyFreeRays++;
+                            else if (visibility <= VisibilityEpsilon)  // Early-out threshold
+                                SunVisibilityFullyBlockedRays++;
+                            else
+                                SunVisibilityPartiallyTransmittedRays++;
+                        }
 
                         if (stats.CellsVisited > SunVisibilityMaximumCellsPerRay)
                             SunVisibilityMaximumCellsPerRay = stats.CellsVisited;
@@ -382,7 +394,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     SunVisibilityBelowHorizonSkips + SunVisibilityLowIntensitySkips + SunVisibilityLowElevationSkips);
                 bool invariant2 = (SunVisibilitySampleCount == SunVisibilityPreTraceSkips + SunVisibilityTraceCandidates);
                 bool invariant3 = (SunVisibilityTraceCandidates == SunVisibilityStartingCellBlocks + SunVisibilityDdaRaysStarted);
-                bool invariant4 = (SunVisibilityFreeRays + SunVisibilityBlockedRays == SunVisibilityTraceCandidates);
+                bool invariant4 = (SunVisibilityFullyFreeRays + SunVisibilityPartiallyTransmittedRays + SunVisibilityFullyBlockedRays == SunVisibilityTraceCandidates);
 
                 if (!invariant1 || !invariant2 || !invariant3 || !invariant4)
                 {
@@ -390,7 +402,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     System.Console.WriteLine($"  Invariant 1 (PreTraceSkips): {invariant1}");
                     System.Console.WriteLine($"  Invariant 2 (SampleCount): {invariant2}");
                     System.Console.WriteLine($"  Invariant 3 (TraceCandidates): {invariant3}");
-                    System.Console.WriteLine($"  Invariant 4 (FreeRays+BlockedRays): {invariant4}");
+                    System.Console.WriteLine($"  Invariant 4 (FullyFree+Partial+FullyBlocked): {invariant4}");
                 }
             }
 
@@ -404,7 +416,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 System.Console.WriteLine($"  Samples={SunVisibilitySampleCount} PreSkips={SunVisibilityPreTraceSkips} Candidates={SunVisibilityTraceCandidates}");
                 System.Console.WriteLine($"  StartingCellBlocks={SunVisibilityStartingCellBlocks} DdaStarted={SunVisibilityDdaRaysStarted}");
                 System.Console.WriteLine($"  CellsVisited={SunVisibilityCellsVisited} Avg={SunVisibilityAverageCellsPerTrace:F2} Max={SunVisibilityMaximumCellsPerRay}");
-                System.Console.WriteLine($"  Free={SunVisibilityFreeRays} Blocked={SunVisibilityBlockedRays} EarlyOuts={SunVisibilityEarlyOuts} GuardHits={SunVisibilityGuardLimitHits}");
+                System.Console.WriteLine($"  FullyFree={SunVisibilityFullyFreeRays} Partial={SunVisibilityPartiallyTransmittedRays} FullyBlocked={SunVisibilityFullyBlockedRays} EarlyOuts={SunVisibilityEarlyOuts} GuardHits={SunVisibilityGuardLimitHits}");
                 System.Console.WriteLine($"  Time={SunVisibilityBuildTimeMs:F2}ms");
             }
         }
@@ -454,8 +466,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             System.Console.WriteLine($"  Average Per DDA Ray: {SunVisibilityAverageDdaCellsPerRay:F2}");
             System.Console.WriteLine($"  Maximum: {SunVisibilityMaximumCellsPerRay}");
             System.Console.WriteLine($"Early Outs: {SunVisibilityEarlyOuts}");
-            System.Console.WriteLine($"Free Rays: {SunVisibilityFreeRays}");
-            System.Console.WriteLine($"Blocked Rays: {SunVisibilityBlockedRays}");
+            System.Console.WriteLine($"Ray Classification (Visibility):");
+            System.Console.WriteLine($"  Fully Free Rays (≥0.999): {SunVisibilityFullyFreeRays}");
+            System.Console.WriteLine($"  Partially Transmitted Rays (0.001-0.999): {SunVisibilityPartiallyTransmittedRays}");
+            System.Console.WriteLine($"  Fully Blocked Rays (≤0.001): {SunVisibilityFullyBlockedRays}");
             System.Console.WriteLine($"Guard Limit Hits: {SunVisibilityGuardLimitHits}");
             System.Console.WriteLine($"Active Providers: {_occluderProviders.Count}");
             foreach (var provider in _occluderProviders)
