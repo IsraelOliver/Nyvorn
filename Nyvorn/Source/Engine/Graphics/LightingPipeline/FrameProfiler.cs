@@ -14,7 +14,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public enum ProfileState
         {
             Inactive,
-            SmokeTest,      // 120 frames warmup (legacy, v3none, v3sun)
+            ValidationPass, // 30 frames per mode (sanity check)
+            SmokeTest,      // 120 frames per mode (legacy, v3none, v3sun)
             BaselineWarmup, // 300 frames warmup
             BaselineCapture // 600 frames measured
         }
@@ -28,8 +29,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         // Configuration
         private const int MaxFramesPerRun = 600;
-        private const int WarmupFrames = 300;
+        private const int ValidationFrames = 30;
         private const int SmokeTestFrames = 120;
+        private const int WarmupFrames = 300;
 
         // State
         private ProfileState _state = ProfileState.Inactive;
@@ -46,7 +48,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private CallCounts _currentFrameCalls;
 
         // Timing snapshots
-        private long _frameStartTicks;
+        private long _globalFrameStartTicks;  // Start of frame (before Update)
+        private long _globalFrameEndTicks;    // End of frame (after Draw)
         private long _updateStartTicks;
         private long _drawStartTicks;
 
@@ -63,6 +66,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 _frameMetrics[i] = new FrameMetrics();
                 _frameCalls[i] = new CallCounts();
             }
+        }
+
+        /// <summary>
+        /// Start validation pass: 30 frames per mode to sanity-check instrumentation.
+        /// </summary>
+        public void StartValidationPass(LightingMode initialMode)
+        {
+            _state = ProfileState.ValidationPass;
+            _currentMode = initialMode;
+            _frameCount = 0;
+            _captureStartIndex = 0;
         }
 
         /// <summary>
@@ -115,6 +129,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Called at very start of frame (before Update). Measures wall-clock time.
+        /// </summary>
+        public void OnGlobalFrameStart()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+
+            _globalFrameStartTicks = Stopwatch.GetTimestamp();
+            _currentFrameMetrics = new FrameMetrics();
+            _currentFrameCalls = new CallCounts();
+        }
+
+        /// <summary>
         /// Called at start of PlayingState.Update.
         /// </summary>
         public void OnUpdateStart()
@@ -122,9 +149,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             if (_state == ProfileState.Inactive)
                 return;
 
-            _frameStartTicks = Stopwatch.GetTimestamp();
-            _currentFrameMetrics = new FrameMetrics();
-            _currentFrameCalls = new CallCounts();
+            _updateStartTicks = Stopwatch.GetTimestamp();
         }
 
         /// <summary>
@@ -213,7 +238,25 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 return;
 
             long ticks = Stopwatch.GetTimestamp();
-            _currentFrameMetrics.TotalUpdateMs = TicksToMs(ticks - _frameStartTicks);
+            _currentFrameMetrics.TotalUpdateMs = TicksToMs(ticks - _updateStartTicks);
+        }
+
+        /// <summary>
+        /// Called when world rendering starts (before sprite batch draws).
+        /// </summary>
+        public void OnWorldRenderStart()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+            _updateStartTicks = Stopwatch.GetTimestamp();
+        }
+
+        public void OnWorldRenderEnd()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+            long ticks = Stopwatch.GetTimestamp();
+            _currentFrameMetrics.WorldRenderMs = TicksToMs(ticks - _updateStartTicks);
         }
 
         /// <summary>
@@ -266,6 +309,25 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Called when debug visualization is composited to final RT.
+        /// </summary>
+        public void OnDebugCompositeStart()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+            _updateStartTicks = Stopwatch.GetTimestamp();
+        }
+
+        public void OnDebugCompositeEnd()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+            long ticks = Stopwatch.GetTimestamp();
+            _currentFrameMetrics.DebugCompositeMs = TicksToMs(ticks - _updateStartTicks);
+            _currentFrameCalls.DebugCompositeCalls++;
+        }
+
+        /// <summary>
         /// Called when HUD is drawn.
         /// </summary>
         public void OnHudDrawStart()
@@ -285,6 +347,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         }
 
         /// <summary>
+        /// Record that DebugRenderer was called but returned early (mode=None).
+        /// </summary>
+        public void OnDebugRendererEarlyReturn()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+            _currentFrameCalls.DebugRendererEarlyReturns++;
+        }
+
+        /// <summary>
         /// Called at end of PlayingState.Draw.
         /// </summary>
         public void OnDrawEnd()
@@ -294,6 +366,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             long ticks = Stopwatch.GetTimestamp();
             _currentFrameMetrics.TotalDrawMs = TicksToMs(ticks - _drawStartTicks);
+        }
+
+        /// <summary>
+        /// Called at very end of frame (after all rendering and Present).
+        /// Computes wall-clock frame interval and handles state transitions.
+        /// </summary>
+        public void OnGlobalFrameEnd()
+        {
+            if (_state == ProfileState.Inactive)
+                return;
+
+            long ticks = Stopwatch.GetTimestamp();
+            _currentFrameMetrics.WallClockFrameIntervalMs = TicksToMs(ticks - _globalFrameStartTicks);
+            _currentFrameMetrics.CpuUpdateDrawMs = _currentFrameMetrics.TotalUpdateMs + _currentFrameMetrics.TotalDrawMs;
+            _currentFrameMetrics.UnaccountedWallTimeMs = _currentFrameMetrics.WallClockFrameIntervalMs - _currentFrameMetrics.CpuUpdateDrawMs;
 
             // Record frame (only if in capture window)
             if (_frameCount >= _captureStartIndex && _frameCount < MaxFramesPerRun)
@@ -305,27 +392,43 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             _frameCount++;
 
-            // Check if we should transition or stop
-            if (_state == ProfileState.SmokeTest)
+            // State transitions (no console output during capture)
+            if (_state == ProfileState.ValidationPass)
             {
-                if (_frameCount >= SmokeTestFrames)
+                if (_frameCount >= ValidationFrames)
                 {
-                    // Advance to next smoke test phase
                     if (_currentMode == LightingMode.Legacy)
                     {
                         _frameCount = 0;
                         _currentMode = LightingMode.V3Mode_None;
-                        System.Console.WriteLine("[FrameProfiler] Smoke test: transitioning to V3 Mode=None");
                     }
                     else if (_currentMode == LightingMode.V3Mode_None)
                     {
                         _frameCount = 0;
                         _currentMode = LightingMode.V3Mode_SunVisibility;
-                        System.Console.WriteLine("[FrameProfiler] Smoke test: transitioning to V3 Mode=SunVisibility");
                     }
                     else
                     {
-                        System.Console.WriteLine("[FrameProfiler] Smoke test complete");
+                        _state = ProfileState.Inactive;
+                    }
+                }
+            }
+            else if (_state == ProfileState.SmokeTest)
+            {
+                if (_frameCount >= SmokeTestFrames)
+                {
+                    if (_currentMode == LightingMode.Legacy)
+                    {
+                        _frameCount = 0;
+                        _currentMode = LightingMode.V3Mode_None;
+                    }
+                    else if (_currentMode == LightingMode.V3Mode_None)
+                    {
+                        _frameCount = 0;
+                        _currentMode = LightingMode.V3Mode_SunVisibility;
+                    }
+                    else
+                    {
                         _state = ProfileState.Inactive;
                     }
                 }
@@ -336,14 +439,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 {
                     _state = ProfileState.BaselineCapture;
                     _frameCount = 0;
-                    System.Console.WriteLine("[FrameProfiler] Baseline warmup complete, starting capture");
                 }
             }
             else if (_state == ProfileState.BaselineCapture)
             {
                 if (_frameCount >= MaxFramesPerRun)
                 {
-                    System.Console.WriteLine("[FrameProfiler] Baseline capture complete");
                     _state = ProfileState.Inactive;
                 }
             }
@@ -357,14 +458,26 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // Data structures
         public struct FrameMetrics
         {
+            // CPU timing
             public double TotalUpdateMs;
             public double TotalDrawMs;
+
+            // Wall-clock timing (includes GPU, Present, VSync waits)
+            public double WallClockFrameIntervalMs;
+            public double CpuUpdateDrawMs;           // TotalUpdateMs + TotalDrawMs
+            public double UnaccountedWallTimeMs;     // WallClockFrameIntervalMs - CpuUpdateDrawMs
+
+            // Update phase breakdown
             public double FoundationUpdateMs;
             public double ClassificationMs;
             public double OccluderBuildMs;
             public double SunVisibilityBuildMs;
+
+            // Draw phase breakdown
+            public double WorldRenderMs;
             public double DebugRendererMs;
             public double RenderSunVisibilityMs;
+            public double DebugCompositeMs;
             public double HudDrawMs;
 
             public double TotalFrameMs => TotalUpdateMs + TotalDrawMs;
@@ -378,7 +491,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             public int BuildOccluderCalls;
             public int BuildSunVisibilityCalls;
             public int DebugRendererCalls;
+            public int DebugRendererEarlyReturns;        // When early exit in mode=None
             public int RenderSunVisibilityCalls;
+            public int DebugCompositeCalls;
             public int HudDrawCalls;
         }
 
