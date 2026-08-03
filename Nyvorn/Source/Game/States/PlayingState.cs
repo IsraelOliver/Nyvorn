@@ -60,6 +60,10 @@ namespace Nyvorn.Source.Game.States
         public bool DrawBelow => false;
         public bool BlockInputBelow => true;
 
+        // Phase A0.0: Profiler reference
+        private RenderedFrameProfiler _renderedFrameProfiler;
+        public PlayingSession Session => session;
+
         // Darkens whatever's already drawn (destination *= source) instead of alpha-compositing
         // over it, so the wetness overlay tints the tile actually on screen rather than needing to
         // duplicate/replace its draw.
@@ -113,6 +117,7 @@ namespace Nyvorn.Source.Game.States
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
         {
+            _renderedFrameProfiler = null;  // Will be set by Game1.SetPlayingStateProfiler if profiler is active
         }
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine, PlayingSession session)
@@ -132,6 +137,22 @@ namespace Nyvorn.Source.Game.States
             consolePixel.SetData(new[] { Color.White });
             playerHubUI = new PlayerHubUI(graphicsDevice, session);
             autoSaveTimer = AutoSaveInterval;
+        }
+
+        public void SetProfiler(RenderedFrameProfiler profiler)
+        {
+            _renderedFrameProfiler = profiler;
+        }
+
+        private RenderedFrameProfiler.LightingMode GetProfilerLightingMode()
+        {
+            if (LightingPipelineCoordinator.I.IsLegacyMode)
+                return RenderedFrameProfiler.LightingMode.Legacy;
+
+            if (session.ViewCoordinator.LightingV3DebugController?.GetCurrentMode() == LightingDebugMode.None)
+                return RenderedFrameProfiler.LightingMode.V3Mode_None;
+
+            return RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
         }
 
         public void OnEnter() { }
@@ -158,6 +179,17 @@ namespace Nyvorn.Source.Game.States
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
+
+            // Phase A0.0: Validate configuration if profiler active
+            if (_renderedFrameProfiler != null)
+            {
+                float zoom = session.Camera.Zoom;
+                int arWidth = session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
+                int arHeight = arWidth > 0 ? arWidth : 0;
+                int sampleCount = arWidth * 4 * arHeight;
+                var mode = GetProfilerLightingMode();
+                _renderedFrameProfiler.ValidateConfiguration(screenW, screenH, zoom, arWidth, arHeight, sampleCount, mode);
+            }
 
             InputState input = inputService.Update();
             consoleTargetWorld = session.Camera.ScreenToWorld(input.MouseScreenPosition);
@@ -328,7 +360,19 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && !session.IsConstructionMode && input.ActivePowerJustPressed)
                 session.PowerSystem.TryActivateCurrentPower();
 
-            session.Update(dt, input, mouseWorld, screenW, screenH);
+            if (_renderedFrameProfiler != null)
+                _renderedFrameProfiler.OnFoundationUpdateStart();
+
+            try
+            {
+                session.Update(dt, input, mouseWorld, screenW, screenH);
+            }
+            finally
+            {
+                if (_renderedFrameProfiler != null)
+                    _renderedFrameProfiler.OnFoundationUpdateEnd();
+            }
+
             autoSaveTimer -= dt;
             if (autoSaveTimer <= 0f)
             {
