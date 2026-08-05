@@ -66,8 +66,8 @@ public class Game1 : Game
 
                 // State
                 Zoom = zoom,
-                ActiveRegionCount = ps?.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0,
-                SampleCount = (ps?.Session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0) * 4,
+                ActiveRegionCount = 0,
+                SampleCount = 0,
                 IsDebuggerAttached = System.Diagnostics.Debugger.IsAttached
             };
         }
@@ -444,36 +444,8 @@ public class Game1 : Game
         var playingState = GetCurrentPlayingState();
         if (playingState == null) return;
 
-        if (mode == RenderedFrameProfiler.LightingMode.Legacy)
-        {
-            // Request Legacy mode
-            LightingPipelineCoordinator.I.SetMode(LightingPipelineMode.Legacy);
-        }
-        else if (mode == RenderedFrameProfiler.LightingMode.V3Mode_None || mode == RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility)
-        {
-            // Request V3 mode (if not already there)
-            if (LightingPipelineCoordinator.I.IsLegacyMode)
-            {
-                LightingPipelineCoordinator.I.SetMode(LightingPipelineMode.V3);
-            }
-
-            // Then set debug visualization mode
-            var debugCtrl = playingState.Session.ViewCoordinator.LightingV3DebugController;
-            if (debugCtrl != null)
-            {
-                LightingDebugMode targetMode = (mode == RenderedFrameProfiler.LightingMode.V3Mode_None) ?
-                    LightingDebugMode.None : LightingDebugMode.SunVisibility;
-
-                // Cycle to the target mode if needed
-                LightingDebugMode currentMode = debugCtrl.GetCurrentMode();
-                while (currentMode != targetMode)
-                {
-                    debugCtrl.CycleMode();
-                    currentMode = debugCtrl.GetCurrentMode();
-                    if (currentMode == targetMode) break;
-                }
-            }
-        }
+        // Legacy mode only - V3 disabled
+        // Mode requests are ignored; system runs on Legacy lighting
     }
 
     private void ExportEmergencyCapture()
@@ -518,17 +490,7 @@ public class Game1 : Game
 
     private RenderedFrameProfiler.LightingMode GetCurrentLightingMode()
     {
-        var playingState = GetCurrentPlayingState();
-        if (playingState == null)
-            return RenderedFrameProfiler.LightingMode.Legacy;
-
-        if (LightingPipelineCoordinator.I.IsLegacyMode)
-            return RenderedFrameProfiler.LightingMode.Legacy;
-
-        if (playingState.Session.ViewCoordinator.LightingV3DebugController?.GetCurrentMode() == LightingDebugMode.None)
-            return RenderedFrameProfiler.LightingMode.V3Mode_None;
-
-        return RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+        return RenderedFrameProfiler.LightingMode.Legacy;
     }
 
     protected override bool BeginDraw()

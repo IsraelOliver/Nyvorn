@@ -58,27 +58,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// <summary>Number of frames processed since creation</summary>
         public int FrameCount => frameCount;
 
-        /// <summary>
-        /// Switch pipeline mode.
-        /// Automatically resets metrics for new frame.
-        /// Logs mode change.
-        /// </summary>
-        public void SetMode(LightingPipelineMode newMode)
-        {
-            if (newMode == activeMode)
-                return;  // No change
-
-            LightingPipelineMode previousMode = activeMode;
-            activeMode = newMode;
-
-            // Reset current frame metrics when switching
-            currentFrameMetrics.Reset();
-
-            Console.WriteLine(
-                $"[LightingPipeline] Requested: {previousMode} -> {activeMode} at frame {frameCount}");
-            Console.WriteLine(
-                $"[LightingPipeline] Applied: {activeMode} at frame {frameCount + 1}");
-        }
 
         /// <summary>
         /// Validate isolation before processing render steps.
@@ -120,43 +99,26 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void RecordLegacyPlayerLightSample() { currentFrameMetrics.LegacyPlayerLightSampleCount++; sessionMetrics.LegacyPlayerLightSampleCount++; }
         public void RecordLegacyEntityTintApply() { currentFrameMetrics.LegacyEntityTintApplyCount++; sessionMetrics.LegacyEntityTintApplyCount++; }
 
-        public void RecordV3Update() { currentFrameMetrics.V3UpdateCount++; sessionMetrics.V3UpdateCount++; }
-        public void RecordV3Composite() { currentFrameMetrics.V3CompositeCount++; sessionMetrics.V3CompositeCount++; }
 
         public void RecordNeutralEntityLightSample() { currentFrameMetrics.NeutralEntityLightSampleCount++; sessionMetrics.NeutralEntityLightSampleCount++; }
         public void RecordNeutralEntityDraw() { currentFrameMetrics.NeutralEntityDrawCount++; sessionMetrics.NeutralEntityDrawCount++; }
 
         // ========== VALIDATION QUERIES ==========
 
-        public bool IsLegacyMode => activeMode == LightingPipelineMode.Legacy;
-        public bool IsV3Mode => activeMode == LightingPipelineMode.V3;
+        public bool IsLegacyMode => true;
 
-        public void AssertLegacyMode()
-        {
-            if (!IsLegacyMode)
-                throw new InvalidOperationException($"Expected Legacy mode, but active mode is {activeMode}");
-        }
-
-        public void AssertV3Mode()
-        {
-            if (!IsV3Mode)
-                throw new InvalidOperationException($"Expected V3 mode, but active mode is {activeMode}");
-        }
+        public void AssertLegacyMode() { }
 
         // ========== DEBUG HELPERS ==========
 
         public void DumpMetricsToConsole()
         {
             Console.WriteLine("\n========== LIGHTING PIPELINE METRICS (Ctrl+Shift+M) ==========");
-            Console.WriteLine($"Active Mode: {activeMode}");
+            Console.WriteLine("Mode: Legacy");
             Console.WriteLine($"Frame: {frameCount}");
             Console.WriteLine();
 
-            // CURRENT FRAME METRICS
             Console.WriteLine("--- CURRENT FRAME METRICS ---");
-            Console.WriteLine($"Isolation Valid: {currentFrameMetrics.IsIsolationValid}");
-            Console.WriteLine();
-
             Console.WriteLine("[LEGACY COUNTERS]");
             Console.WriteLine($"  LightingUpdate:       {currentFrameMetrics.LegacyLightingUpdateCount}");
             Console.WriteLine($"  LightGridCopy:        {currentFrameMetrics.LegacyLightGridCopyCount}");
@@ -170,18 +132,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             Console.WriteLine($"  TOTAL:                {currentFrameMetrics.LegacyTotalExecutions}");
             Console.WriteLine();
 
-            Console.WriteLine("[V3 COUNTERS]");
-            Console.WriteLine($"  Update:               {currentFrameMetrics.V3UpdateCount}");
-            Console.WriteLine($"  Composite:            {currentFrameMetrics.V3CompositeCount}");
-            Console.WriteLine($"  EntityLightSample:    {currentFrameMetrics.NeutralEntityLightSampleCount}");
-            Console.WriteLine($"  EntityDraw:           {currentFrameMetrics.NeutralEntityDrawCount}");
-            Console.WriteLine($"  TOTAL:                {currentFrameMetrics.V3TotalExecutions}");
-            Console.WriteLine();
-
-            // SESSION METRICS
             Console.WriteLine("--- SESSION METRICS (Cumulative) ---");
-            Console.WriteLine();
-
             Console.WriteLine("[LEGACY TOTALS]");
             Console.WriteLine($"  LightingUpdate:       {sessionMetrics.LegacyLightingUpdateCount}");
             Console.WriteLine($"  LightGridCopy:        {sessionMetrics.LegacyLightGridCopyCount}");
@@ -193,17 +144,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             Console.WriteLine($"  PlayerLightSample:    {sessionMetrics.LegacyPlayerLightSampleCount}");
             Console.WriteLine($"  EntityTintApply:      {sessionMetrics.LegacyEntityTintApplyCount}");
             Console.WriteLine($"  TOTAL:                {sessionMetrics.LegacyTotalExecutions}");
-            Console.WriteLine();
-
-            Console.WriteLine("[V3 TOTALS]");
-            Console.WriteLine($"  Update:               {sessionMetrics.V3UpdateCount}");
-            Console.WriteLine($"  Composite:            {sessionMetrics.V3CompositeCount}");
-            Console.WriteLine($"  EntityLightSample:    {sessionMetrics.NeutralEntityLightSampleCount}");
-            Console.WriteLine($"  EntityDraw:           {sessionMetrics.NeutralEntityDrawCount}");
-            Console.WriteLine($"  TOTAL:                {sessionMetrics.V3TotalExecutions}");
-            Console.WriteLine();
-
-            Console.WriteLine("============================================================\n");
+            Console.WriteLine("\n============================================================\n");
         }
     }
 }

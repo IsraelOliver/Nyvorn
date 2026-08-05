@@ -45,31 +45,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         /// Get world height in tiles.
         /// </summary>
         int WorldHeightTiles { get; }
+
+        /// <summary>
+        /// Check if there is a clear vertical line to the top of the world (y=0).
+        /// Used for detecting sky exposure in lighting systems.
+        /// </summary>
+        bool HasOpenSkyAbove(int tileX, int tileY);
     }
 
-    /// <summary>
-    /// Adapter: Bridge between IWorldDataProvider (V2 API) and ILightingWorldGeometryProvider (V3 API).
-    /// Allows Phase 2 foundation to use existing world data without creating new dependencies.
-    /// </summary>
-    public sealed class WorldDataGeometryAdapter : ILightingWorldGeometryProvider
-    {
-        private readonly Engine.Graphics.LightingV2.IWorldDataProvider _worldDataProvider;
-
-        public WorldDataGeometryAdapter(Engine.Graphics.LightingV2.IWorldDataProvider worldDataProvider)
-        {
-            _worldDataProvider = worldDataProvider ?? throw new System.ArgumentNullException(nameof(worldDataProvider));
-        }
-
-        public bool IsForegroundSolidAt(int tileX, int tileY) => _worldDataProvider.IsForegroundSolidAt(tileX, tileY);
-
-        public bool HasBackgroundWallAt(int tileX, int tileY) => _worldDataProvider.HasBackgroundWallAt(tileX, tileY);
-
-        public int WrapTileX(int tileX) => _worldDataProvider.WrapTileX(tileX);
-
-        public bool IsInBounds(int tileX, int tileY) => _worldDataProvider.IsInBounds(tileX, tileY);
-
-        public int WorldWidthTiles => _worldDataProvider.WorldWidth;
-
-        public int WorldHeightTiles => _worldDataProvider.WorldHeight;
-    }
 }

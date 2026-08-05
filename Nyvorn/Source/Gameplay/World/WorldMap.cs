@@ -336,6 +336,24 @@ namespace Nyvorn.Source.World
         public bool HasOpenSkyAbove(int x, int y)
         {
             int wrappedX = WrapTileX(x);
+
+            // Check if this tile is in Cavern or deeper layers
+            // If so, sky light is completely blocked (cannot reach below the cavern ceiling)
+            if (y >= 960)  // Cavern layer starts around y=960 (ShallowUnderground ends)
+            {
+                // Look upward for a solid background tile that would block sky light
+                // The cavern ceiling (background wallpaper) blocks all sky light from reaching below
+                for (int scanY = y - 1; scanY >= 0; scanY--)
+                {
+                    if (!IsBackgroundSolidAt(wrappedX, scanY))
+                        continue;
+
+                    // Found a solid background tile between this tile and the sky
+                    // Sky light is completely blocked
+                    return false;
+                }
+            }
+
             for (int scanY = y - 1; scanY >= 0; scanY--)
             {
                 if (IsSolidAt(wrappedX, scanY))

@@ -43,6 +43,8 @@ namespace Nyvorn.Source.World.Generation.Passes
             PromoteSurfaceGrassShell(context);
 
             FillBackgroundShallowUnderground(context);
+            FillBackgroundCavern(context);
+            FillBackgroundDeepCavern(context);
 
             context.ProgressReporter?.Complete(Name, "Crosta preenchida");
         }
@@ -58,6 +60,32 @@ namespace Nyvorn.Source.World.Generation.Passes
                 for (int y = shallowLayer.StartY; y <= shallowLayer.EndY; y++)
                 {
                     context.WorldMap.SetBackgroundTile(x, y, TileType.Dirt);
+                }
+            }
+        }
+
+        private static void FillBackgroundCavern(WorldGenContext context)
+        {
+            WorldLayerDefinition cavernLayer = context.GetLayerDefinition(WorldLayerType.Cavern);
+
+            for (int x = 0; x < context.WorldMap.Width; x++)
+            {
+                for (int y = cavernLayer.StartY; y <= cavernLayer.EndY; y++)
+                {
+                    context.WorldMap.SetBackgroundTile(x, y, TileType.Stone);
+                }
+            }
+        }
+
+        private static void FillBackgroundDeepCavern(WorldGenContext context)
+        {
+            WorldLayerDefinition deepLayer = context.GetLayerDefinition(WorldLayerType.DeepCavern);
+
+            for (int x = 0; x < context.WorldMap.Width; x++)
+            {
+                for (int y = deepLayer.StartY; y <= deepLayer.EndY; y++)
+                {
+                    context.WorldMap.SetBackgroundTile(x, y, TileType.Stone);
                 }
             }
         }

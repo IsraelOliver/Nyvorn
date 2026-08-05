@@ -1,0 +1,25 @@
+#----------------------------- Global Properties -----------------------------#
+/outputDir:bin/$(Platform)
+/intermediateDir:obj/$(Platform)
+/platform:DesktopGL
+/config:
+/profile:Reach
+/compress:False
+
+#-------------------------------- References --------------------------------#
+
+#---------------------------------- Content ---------------------------------#
+
+#--- Shader Effects ---
+/importer:EffectImporter
+/processor:EffectProcessor
+/build:effects/Loop8.fx
+/build:effects/Loop16.fx
+/build:effects/Loop32.fx
+/build:effects/Loop64.fx
+/build:effects/LoopWithBreak.fx
+/build:effects/Sampler1.fx
+/build:effects/Sampler2.fx
+/build:effects/Sampler4.fx
+/build:effects/Sampler8.fx
+/build:effects/Sampler16.fx

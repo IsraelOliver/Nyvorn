@@ -3,7 +3,6 @@ using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Engine.Graphics.LightingPipeline;
-using Nyvorn.Source.Engine.Graphics.LightingV2;
 using Nyvorn.Source.Engine.Input;
 using System;
 using System.Diagnostics;
@@ -142,22 +141,11 @@ namespace Nyvorn.Source.Game.States
         public void SetProfiler(RenderedFrameProfiler profiler)
         {
             _renderedFrameProfiler = profiler;
-            // Also pass profiler to Foundation for timing ClassifyRegionToSlot, etc.
-            if (session?.ViewCoordinator?.LightingV3Foundation != null && profiler != null)
-            {
-                session.ViewCoordinator.LightingV3Foundation.SetProfiler(profiler);
-            }
         }
 
         private RenderedFrameProfiler.LightingMode GetProfilerLightingMode()
         {
-            if (LightingPipelineCoordinator.I.IsLegacyMode)
-                return RenderedFrameProfiler.LightingMode.Legacy;
-
-            if (session.ViewCoordinator.LightingV3DebugController?.GetCurrentMode() == LightingDebugMode.None)
-                return RenderedFrameProfiler.LightingMode.V3Mode_None;
-
-            return RenderedFrameProfiler.LightingMode.V3Mode_SunVisibility;
+            return RenderedFrameProfiler.LightingMode.Legacy;
         }
 
         public void OnEnter() { }
@@ -170,9 +158,6 @@ namespace Nyvorn.Source.Game.States
             session.ViewCoordinator.DisposeDirectionalSunlightMap();
             session.ViewCoordinator.DisposeForegroundBlockageMap();
             session.ViewCoordinator.DisposePenumbraMap();
-            session.ViewCoordinator.DisposeLightingV2();
-            session.ViewCoordinator.DisposeV3RenderTargets();  // PHASE 1: Dispose V3 RenderTargets
-            session.ViewCoordinator.DisposeLightingV3();  // PHASE 2: Dispose V3 Foundation
         }
 
         public void Update(GameTime gameTime)
@@ -190,12 +175,8 @@ namespace Nyvorn.Source.Game.States
             if (_renderedFrameProfiler != null)
             {
                 float zoom = session.Camera.Zoom;
-                int arCount = session.ViewCoordinator.LightingV3Foundation?.ActiveTileCount ?? 0;
-                int sampleCount = arCount * 4;
                 var mode = GetProfilerLightingMode();
-                // Note: Legacy mode passes arCount=0, which tells profiler that ActiveRegion is N/A
-                int arCountForValidation = (mode == RenderedFrameProfiler.LightingMode.Legacy) ? 0 : arCount;
-                _renderedFrameProfiler.ValidateConfiguration(screenW, screenH, zoom, arCountForValidation, arCountForValidation, sampleCount, mode);
+                _renderedFrameProfiler.ValidateConfiguration(screenW, screenH, zoom, 0, 0, 0, mode);
             }
 
             InputState input = inputService.Update();
@@ -260,29 +241,6 @@ namespace Nyvorn.Source.Game.States
             if (!handledConsoleThisFrame && input.ToggleConstructionModePressed)
                 session.ToggleConstructionMode();
 
-            // DEBUG HOTKEY: Ctrl+Shift+J to toggle lighting pipeline (PHASE 0: Isolated modes)
-            // Legacy mode: Standard rendering path with WorldLightingSystem
-            // V3 mode: New architecture (not yet implemented, uses composition neutral)
-            lightingPipelineToggleCooldown -= dt;
-            if (!handledConsoleThisFrame && lightingPipelineToggleCooldown <= 0f)
-            {
-                bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool jPressed = keyboard.IsKeyDown(Keys.J);
-
-                if (ctrlPressed && shiftPressed && jPressed && !previousConsoleKeyboard.IsKeyDown(Keys.J))
-                {
-                    var newMode = LightingPipelineCoordinator.I.ActiveMode == Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy
-                        ? Engine.Graphics.LightingPipeline.LightingPipelineMode.V3
-                        : Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
-
-                    LightingPipelineCoordinator.I.SetMode(newMode);
-                    lightingPipelineToggleCooldown = 0.2f;
-
-                    consoleMessage = $"[DEBUG] Lighting Pipeline Mode: {newMode}";
-                }
-            }
-
             // DEBUG HOTKEY: Ctrl+Shift+M to dump metrics (PHASE 0: Validation)
             if (!handledConsoleThisFrame)
             {
@@ -305,7 +263,7 @@ namespace Nyvorn.Source.Game.States
 
                 if (ctrlPressed && altPressed && tPressed && !previousConsoleKeyboard.IsKeyDown(Keys.T))
                 {
-                    Phase3_2ATestRunner.RunAllTests();
+                    // V3 tests removed (Legacy only)
                 }
             }
 
@@ -405,197 +363,6 @@ namespace Nyvorn.Source.Game.States
             if (_renderedFrameProfiler != null)
                 _renderedFrameProfiler.EmergencyLog_EnterPlayingStateUpdate();
 
-            // Phase 2: Update LightingV3Foundation (V3 mode only) - ALWAYS ACTIVE FOR VALIDATION
-            if (LightingPipelineCoordinator.I.IsV3Mode && session.ViewCoordinator.LightingV3Foundation != null)
-            {
-                // Use authoritative VisibleWorldRect (Task 2.1) instead of camera-based calculation
-                var visibleWorldRect = VisibleWorldRect.FromCamera(
-                    session.Camera.Position.X,
-                    session.Camera.Position.Y,
-                    screenW,
-                    screenH,
-                    session.Camera.Zoom);
-
-                if (_renderedFrameProfiler != null)
-                    _renderedFrameProfiler.EmergencyLog_AfterActiveRegion();
-
-                if (_renderedFrameProfiler != null)
-                    _renderedFrameProfiler.EmergencyLog_BeforeFoundation();
-
-                if (!_renderedFrameProfiler?.ShouldSkipFoundationUpdate() ?? true)
-                {
-                    session.ViewCoordinator.UpdateLightingV3(visibleWorldRect);
-                }
-
-                if (_renderedFrameProfiler != null)
-                    _renderedFrameProfiler.EmergencyLog_AfterFoundation();
-
-                _foundationUpdateCount++;
-                if (!_hasLoggedFirstFoundationUpdate)
-                {
-                    _hasLoggedFirstFoundationUpdate = true;
-                    System.Console.WriteLine("[LightingV3Probe] First foundation update | FrameMode: V3 | ActiveTiles: " +
-                        session.ViewCoordinator.LightingV3Foundation.ActiveTileCount + " | ActiveSamples: " +
-                        session.ViewCoordinator.LightingV3Foundation.ActiveSampleCount);
-                }
-
-                // Phase 3.1: Auto-capture sun state dumps (diagnostics only)
-                if (Engine.Graphics.LightingPipeline.LightingV3Diagnostics.EnablePhase31RuntimeValidation)
-                {
-                    var frameData = session.ViewCoordinator.LightingV3Foundation.GetFrameData();
-                    if (frameData.HasValue && session.ViewCoordinator.SunCycleProvider != null)
-                    {
-                        var solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(session.ViewCoordinator.SunCycleProvider);
-                        float timeOfDay01 = solarProvider.GetTimeOfDay01();
-                        Engine.Graphics.LightingPipeline.Phase3_1RuntimeDumpCapture.Update(
-                            timeOfDay01,
-                            frameData.Value.SunState,
-                            frameData.Value.UpdateId,
-                            solarProvider);
-                    }
-                }
-
-                // Ctrl+Alt+1: Cycle debug visualization
-                if (!handledConsoleThisFrame)
-                {
-                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
-                    bool onePressed = keyboard.IsKeyDown(Keys.D1);
-
-                    if (ctrlPressed && altPressed && onePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D1))
-                    {
-                        if (session.ViewCoordinator.LightingV3DebugController != null)
-                        {
-                            session.ViewCoordinator.LightingV3DebugController.CycleMode();
-                            var mode = session.ViewCoordinator.LightingV3DebugController.GetCurrentMode();
-                            System.Console.WriteLine("[LightingV3Probe] Debug hotkey detected | Mode: " + mode);
-                        }
-                    }
-                }
-
-                // Ctrl+Alt+2: Dump metrics
-                if (!handledConsoleThisFrame)
-                {
-                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
-                    bool twoPressed = keyboard.IsKeyDown(Keys.D2);
-
-                    if (ctrlPressed && altPressed && twoPressed && !previousConsoleKeyboard.IsKeyDown(Keys.D2))
-                    {
-                        System.Console.WriteLine("[LightingV3Probe] Metrics hotkey detected");
-                        if (session.ViewCoordinator.LightingV3Foundation != null)
-                        {
-                            System.Console.WriteLine("\n[LightingV3 Foundation Metrics]");
-                            session.ViewCoordinator.LightingV3Foundation.DumpMetricsToConsole();
-
-                            var renderer = session.ViewCoordinator.LightingV3DebugRenderer;
-                            var controller = session.ViewCoordinator.LightingV3DebugController;
-                            if (renderer != null)
-                            {
-                                System.Console.WriteLine($"\n[LightingV3 Renderer State]");
-                                System.Console.WriteLine($"  ControllerId: {controller.InstanceId}");
-                                System.Console.WriteLine($"  Current Mode: {controller.GetCurrentMode()}");
-
-                                System.Console.WriteLine($"\n[LightingV3 Renderer Counters (last frame)]");
-                                System.Console.WriteLine($"  Classification Tiles Drawn: {renderer.ClassificationTilesDrawn}");
-                                System.Console.WriteLine($"  Sun Opacity Samples Drawn: {renderer.SunOpacitySamplesDrawn}");
-                                System.Console.WriteLine($"  Local Opacity Samples Drawn: {renderer.LocalOpacitySamplesDrawn}");
-                                System.Console.WriteLine($"  Sample Grid Points Drawn: {renderer.SampleGridPointsDrawn}");
-                                System.Console.WriteLine($"  Sun Visibility Samples Drawn: {renderer.SunVisibilitySamplesDrawn}");
-
-                                System.Console.WriteLine($"\n[LightingV3 Sun Visibility Instrumentation (last frame)]");
-                                System.Console.WriteLine($"  Value: [{renderer.SunVisibilityMinimumValue:F3}, {renderer.SunVisibilityMaximumValue:F3}]");
-                                System.Console.WriteLine($"  Average Value: {renderer.SunVisibilityAverageValue:F3}");
-
-                                System.Console.WriteLine($"\n[LightingV3 Renderer World-Space Bounds (last frame)]");
-                                System.Console.WriteLine($"  X: [{renderer.MinDrawWorldX}, {renderer.MaxDrawWorldX}]");
-                                System.Console.WriteLine($"  Y: [{renderer.MinDrawWorldY}, {renderer.MaxDrawWorldY}]");
-                                System.Console.WriteLine($"  Width: {renderer.MaxDrawWorldX - renderer.MinDrawWorldX}");
-                                System.Console.WriteLine($"  Height: {renderer.MaxDrawWorldY - renderer.MinDrawWorldY}");
-
-                                if (controller.GetCurrentMode() == LightingDebugMode.SunVisibility)
-                                {
-                                    System.Console.WriteLine($"\n[LightingV3 Sun Visibility Bounds (last frame)]");
-                                    System.Console.WriteLine($"  World X: [{renderer.SunVisibilityMinimumWorldX:F1}, {renderer.SunVisibilityMaximumWorldX:F1}]");
-                                    System.Console.WriteLine($"  World Y: [{renderer.SunVisibilityMinimumWorldY:F1}, {renderer.SunVisibilityMaximumWorldY:F1}]");
-                                    System.Console.WriteLine($"  Width: {renderer.SunVisibilityMaximumWorldX - renderer.SunVisibilityMinimumWorldX:F1}");
-                                    System.Console.WriteLine($"  Height: {renderer.SunVisibilityMaximumWorldY - renderer.SunVisibilityMinimumWorldY:F1}");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            System.Console.WriteLine("[LightingV3] Foundation is not initialized.");
-                        }
-                    }
-                }
-
-                // Ctrl+Alt+3: Print and validate captured real game cycle dumps
-                if (!handledConsoleThisFrame)
-                {
-                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
-                    bool threePressed = keyboard.IsKeyDown(Keys.D3);
-
-                    if (ctrlPressed && altPressed && threePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D3))
-                    {
-                        System.Console.WriteLine("\n[Phase3_1] Printing real game cycle dumps...");
-                        Engine.Graphics.LightingPipeline.Phase3_1RuntimeValidator.PrintDumps();
-                        Engine.Graphics.LightingPipeline.Phase3_1RuntimeValidator.Validate();
-
-                        // Also run continuity check if SolarProvider available
-                        if (session.ViewCoordinator.SunCycleProvider != null)
-                        {
-                            var solarProvider = new Engine.Graphics.LightingPipeline.GameSolarProvider(session.ViewCoordinator.SunCycleProvider);
-                            Engine.Graphics.LightingPipeline.Phase3_1RuntimeValidator.ValidateContinuity(solarProvider);
-                        }
-                    }
-                }
-
-                // Ctrl+Shift+3: Run Phase 3.1 mock validator (diagnostic, not real-time)
-                if (!handledConsoleThisFrame)
-                {
-                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                    bool threePressed = keyboard.IsKeyDown(Keys.D3);
-
-                    if (ctrlPressed && shiftPressed && threePressed && !previousConsoleKeyboard.IsKeyDown(Keys.D3))
-                    {
-                        System.Console.WriteLine("\n[Phase3_1] Running mock cycle validator (diagnostic)...");
-                        Engine.Graphics.LightingPipeline.Phase3_1SimpleValidator.RunFullCycleValidation();
-                    }
-                }
-
-                // Ctrl+Shift+Alt+A: Capture ActiveRegion audit snapshot (TASK 2)
-                if (!handledConsoleThisFrame)
-                {
-                    bool ctrlPressed = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                    bool altPressed = keyboard.IsKeyDown(Keys.LeftAlt) || keyboard.IsKeyDown(Keys.RightAlt);
-                    bool aPressed = keyboard.IsKeyDown(Keys.A);
-
-                    if (ctrlPressed && shiftPressed && altPressed && aPressed && !previousConsoleKeyboard.IsKeyDown(Keys.A))
-                    {
-                        System.Console.WriteLine("\n[ActiveRegionAudit] Capturing snapshot...");
-                        if (session.ViewCoordinator.LightingV3Foundation != null)
-                        {
-                            var snapshot = Engine.Graphics.LightingPipeline.ActiveRegionAuditHelper.CaptureSnapshot(
-                                graphicsDevice,
-                                session.Camera,
-                                session.WorldMap,
-                                session.ViewCoordinator.LightingV3Foundation,
-                                LightingSamplingConfig.Default2x2
-                            );
-                            System.Console.Write(snapshot.Summary);
-                        }
-                        else
-                        {
-                            System.Console.WriteLine("[ActiveRegionAudit] LightingV3Foundation not initialized.");
-                        }
-                    }
-                }
-            }
-
             if (_renderedFrameProfiler != null)
                 _renderedFrameProfiler.EmergencyLog_ExitPlayingStateUpdate();
 
@@ -647,67 +414,6 @@ namespace Nyvorn.Source.Game.States
                 if (LightingPipelineCoordinator.I.IsLegacyMode)
                 {
                     DrawWithLegacyPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-                }
-                else  // V3 mode
-                {
-                    // PHASE 1: Use separated RenderTargets for V3 composition
-                    // (Debug visualization drawn to V3DebugWorldRT within the render loop, composed after)
-                    DrawWithLightingV3NeutralComposition(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-
-                    // PHASE 2: Screen-space overlay (text only, no world-space drawing here)
-                    if (session.ViewCoordinator.LightingV3Foundation != null && session.ViewCoordinator.LightingV3DebugController != null)
-                    {
-                        var foundation = session.ViewCoordinator.LightingV3Foundation;
-                        var controller = session.ViewCoordinator.LightingV3DebugController;
-                        var renderer = session.ViewCoordinator.LightingV3DebugRenderer;
-                        var currentMode = controller.GetCurrentMode();
-
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-
-                        // Draw semi-transparent background for text
-                        spriteBatch.Draw(consolePixel, new Rectangle(10, 10, 350, 100), new Color(0, 0, 0, 200));
-
-                        // Draw overlay text (screen-space, no transform matrix)
-                        var textColor = new Color(0, 255, 200, 255);
-                        var textPos = new Vector2(20, 18);
-                        var lineHeight = 16f;
-
-                        spriteBatch.DrawString(consoleFont, "V3 Foundation Active", textPos, textColor);
-                        textPos.Y += lineHeight;
-
-                        spriteBatch.DrawString(consoleFont, $"ControllerId: {controller.InstanceId}", textPos, textColor);
-                        textPos.Y += lineHeight;
-
-                        spriteBatch.DrawString(consoleFont, $"Mode: {currentMode}", textPos, textColor);
-                        textPos.Y += lineHeight;
-
-                        spriteBatch.DrawString(consoleFont, $"Tiles: {foundation.ActiveTileCount}", textPos, textColor);
-                        textPos.Y += lineHeight;
-
-                        // Show counter for current mode
-                        if (renderer != null && currentMode.ToString() != "None")
-                        {
-                            string counterText = currentMode switch
-                            {
-                                LightingDebugMode.Classification => $"Drawn: {renderer.ClassificationTilesDrawn} tiles",
-                                LightingDebugMode.SunOpacity => $"Drawn: {renderer.SunOpacitySamplesDrawn} samples",
-                                LightingDebugMode.LocalLightOpacity => $"Drawn: {renderer.LocalOpacitySamplesDrawn} samples",
-                                LightingDebugMode.SampleGrid => $"Drawn: {renderer.SampleGridPointsDrawn} points",
-                                LightingDebugMode.SunVisibility => $"Drawn: {renderer.SunVisibilitySamplesDrawn} samples",
-                                _ => "Drawn: 0"
-                            };
-                            spriteBatch.DrawString(consoleFont, counterText, textPos, textColor);
-                        }
-
-                        // Magenta rectangle proof (screen-space)
-                        var magentaPixel = new Color(255, 0, 255, 255);
-                        spriteBatch.Draw(
-                            consolePixel,
-                            new Rectangle(screenW - 20, screenH - 20, 20, 20),
-                            magentaPixel);
-
-                        spriteBatch.End();
-                    }
                 }
             }
             finally
@@ -971,7 +677,6 @@ namespace Nyvorn.Source.Game.States
         {
             graphicsDevice.SetRenderTarget(lightingMaskRenderTarget);
 
-            // Entity lighting in V3 mode: always neutral (Color.White)
             var neutralSampler = new NeutralEntityLightSampler(LightingPipelineCoordinator.I);
 
             // Render lighting mask: white for all illuminable world geometry
@@ -1032,7 +737,6 @@ namespace Nyvorn.Source.Game.States
         private void DrawWorldSceneToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
                                                    IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
-            // Entity lighting in V3 mode: always neutral (Color.White)
             var neutralSampler = new NeutralEntityLightSampler(LightingPipelineCoordinator.I);
 
             // Render all world layers in unified loop
@@ -1180,358 +884,7 @@ namespace Nyvorn.Source.Game.States
             // System.Console.WriteLine("[PIPELINE]   ✓ RenderTarget composited (Begin/Draw/End completed)");
         }
 
-        private void DrawWithNewLightingPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
-                                                  IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
-        {
-            try
-            {
-            // Uncomment for detailed pipeline profiling (timing + phase progression)
-            // System.Console.WriteLine("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ NEW LIGHTING PIPELINE ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓");
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            // ===== PHASE 0: PREPARE =====
-            // System.Console.WriteLine($"[PIPELINE] ▶ PHASE 0 (Prepare) | Screen: {screenW}x{screenH} | VisibleLoops: {visibleLoopOffsets.Count}");
-            session.ViewCoordinator.EnsureSceneRenderTarget(graphicsDevice, screenW, screenH);
-            session.ViewCoordinator.EnsureLightingMaskRenderTarget(graphicsDevice, screenW, screenH);
-            session.ViewCoordinator.EnsureDirectionalSunlightMap(graphicsDevice, screenW, screenH);
-            session.ViewCoordinator.EnsureForegroundBlockageMap(graphicsDevice, screenW, screenH);
-            session.ViewCoordinator.EnsurePenumbraMap(graphicsDevice, screenW, screenH);
-            var sceneRenderTarget = session.ViewCoordinator.GetSceneRenderTarget();
-            var lightingMaskRenderTarget = session.ViewCoordinator.GetLightingMaskRenderTarget();
-            var directionalSunlightMap = session.ViewCoordinator.GetDirectionalSunlightMap();
-            var foregroundBlockageMap = session.ViewCoordinator.GetForegroundBlockageMap();
-            var penumbraMap = session.ViewCoordinator.GetPenumbraMap();
-            if (sceneRenderTarget == null || lightingMaskRenderTarget == null || directionalSunlightMap == null || foregroundBlockageMap == null || penumbraMap == null)
-            {
-                System.Console.WriteLine("[PIPELINE] ✗ FATAL: RenderTarget allocation failed");
-                return;
-            }
-
-            // DirectionalSunlightMap is built in PHASE 2, after foregroundBlockageMap is constructed
-            // This ensures blockage data is available for shadow calculation
-            // System.Console.WriteLine($"[PIPELINE]   RenderTarget: {sceneRenderTarget.Width}x{sceneRenderTarget.Height}");
-
-            // Set render target for phases 1-3 (everything goes into RenderTarget)
-            graphicsDevice.SetRenderTarget(sceneRenderTarget);
-
-            // ===== PHASE 1: SKY AND BACKGROUND (RENDERTARGET, NO LIGHTING) =====
-            stopwatch.Restart();
-            graphicsDevice.Clear(Color.Black);
-            DrawAtmosphericBackground(spriteBatch, screenW, screenH);
-
-            // Clear lighting mask (atmosphere does not receive lighting)
-            graphicsDevice.SetRenderTarget(lightingMaskRenderTarget);
-            graphicsDevice.Clear(Color.Black);
-            graphicsDevice.SetRenderTarget(sceneRenderTarget);
-
-            // ===== PHASE 2: WORLD SCENE + LIGHTING MASK + BLOCKAGE MAP + PENUMBRA =====
-            stopwatch.Restart();
-
-            // Render world scene to SceneRenderTarget
-            graphicsDevice.SetRenderTarget(sceneRenderTarget);
-            DrawWorldSceneToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-
-            // Apply BFS-computed lighting (multiply blend) - darkens scene based on light propagation
-            DrawWorldLightingToRenderTarget(spriteBatch, visibleLoopOffsets, worldWidthPixels);
-
-            // Build lighting mask (which pixels receive lighting)
-            BuildLightingMask(graphicsDevice, spriteBatch, lightingMaskRenderTarget, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-
-            // Build foreground blockage map (which pixels block sunlight)
-            BuildForegroundBlockageMap(graphicsDevice, spriteBatch, foregroundBlockageMap, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-
-            // Build penumbra map from blockage map
-            BuildPenumbraMap(graphicsDevice, spriteBatch, penumbraMap, foregroundBlockageMap, screenW, screenH);
-
-            // Build directional sunlight map using blockage data
-            if (session.DayNightCycle != null)
-            {
-                float timeOfDay01 = session.DayNightCycle.TimeOfDay01;
-                BuildDirectionalSunlightMap(graphicsDevice, directionalSunlightMap, foregroundBlockageMap, timeOfDay01);
-            }
-
-            // Return to SceneRenderTarget for next phases
-            graphicsDevice.SetRenderTarget(sceneRenderTarget);
-            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 2: {stopwatch.ElapsedMilliseconds}ms");
-
-            // ===== PHASE 3: (SKIPPED - Lighting composition moved to PHASE 4) =====
-            // Lighting is now applied during composition to backbuffer to avoid
-            // trying to read/write the same RenderTarget simultaneously
-
-            // ===== PHASE 4: COMPOSE WITH LIGHTING SHADER =====
-            stopwatch.Restart();
-            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 4 (Composite + Lighting) - Composing lit scene to backbuffer");
-            graphicsDevice.SetRenderTarget(null);
-
-            var lightingMapTexture = session.ViewCoordinator.GetLightTexture();
-            var composeLightingEffect = session.ViewCoordinator.ComposeLightingEffect;
-            ApplyLightingComposition(graphicsDevice, spriteBatch, sceneRenderTarget, lightingMaskRenderTarget,
-                                      lightingMapTexture, directionalSunlightMap, composeLightingEffect);
-            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 4: {stopwatch.ElapsedMilliseconds}ms");
-
-            // ===== PHASE 5: INTERIOR OVERLAYS =====
-            stopwatch.Restart();
-            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 5 (Interior Overlays) - Drawing focus overlays");
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                session.DrawInteriorFocusOverlay(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-            }
-            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 5: {stopwatch.ElapsedMilliseconds}ms");
-
-            // ===== PHASE 6: SCREEN-SPACE EFFECTS =====
-            stopwatch.Restart();
-            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 6 (Screen Effects) - Rain, overlay, glow");
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-            session.DrawRainFront(spriteBatch, screenW, screenH);
-            if (session.LegacyNightOverlayMode)
-                session.DrawNightOverlay(spriteBatch, screenW, screenH);
-            spriteBatch.End();
-
-            // Torch glow (ADDITIVE, punch-through)
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
-                session.DrawTorchGlow(spriteBatch, worldOffset);
-                spriteBatch.End();
-            }
-            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 6: {stopwatch.ElapsedMilliseconds}ms");
-
-            // ===== PHASE 7: HUD (SCREEN-SPACE, NO LIGHTING) =====
-            stopwatch.Restart();
-            // System.Console.WriteLine("[PIPELINE] ▶ PHASE 7 (HUD) - Hud, minimap, inventory, fps, console");
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            session.DrawHud(spriteBatch, screenW, screenH);
-            if (minimapVisible)
-                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
-            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
-            if (showFps)
-                DrawFpsCounter(spriteBatch);
-            if (consoleOpen)
-                DrawConsole(spriteBatch, screenW);
-            spriteBatch.End();
-            // System.Console.WriteLine($"[PIPELINE] ✓ PHASE 7: {stopwatch.ElapsedMilliseconds}ms");
-            }
-            catch (Exception ex)
-            {
-                System.Console.WriteLine($"[PIPELINE] ✗ EXCEPTION: {ex.GetType().Name}: {ex.Message}");
-                System.Console.WriteLine($"[PIPELINE]   Stack: {ex.StackTrace}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Lighting V2 Pipeline - PHASE 2 (Composition Neutral).
-        /// Renders scene with neutral white lighting to validate composition, camera, zoom, wrapping.
-        /// Does NOT calculate or apply actual illumination - all pixels rendered with Color.White.
-        /// </summary>
-        /// <summary>
-        /// PHASE 1: V3 Neutral Composition with separated RenderTargets.
-        /// Renders scene to 4 independent RenderTargets (Atmosphere, World, Entities, Emissive)
-        /// and composes them neutrally (no lighting applied).
-        /// Output is visually identical to neutral V3 mode from Phase 0.
-        /// </summary>
-        private void DrawWithLightingV3NeutralComposition(SpriteBatch spriteBatch, int screenW, int screenH,
-                                                          IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
-        {
-            var viewCoord = session.ViewCoordinator;
-
-            // PHASE 1.0: Ensure RenderTargets are allocated
-            viewCoord.EnsureV3AtmosphereRenderTarget(graphicsDevice, screenW, screenH);
-            viewCoord.EnsureV3WorldRenderTarget(graphicsDevice, screenW, screenH);
-            viewCoord.EnsureV3EntitiesRenderTarget(graphicsDevice, screenW, screenH);
-            viewCoord.EnsureV3EmissiveRenderTarget(graphicsDevice, screenW, screenH);
-
-            // PHASE 1.1: Draw atmosphere to AtmosphereRT
-            graphicsDevice.SetRenderTarget(viewCoord.GetV3AtmosphereRenderTarget());
-            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
-            graphicsDevice.Clear(Color.Black);
-            DrawAtmosphericBackground(spriteBatch, screenW, screenH);
-
-            // PHASE 1.2: Draw world (terrain, water, decorations) to WorldRT
-            // World pass: loop through all visible copies, NO debug rendering
-            graphicsDevice.SetRenderTarget(viewCoord.GetV3WorldRenderTarget());
-            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
-            graphicsDevice.Clear(Color.Transparent);
-
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                // Background walls
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                // PHASE 1: Pass Color.White to trees in V3 neutral (no night tinting)
-                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Back, Color.White);
-                session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                // Front trees
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                // PHASE 1: Pass Color.White to trees in V3 neutral (no night tinting)
-                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, World.Decorations.TreeRenderLayer.Front, Color.White);
-                spriteBatch.End();
-
-                // Water
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                session.DrawWater(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                // Terrain base
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                viewCoord.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                // Wetness overlay
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                viewCoord.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                // Terrain overlay
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawTerrainOverlay(spriteBatch);
-                spriteBatch.End();
-
-                // Looped world entities
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                // Tissue layers in world RT
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive, transformMatrix: transform);
-                session.DrawTissueHalo(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                session.DrawTissueCore(spriteBatch, screenW, screenH, worldOffset);
-                session.DrawTissueFieldOverlay(spriteBatch, screenW, screenH, worldOffset);
-                spriteBatch.End();
-
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                session.DrawTissueDebug(spriteBatch);
-                spriteBatch.End();
-            }
-
-            // PHASE 1.2B: Debug visualization pass (SEPARATE from world pass)
-            // All visible copies drawn to V3DebugWorldRT with same transformations
-            if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.LightingV3DebugController != null && viewCoord.LightingV3DebugRenderer != null)
-            {
-                // CAPTURE FRAME DATA ONCE (immutable snapshot for entire debug pass)
-                var debugFoundation = viewCoord.LightingV3Foundation;
-                var frameData = debugFoundation?.GetFrameData();
-
-                // Prepare debug RenderTarget
-                viewCoord.EnsureV3DebugWorldRenderTarget(graphicsDevice, screenW, screenH);
-                graphicsDevice.SetRenderTarget(viewCoord.GetV3DebugWorldRenderTarget());
-                graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
-                graphicsDevice.Clear(Color.Transparent);  // Clear ONCE, not per loop iteration
-
-                // Loop through same visible offsets with EXACT same matrices
-                if (frameData.HasValue)
-                {
-                    for (int i = 0; i < visibleLoopOffsets.Count; i++)
-                    {
-                        int loopIndex = visibleLoopOffsets[i];
-                        float worldOffset = loopIndex * worldWidthPixels;
-                        Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                        // Draw debug using exact same transform as world
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                        viewCoord.LightingV3DebugRenderer.Render(
-                            spriteBatch,
-                            frameData.Value,
-                            viewCoord.LightingV3DebugController.GetCurrentMode(),
-                            session.WorldMap.TileSize,
-                            transform);
-                        spriteBatch.End();
-                    }
-                }
-
-                // Restore to backbuffer (done below, not here)
-            }
-
-            // PHASE 1.3: Draw entities to EntitiesRT
-            graphicsDevice.SetRenderTarget(viewCoord.GetV3EntitiesRenderTarget());
-            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
-            graphicsDevice.Clear(Color.Transparent);
-
-            var neutralSampler = new Engine.Graphics.LightingPipeline.NeutralEntityLightSampler(Engine.Graphics.LightingPipeline.LightingPipelineCoordinator.I);
-
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch, neutralSampler);
-            spriteBatch.End();
-
-            // PHASE 1.4: Emissive RT (empty in Phase 1, reserved for future use)
-            graphicsDevice.SetRenderTarget(viewCoord.GetV3EmissiveRenderTarget());
-            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
-            graphicsDevice.Clear(Color.Transparent);
-            // No drawing to emissive in Phase 1
-
-            // PHASE 1.5: Composite all RenderTargets to backbuffer
-            graphicsDevice.SetRenderTarget(null);
-            graphicsDevice.Clear(Color.Black);
-
-            // Restore viewport to ensure input conversions work correctly
-            graphicsDevice.Viewport = new Viewport(0, 0, screenW, screenH);
-
-            Rectangle destinationRect = new Rectangle(0, 0, screenW, screenH);
-            Rectangle sourceRect = new Rectangle(0, 0, screenW, screenH);
-
-            // Composite in order: Atmosphere → World → Entities → Emissive
-            // Use sourceRect to limit to logical content size (ignore grow-only capacity)
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Opaque);
-            spriteBatch.Draw(viewCoord.GetV3AtmosphereRenderTarget(), destinationRect, sourceRect, Color.White);
-            spriteBatch.End();
-
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-            spriteBatch.Draw(viewCoord.GetV3WorldRenderTarget(), destinationRect, sourceRect, Color.White);
-            spriteBatch.End();
-
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-            spriteBatch.Draw(viewCoord.GetV3EntitiesRenderTarget(), destinationRect, sourceRect, Color.White);
-            spriteBatch.End();
-
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Additive);
-            spriteBatch.Draw(viewCoord.GetV3EmissiveRenderTarget(), destinationRect, sourceRect, Color.White);
-            spriteBatch.End();
-
-            // PHASE 2 (Debug): Compose debug visualization from V3DebugWorldRT (after world, before HUD)
-            if (LightingPipelineCoordinator.I.IsV3Mode && viewCoord.GetV3DebugWorldRenderTarget() != null)
-            {
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-                spriteBatch.Draw(viewCoord.GetV3DebugWorldRenderTarget(), destinationRect, sourceRect, Color.White);
-                spriteBatch.End();
-            }
-
-            // PHASE 1.6: Screen-space effects (rain, HUD)
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-            session.DrawRainFront(spriteBatch, screenW, screenH);
-            spriteBatch.End();
-
-            // HUD (no lighting)
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            session.DrawHud(spriteBatch, screenW, screenH);
-            if (minimapVisible)
-                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
-            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
-            if (showFps)
-                DrawFpsCounter(spriteBatch);
-            if (consoleOpen)
-                DrawConsole(spriteBatch, screenW);
-            spriteBatch.End();
-        }
-
-        private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
+private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
                                             IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
             // Uncomment for legacy pipeline diagnostics
@@ -1666,6 +1019,7 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
+            // V4 debug (legacy pipeline) - loop through all visible offsets
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             session.DrawHud(spriteBatch, screenW, screenH);
             if (minimapVisible)
@@ -1679,15 +1033,12 @@ namespace Nyvorn.Source.Game.States
         }
 
         /// <summary>
-        /// PHASE 0: Composition-neutral rendering for V3 mode validation.
-        /// Renders the scene without any lighting applied.
-        /// This is used to validate V3 is correctly isolated and not executing legacy code.
-        /// No lighting texture, no torch glow, no night overlay.
+        /// Composition-neutral rendering: renders the scene without any lighting applied.
+        /// Used for composition validation and baseline comparison.
         /// </summary>
         private void DrawWithCompositionNeutralPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
                                                         IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
-            LightingPipelineCoordinator.I.RecordV3Composite();
 
             // Clear backbuffer
             graphicsDevice.Clear(Color.Black);
@@ -1771,7 +1122,6 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
             }
 
-            // Entity lighting in V3 neutral mode: always return Color.White (no tinting)
             var neutralSampler = new NeutralEntityLightSampler(LightingPipelineCoordinator.I);
 
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());

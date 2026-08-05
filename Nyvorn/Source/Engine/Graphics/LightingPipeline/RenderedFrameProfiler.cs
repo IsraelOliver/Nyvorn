@@ -122,7 +122,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             public bool ClassificationEnabled;
             public bool OccluderBuildEnabled;
             public bool SunVisibilityBuildEnabled;
-            public LightingDebugMode DebugMode;
             public bool DebugRendererEnabled;
             public bool DebugCompositeEnabled;
         }
@@ -383,7 +382,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 ClassificationEnabled = false,
                 OccluderBuildEnabled = false,
                 SunVisibilityBuildEnabled = false,
-                DebugMode = LightingDebugMode.None,
                 DebugRendererEnabled = false,
                 DebugCompositeEnabled = false
             };
@@ -398,7 +396,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 ClassificationEnabled = true,
                 OccluderBuildEnabled = true,
                 SunVisibilityBuildEnabled = true,
-                DebugMode = LightingDebugMode.None,
                 DebugRendererEnabled = false,
                 DebugCompositeEnabled = false
             };
@@ -413,7 +410,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 ClassificationEnabled = true,
                 OccluderBuildEnabled = true,
                 SunVisibilityBuildEnabled = true,
-                DebugMode = LightingDebugMode.SunVisibility,
                 DebugRendererEnabled = true,
                 DebugCompositeEnabled = true
             };
@@ -428,7 +424,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 ClassificationEnabled = true,
                 OccluderBuildEnabled = true,
                 SunVisibilityBuildEnabled = false,
-                DebugMode = LightingDebugMode.None,
                 DebugRendererEnabled = false,
                 DebugCompositeEnabled = false
             };
