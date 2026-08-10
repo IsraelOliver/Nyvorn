@@ -815,6 +815,16 @@ namespace Nyvorn.Source.Game.States
             WorldMap.DrawBackground(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
+        public void DrawWorldLitObjects(SpriteBatch spriteBatch)
+        {
+            WorkbenchRuntimeSystem?.Draw(spriteBatch);
+            FurnaceRuntimeSystem?.Draw(spriteBatch);
+            ChairRuntimeSystem?.Draw(spriteBatch);
+            TableRuntimeSystem?.Draw(spriteBatch);
+            DoorRuntimeSystem?.Draw(spriteBatch);
+            PlatformRuntimeSystem?.Draw(spriteBatch);
+        }
+
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem, float visualTimeSeconds)
         {
             float viewWidth = screenWidth / Camera.Zoom;
@@ -843,13 +853,7 @@ namespace Nyvorn.Source.Game.States
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
             DamageNumberSystem.Draw(spriteBatch, HudRenderer.Font);
-            WorkbenchRuntimeSystem?.Draw(spriteBatch);
-            FurnaceRuntimeSystem?.Draw(spriteBatch);
             TorchRuntimeSystem?.Draw(spriteBatch, visualTimeSeconds);
-            DoorRuntimeSystem?.Draw(spriteBatch);
-            ChairRuntimeSystem?.Draw(spriteBatch);
-            TableRuntimeSystem?.Draw(spriteBatch);
-            PlatformRuntimeSystem?.Draw(spriteBatch);
         }
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)

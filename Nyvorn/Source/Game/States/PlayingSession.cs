@@ -606,6 +606,11 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawBackgroundWalls(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
+        public void DrawWorldLitObjects(SpriteBatch spriteBatch)
+        {
+            ViewCoordinator.DrawWorldLitObjects(spriteBatch);
+        }
+
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, LightingSystem, EnvironmentSystem.SkyState.VisualTimeSeconds);
