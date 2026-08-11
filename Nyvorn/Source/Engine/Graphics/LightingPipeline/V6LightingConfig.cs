@@ -47,7 +47,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         // Point Light Attenuation (Starbound-style energy loss)
         public static float PointLightAirAttenuationPerTile { get; set; } = 0.08f;      // Linear per distance
-        public static float PointLightForegroundObstacleAttenuation { get; set; } = 0.5f;  // Per Foreground cell traversed
+        public static float PointLightForegroundObstacleAttenuation { get; set; } = 0.70f;  // Per Foreground cell traversed
         public static float PointLightDoorObstacleAttenuation { get; set; } = 0.95f;   // Closed door: nearly blocks
     }
 }
