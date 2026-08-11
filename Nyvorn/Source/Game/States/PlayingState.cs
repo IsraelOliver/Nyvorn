@@ -104,6 +104,12 @@ namespace Nyvorn.Source.Game.States
         private const int HelpCommandsPerPage = 10;
         private bool showFps;
         private float fpsSmoothed;
+
+        // V6 Terraria-inspired Lighting System (ETAPA 5.2)
+        private V6LightingSystem v6LightingSystem;
+        private V6LightSampler v6LightSampler;
+        private V6LightMapRenderer v6LightMapRenderer;
+        private bool isV6TerrariaMode = true;
         private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
         private float lightingPipelineToggleCooldown;
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
@@ -136,6 +142,18 @@ namespace Nyvorn.Source.Game.States
             consolePixel.SetData(new[] { Color.White });
             playerHubUI = new PlayerHubUI(graphicsDevice, session);
             autoSaveTimer = AutoSaveInterval;
+
+            // Initialize V6 Terraria-inspired Lighting System (ETAPA 5.2)
+            var swV6 = System.Diagnostics.Stopwatch.StartNew();
+            v6LightingSystem = new V6LightingSystem(session.WorldMap);
+            v6LightSampler = new V6LightSampler(v6LightingSystem.LightMap, session.WorldMap);
+            v6LightMapRenderer = new V6LightMapRenderer(graphicsDevice, v6LightingSystem.LightMap);
+
+            // Set door occlusion callback for light transport blocking
+            v6LightingSystem.SetDoorOcclusionCallback(
+                (x, y) => session.DoorRuntimeSystem.IsMovementBlockingTile(x, y)
+            );
+            swV6.Stop();
         }
 
         public void SetProfiler(RenderedFrameProfiler profiler)
@@ -944,6 +962,21 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTerrainOverlay(spriteBatch);
                 spriteBatch.End();
+            }
+
+            // ETAPA 5.2: Draw world-lit objects (static furniture) before applying lighting mask
+            if (isV6TerrariaMode)
+            {
+                for (int i = 0; i < visibleLoopOffsets.Count; i++)
+                {
+                    int loopIndex = visibleLoopOffsets[i];
+                    float worldOffset = loopIndex * worldWidthPixels;
+                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawWorldLitObjects(spriteBatch);
+                    spriteBatch.End();
+                }
             }
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
