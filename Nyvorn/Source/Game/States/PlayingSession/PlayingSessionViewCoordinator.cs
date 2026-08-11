@@ -299,128 +299,7 @@ namespace Nyvorn.Source.Game.States
             WorldMap.DrawWetnessOverlay(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
-        // Uploads WorldLightingSystem's current window into a small grayscale texture (1 texel per
-        // tile) once per frame - called outside the per-loop-offset draw loop below, since the data
-        // itself doesn't change between the 1-3 wrapped copies drawn per frame, only where on screen
-        // it lands. DrawWorldLighting (below) just re-positions and re-draws this same texture per
-        // copy instead of re-uploading it each time.
-        public void PrepareWorldLighting(GraphicsDevice graphicsDevice, WorldLightingSystem lightingSystem)
-        {
-            if (lightingSystem == null || lightingSystem.WindowWidth <= 0 || lightingSystem.WindowHeight <= 0)
-                return;
 
-            int width = lightingSystem.WindowWidth;
-            int height = lightingSystem.WindowHeight;
-            int cellCount = width * height;
-
-            if (lightTextureBuffer.Length < cellCount)
-                lightTextureBuffer = new Color[cellCount];
-
-            // Record at central callsite (caller already checked Legacy mode)
-            LightingPipelineCoordinator.I.RecordLegacyLightGridCopy();
-            lightingSystem.CopyLightGridTo(lightTextureBuffer);
-
-            // Grown-only, like lightBuffer/lightTextureBuffer above: allocated at the largest size
-            // ever needed and never recreated just because this frame's window is a tile smaller or
-            // bigger than last frame's. WorldLightingSystem's window width/height is now stable
-            // frame-to-frame (see the comment in its Update), but recreating a GPU texture on any
-            // size mismatch was still fragile - e.g. across a zoom transition - and recreating one
-            // every single frame is what actually caused the severe slowdown, so this stays
-            // defensive even with that fixed.
-            if (lightTexture == null || width > lightTextureCapacityWidth || height > lightTextureCapacityHeight)
-            {
-                lightTexture?.Dispose();
-                lightTextureCapacityWidth = System.Math.Max(width, lightTextureCapacityWidth);
-                lightTextureCapacityHeight = System.Math.Max(height, lightTextureCapacityHeight);
-                lightTexture = new Texture2D(graphicsDevice, lightTextureCapacityWidth, lightTextureCapacityHeight, false, SurfaceFormat.Color);
-            }
-
-            lightTexture.SetData(0, new Rectangle(0, 0, width, height), lightTextureBuffer, 0, cellCount);
-            lightTextureActiveWidth = width;
-            lightTextureActiveHeight = height;
-            lightTextureOriginTileX = lightingSystem.WindowOriginTileX;
-            lightTextureOriginTileY = lightingSystem.WindowOriginTileY;
-        }
-
-        // Darkens solid tiles (and, being a texture stretched with linear filtering, smoothly blends
-        // between them) wherever WorldLightingSystem found them occluded from any sky-exposed opening
-        // - works day or night, unlike the old ambient tint hack (which produced zero darkening at
-        // full daylight). Multiplied over the already-drawn terrain (MultiplyBlend, set by the
-        // caller) rather than tinting each tile's own sprite, so the GPU's bilinear sampling of this
-        // small stretched texture is what produces the soft tile-to-tile transition for free.
-        public void DrawWorldLighting(SpriteBatch spriteBatch, float worldOffsetX)
-        {
-            if (lightTexture == null || lightTextureActiveWidth <= 0 || lightTextureActiveHeight <= 0)
-                return;
-
-            LightingPipelineCoordinator.I.RecordLegacyComposite();
-
-            int tileSize = WorldMap.TileSize;
-            // Mirrors the frame-shift correction used elsewhere: the texture was built from the
-            // camera's true (unshifted) position, so a looped world-wrap copy (worldOffsetX != 0)
-            // needs its destination shifted back into that copy's local draw space.
-            int lightingTileOffset = (int)System.MathF.Round(worldOffsetX / tileSize);
-            int destX = (lightTextureOriginTileX - lightingTileOffset) * tileSize;
-            int destY = lightTextureOriginTileY * tileSize;
-            Rectangle destination = new Rectangle(destX, destY, lightTextureActiveWidth * tileSize, lightTextureActiveHeight * tileSize);
-            // Source-cropped to this frame's active window - the texture itself may be larger,
-            // holding onto capacity from a previous, bigger frame (see PrepareWorldLighting).
-            Rectangle source = new Rectangle(0, 0, lightTextureActiveWidth, lightTextureActiveHeight);
-
-            spriteBatch.Draw(lightTexture, destination, source, Color.White);
-        }
-
-        // Mirrors PrepareWorldLighting, but for the point-light-only glow grid (no sky color mixed
-        // in - see WorldLightingSystem.CopyGlowGridTo). Uploaded once per frame, same reasoning.
-        public void PrepareTorchGlow(GraphicsDevice graphicsDevice, WorldLightingSystem lightingSystem)
-        {
-            if (lightingSystem == null || lightingSystem.WindowWidth <= 0 || lightingSystem.WindowHeight <= 0)
-                return;
-
-            int width = lightingSystem.WindowWidth;
-            int height = lightingSystem.WindowHeight;
-            int cellCount = width * height;
-
-            if (glowTextureBuffer.Length < cellCount)
-                glowTextureBuffer = new Color[cellCount];
-
-            // Record at central callsite (caller already checked Legacy mode)
-            LightingPipelineCoordinator.I.RecordLegacyGlowGridCopy();
-            lightingSystem.CopyGlowGridTo(glowTextureBuffer);
-
-            if (glowTexture == null || width > glowTextureCapacityWidth || height > glowTextureCapacityHeight)
-            {
-                glowTexture?.Dispose();
-                glowTextureCapacityWidth = System.Math.Max(width, glowTextureCapacityWidth);
-                glowTextureCapacityHeight = System.Math.Max(height, glowTextureCapacityHeight);
-                glowTexture = new Texture2D(graphicsDevice, glowTextureCapacityWidth, glowTextureCapacityHeight, false, SurfaceFormat.Color);
-            }
-
-            glowTexture.SetData(0, new Rectangle(0, 0, width, height), glowTextureBuffer, 0, cellCount);
-            glowTextureActiveWidth = width;
-            glowTextureActiveHeight = height;
-            glowTextureOriginTileX = lightingSystem.WindowOriginTileX;
-            glowTextureOriginTileY = lightingSystem.WindowOriginTileY;
-        }
-
-        // Drawn with an additive blend (set by the caller) over the ENTIRE screen - sky, terrain,
-        // entities alike - since it only ever adds warm light back in and never darkens anything.
-        // This is what lets a torch punch through DrawNightOverlay's full-screen darkness even out in
-        // the open, where there's no solid tile for DrawWorldLighting's masked multiply to apply to.
-        public void DrawTorchGlow(SpriteBatch spriteBatch, float worldOffsetX)
-        {
-            if (glowTexture == null || glowTextureActiveWidth <= 0 || glowTextureActiveHeight <= 0)
-                return;
-
-            int tileSize = WorldMap.TileSize;
-            int lightingTileOffset = (int)System.MathF.Round(worldOffsetX / tileSize);
-            int destX = (glowTextureOriginTileX - lightingTileOffset) * tileSize;
-            int destY = glowTextureOriginTileY * tileSize;
-            Rectangle destination = new Rectangle(destX, destY, glowTextureActiveWidth * tileSize, glowTextureActiveHeight * tileSize);
-            Rectangle source = new Rectangle(0, 0, glowTextureActiveWidth, glowTextureActiveHeight);
-
-            spriteBatch.Draw(glowTexture, destination, source, Color.White);
-        }
 
         /// <summary>
         /// Retrieve the current scene RenderTarget (may be null if not allocated).
@@ -759,15 +638,6 @@ namespace Nyvorn.Source.Game.States
         // exact position - a buried enemy/item/player doesn't get the sky's brightness even while a
         // sibling entity standing in the open right next to it does, and a torch nearby brightens
         // whichever entities are close to it, same as it does for solid ground.
-        private Color GetAmbientTintAt(WorldLightingSystem lightingSystem, Vector2 worldPosition)
-        {
-            if (lightingSystem == null)
-                return Color.White;
-
-            Point tile = WorldMap.WorldToTile(worldPosition);
-            return lightingSystem.GetLightAt(tile.X, tile.Y);
-        }
-
         public void DrawTissueHalo(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             TissueNetworkRenderer.DrawHalo(spriteBatch, TissueNetwork, GetVisiblePixelBounds(screenWidth, screenHeight, worldOffsetX));
@@ -855,31 +725,6 @@ namespace Nyvorn.Source.Game.States
                 worldOffsetX,
                 visualTimeSeconds,
                 position => mobileEntitySampler.SampleLightAt(position)
-            );
-        }
-
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
-        {
-            // Legacy version without lighting
-            DrawLoopedWorldEntitiesInternal(
-                spriteBatch,
-                screenWidth,
-                screenHeight,
-                worldOffsetX,
-                0f,
-                position => Color.White
-            );
-        }
-
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem, float visualTimeSeconds)
-        {
-            DrawLoopedWorldEntitiesInternal(
-                spriteBatch,
-                screenWidth,
-                screenHeight,
-                worldOffsetX,
-                visualTimeSeconds,
-                position => GetAmbientTintAt(lightingSystem, position)
             );
         }
 

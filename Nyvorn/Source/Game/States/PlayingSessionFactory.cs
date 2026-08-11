@@ -863,9 +863,6 @@ namespace Nyvorn.Source.Game.States
                 WetnessField = new TileWetnessField(build.WorldMap)
             };
             build.WorldMap.SetWetnessField(worldTickCoordinator.WetnessField);
-            WorldLightingSystem lightingSystem = new(build.WorldMap);
-
-            // V2/V3 lighting systems removed (Legacy only)
 
             PlayingSessionCombatCoordinator combatCoordinator = new PlayingSessionCombatCoordinator
             {
@@ -891,7 +888,6 @@ namespace Nyvorn.Source.Game.States
                 InputRouter = inputRouter,
                 WorldWrapSystem = worldWrapSystem,
                 WorldTickCoordinator = worldTickCoordinator,
-                LightingSystem = lightingSystem,
                 DayNightCycle = dayNightCycle,
                 EnvironmentSystem = environmentSystem,
                 CombatCoordinator = combatCoordinator,

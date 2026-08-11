@@ -49,7 +49,6 @@ namespace Nyvorn.Source.Game.States
         public required PlayingSessionInputRouter InputRouter { get; init; }
         public required PlayingSessionWorldWrapSystem WorldWrapSystem { get; init; }
         public required PlayingSessionWorldTickCoordinator WorldTickCoordinator { get; init; }
-        public required WorldLightingSystem LightingSystem { get; init; }
         public required WorldDayNightCycle DayNightCycle { get; init; }
         public required WorldEnvironmentSystem EnvironmentSystem { get; init; }
         public required PlayingSessionCombatCoordinator CombatCoordinator { get; init; }
@@ -459,14 +458,6 @@ namespace Nyvorn.Source.Game.States
             PowerSystem.Update(dt);
             BlockInteractionSystem.TryBreakTargetBlock(dt, worldInput, mouseWorld, SelectedHotbarIndex);
             EntityRuntimeSystem.Update(dt, screenWidth, screenHeight);
-            LightingSystem.SetPointLights(TorchRuntimeSystem.GetLightSourcePositions());
-
-            // PHASE 0: Record Legacy lighting update at central callsite (only if Legacy mode)
-            if (Engine.Graphics.LightingPipeline.LightingPipelineCoordinator.I.IsLegacyMode)
-            {
-                Engine.Graphics.LightingPipeline.LightingPipelineCoordinator.I.RecordLegacyLightingUpdate();
-                LightingSystem.Update(dt, Camera.Position, Camera.Zoom, screenWidth, screenHeight, EnvironmentSystem.SkyState.AmbientLight);
-            }
 
             BlockParticleSystem.Update(dt);
 
@@ -512,25 +503,6 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawWetnessOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
-        public void PrepareWorldLighting(GraphicsDevice graphicsDevice)
-        {
-            ViewCoordinator.PrepareWorldLighting(graphicsDevice, LightingSystem);
-        }
-
-        public void DrawWorldLighting(SpriteBatch spriteBatch, float worldOffsetX)
-        {
-            ViewCoordinator.DrawWorldLighting(spriteBatch, worldOffsetX);
-        }
-
-        public void PrepareTorchGlow(GraphicsDevice graphicsDevice)
-        {
-            ViewCoordinator.PrepareTorchGlow(graphicsDevice, LightingSystem);
-        }
-
-        public void DrawTorchGlow(SpriteBatch spriteBatch, float worldOffsetX)
-        {
-            ViewCoordinator.DrawTorchGlow(spriteBatch, worldOffsetX);
-        }
 
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
         {
@@ -611,9 +583,9 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawWorldLitObjects(spriteBatch);
         }
 
-        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler lightSampler)
         {
-            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, LightingSystem, EnvironmentSystem.SkyState.VisualTimeSeconds);
+            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, lightSampler, EnvironmentSystem.SkyState.VisualTimeSeconds);
         }
 
         public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
@@ -628,8 +600,6 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
         {
-            LightingPipelineCoordinator.I.RecordLegacyNightOverlayDraw();
-
             Color tint = EnvironmentSystem.SkyState.NightOverlayTint;
 
             // Soften the darkening while it's raining and the player has a roof over them -
@@ -789,7 +759,6 @@ namespace Nyvorn.Source.Game.States
             WorldTickCoordinator.SandSystem = SandSystem;
             WorldTickCoordinator.LiquidSystem = LiquidSystem;
             EntityRuntimeSystem.SandSystem = SandSystem;
-            LightingSystem.SandSystem = SandSystem;
         }
 
         private int ResolveWaterRadiusPixels(int radiusTiles)

@@ -109,9 +109,7 @@ namespace Nyvorn.Source.Game.States
         private V6LightingSystem v6LightingSystem;
         private V6LightSampler v6LightSampler;
         private V6LightMapRenderer v6LightMapRenderer;
-        private bool isV6TerrariaMode = true;
         private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
-        private float lightingPipelineToggleCooldown;
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
 
@@ -462,22 +460,10 @@ namespace Nyvorn.Source.Game.States
                 session.PrepareTerrainRender(graphicsDevice, screenW, screenH, worldOffset);
             }
 
-            // Uploaded once per frame - the light data itself doesn't change between the 1-3 wrapped
-            // copies drawn below, only where on screen each copy places it.
-            // PHASE 0: Only prepare legacy lighting if in Legacy mode
-            if (LightingPipelineCoordinator.I.IsLegacyMode)
-            {
-                session.PrepareWorldLighting(graphicsDevice);
-                session.PrepareTorchGlow(graphicsDevice);
-            }
-
             try
             {
-                // PHASE 0: Use pipeline coordinator to decide rendering path
-                if (LightingPipelineCoordinator.I.IsLegacyMode)
-                {
-                    DrawWithLegacyPipeline(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
-                }
+                // PHASE 0: Draw world with V6 lighting
+                DrawGameplayWorld(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
             }
             finally
             {
@@ -772,7 +758,7 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
@@ -842,7 +828,7 @@ namespace Nyvorn.Source.Game.States
 
                 // Looped entities (enemies, items, particles, furniture)
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
                 spriteBatch.End();
 
                 // Player (with Color.White to avoid double lighting)
@@ -871,21 +857,6 @@ namespace Nyvorn.Source.Game.States
         /// Darkens the scene based on BFS-propagated light levels. Called only by new lighting pipeline (PHASE 3).
         /// Uses LinearClamp for smooth light sampling across world wraps.
         /// </summary>
-        private void DrawWorldLightingToRenderTarget(SpriteBatch spriteBatch, IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
-        {
-            // Apply lighting (MULTIPLY) over entire scene
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                session.DrawWorldLighting(spriteBatch, worldOffset);
-                spriteBatch.End();
-            }
-        }
-
         /// <summary>
         /// Applies lighting shader composition when compositing to backbuffer.
         /// Combines scene with ambient + directional lighting using mask.
@@ -947,7 +918,7 @@ namespace Nyvorn.Source.Game.States
             // System.Console.WriteLine("[PIPELINE]   ✓ RenderTarget composited (Begin/Draw/End completed)");
         }
 
-private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int screenH,
+private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH,
                                             IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
             // Uncomment for legacy pipeline diagnostics
@@ -1000,46 +971,37 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                if (!isV6TerrariaMode)
-                {
-                    spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                    session.DrawWorldLighting(spriteBatch, worldOffset);
-                    spriteBatch.End();
-                }
-                else
-                {
-                    // ETAPA 5.2: Draw world-lit objects (static furniture) with V6 lighting
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawWorldLitObjects(spriteBatch);
-                    spriteBatch.End();
+                // V6 Terraria-inspired lighting: Draw world-lit objects and apply ProductionTexture
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                session.DrawWorldLitObjects(spriteBatch);
+                spriteBatch.End();
 
-                    // Apply V6 lighting mask (ProductionTexture) with MultiplyBlend
-                    if (v6LightMapRenderer.ProductionTexture != null)
+                // Apply V6 lighting mask (ProductionTexture) with MultiplyBlend
+                if (v6LightMapRenderer.ProductionTexture != null)
+                {
+                    int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
+                    int bufferOriginTileY = v6LightingSystem.LightMap.BufferOriginTileY;
+                    int bufferWidth = v6LightingSystem.LightMap.BufferWidth;
+                    int bufferHeight = v6LightingSystem.LightMap.BufferHeight;
+                    int tileSize = session.WorldMap.TileSize;
+                    int worldWidthTiles = (int)(worldWidthPixels / tileSize);
+
+                    // Check if buffer's X origin falls within this loop
+                    int bufferLoopIndex = bufferOriginTileX / worldWidthTiles;
+                    if (bufferLoopIndex == loopIndex)
                     {
-                        int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
-                        int bufferOriginTileY = v6LightingSystem.LightMap.BufferOriginTileY;
-                        int bufferWidth = v6LightingSystem.LightMap.BufferWidth;
-                        int bufferHeight = v6LightingSystem.LightMap.BufferHeight;
-                        int tileSize = session.WorldMap.TileSize;
-                        int worldWidthTiles = (int)(worldWidthPixels / tileSize);
+                        // Position relative to this loop's origin
+                        int bufferXInLoop = (bufferOriginTileX % worldWidthTiles) * tileSize;
+                        Rectangle destRect = new Rectangle(
+                            bufferXInLoop,
+                            bufferOriginTileY * tileSize,
+                            bufferWidth * tileSize,
+                            bufferHeight * tileSize
+                        );
 
-                        // Check if buffer's X origin falls within this loop
-                        int bufferLoopIndex = bufferOriginTileX / worldWidthTiles;
-                        if (bufferLoopIndex == loopIndex)
-                        {
-                            // Position relative to this loop's origin
-                            int bufferXInLoop = (bufferOriginTileX % worldWidthTiles) * tileSize;
-                            Rectangle destRect = new Rectangle(
-                                bufferXInLoop,
-                                bufferOriginTileY * tileSize,
-                                bufferWidth * tileSize,
-                                bufferHeight * tileSize
-                            );
-
-                            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                            spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, destRect, Color.White);
-                            spriteBatch.End();
-                        }
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                        spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, destRect, Color.White);
+                        spriteBatch.End();
                     }
                 }
 
@@ -1055,7 +1017,7 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
                 spriteBatch.End();
             }
 
@@ -1075,20 +1037,10 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 spriteBatch.End();
             }
 
-            // Entity lighting: V6 in new mode, Legacy in old mode
-            if (isV6TerrariaMode)
-            {
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-                session.DrawEntities(spriteBatch, v6LightSampler);
-                spriteBatch.End();
-            }
-            else
-            {
-                var legacySampler = new LegacyEntityLightSampler(session.LightingSystem, session.WorldMap, LightingPipelineCoordinator.I);
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-                session.DrawEntities(spriteBatch, legacySampler);
-                spriteBatch.End();
-            }
+            // Entity lighting with V6
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+            session.DrawEntities(spriteBatch, v6LightSampler);
+            spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -1117,17 +1069,6 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
             if (session.LegacyNightOverlayMode)
                 session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
-
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
-                session.DrawTorchGlow(spriteBatch, worldOffset);
-                spriteBatch.End();
-            }
 
             // V4 debug (legacy pipeline) - loop through all visible offsets
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
@@ -1212,7 +1153,7 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
                 spriteBatch.End();
             }
 
@@ -2551,43 +2492,8 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 return true;
             }
 
-            if (parts.Length >= 2 && parts[1].Equals("light", System.StringComparison.OrdinalIgnoreCase))
-            {
-                PrintLightDebugGrid();
-                return true;
-            }
-
-            SetConsoleMessage("Uso: /debug ticks | /debug light");
+            SetConsoleMessage("Uso: /debug ticks");
             return true;
-        }
-
-        // Fase 1 do motor de luz (WorldLightingSystem) ainda não desenha nada na tela - este comando
-        // existe só pra inspecionar os valores calculados sem esperar a etapa de renderização.
-        private void PrintLightDebugGrid()
-        {
-            const int radius = 4;
-            Vector2 playerPosition = session.Player.Position;
-            int tileSize = session.WorldMap.TileSize;
-            int centerTileX = (int)System.MathF.Floor(playerPosition.X / tileSize);
-            int centerTileY = (int)System.MathF.Floor(playerPosition.Y / tileSize);
-
-            AddConsoleHistory($"Luz ao redor do jogador (tile {centerTileX},{centerTileY}), 0=escuro 9=claro:");
-            for (int y = centerTileY - radius; y <= centerTileY + radius; y++)
-            {
-                StringBuilder row = new();
-                for (int x = centerTileX - radius; x <= centerTileX + radius; x++)
-                {
-                    Color light = session.LightingSystem.GetLightAt(x, y);
-                    float brightness = (light.R + light.G + light.B) / (3f * 255f);
-                    int level = System.Math.Clamp((int)System.MathF.Round(brightness * 9f), 0, 9);
-                    row.Append(level);
-                    row.Append(' ');
-                }
-
-                AddConsoleHistory(row.ToString());
-            }
-
-            SetConsoleMessage("Grade de luz impressa no historico do console");
         }
 
         private bool TryExecuteWorldCommand(string command)
