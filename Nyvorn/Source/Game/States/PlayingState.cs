@@ -1049,12 +1049,20 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 spriteBatch.End();
             }
 
-            // Entity lighting in Legacy mode: sample from WorldLightingSystem
-            var legacySampler = new LegacyEntityLightSampler(session.LightingSystem, session.WorldMap, LightingPipelineCoordinator.I);
-
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch, legacySampler);
-            spriteBatch.End();
+            // Entity lighting: V6 in new mode, Legacy in old mode
+            if (isV6TerrariaMode)
+            {
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+                session.DrawEntities(spriteBatch, v6LightSampler);
+                spriteBatch.End();
+            }
+            else
+            {
+                var legacySampler = new LegacyEntityLightSampler(session.LightingSystem, session.WorldMap, LightingPipelineCoordinator.I);
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
+                session.DrawEntities(spriteBatch, legacySampler);
+                spriteBatch.End();
+            }
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
