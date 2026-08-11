@@ -122,11 +122,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     int gi = (int)Math.Clamp(g * 255, 0, 255);
                     int bi = (int)Math.Clamp(b * 255, 0, 255);
 
-                    // Enforce minimum light level (50% brightness) - doors don't create pitch-black shadows
-                    ri = Math.Max(ri, 127);
-                    gi = Math.Max(gi, 127);
-                    bi = Math.Max(bi, 127);
-
                     maskColor = new Color(ri, gi, bi, 255);
                 }
                 else
