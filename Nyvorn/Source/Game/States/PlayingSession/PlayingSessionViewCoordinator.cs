@@ -720,7 +720,27 @@ namespace Nyvorn.Source.Game.States
 
         public void DrawEntities(SpriteBatch spriteBatch, IEntityLightSampler entityLightSampler)
         {
-            Color tint = entityLightSampler.SampleLightAt(Player.Position);
+            // Sample light from 2x3 grid around player for more accurate lighting
+            var hurtbox = Player.Motor.Hurtbox;
+            float left = hurtbox.Left + (hurtbox.Width * 0.1f);
+            float right = hurtbox.Right - (hurtbox.Width * 0.1f);
+            float top = hurtbox.Top;
+            float mid = hurtbox.Top + (hurtbox.Height * 0.5f);
+            float bottom = hurtbox.Bottom;
+
+            // Sample 6 points: 2 columns × 3 rows
+            Color c0 = entityLightSampler.SampleLightAt(new Vector2(left, top));      // [0,0] head-left
+            Color c1 = entityLightSampler.SampleLightAt(new Vector2(right, top));     // [1,0] head-right
+            Color c2 = entityLightSampler.SampleLightAt(new Vector2(left, mid));      // [0,1] torso-left
+            Color c3 = entityLightSampler.SampleLightAt(new Vector2(right, mid));     // [1,1] torso-right
+            Color c4 = entityLightSampler.SampleLightAt(new Vector2(left, bottom));   // [0,2] feet-left
+            Color c5 = entityLightSampler.SampleLightAt(new Vector2(right, bottom));  // [1,2] feet-right
+
+            // Average all 6 samples
+            int avgR = (c0.R + c1.R + c2.R + c3.R + c4.R + c5.R) / 6;
+            int avgG = (c0.G + c1.G + c2.G + c3.G + c4.G + c5.G) / 6;
+            int avgB = (c0.B + c1.B + c2.B + c3.B + c4.B + c5.B) / 6;
+            Color tint = new Color(avgR, avgG, avgB);
 
             // Record entity draw event using type-safe metrics
             var metrics = entityLightSampler.GetMetrics();
