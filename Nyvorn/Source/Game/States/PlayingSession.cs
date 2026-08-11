@@ -616,6 +616,11 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, LightingSystem, EnvironmentSystem.SkyState.VisualTimeSeconds);
         }
 
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler mobileEntitySampler)
+        {
+            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, mobileEntitySampler, EnvironmentSystem.SkyState.VisualTimeSeconds);
+        }
+
         public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawInteriorFocusOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
