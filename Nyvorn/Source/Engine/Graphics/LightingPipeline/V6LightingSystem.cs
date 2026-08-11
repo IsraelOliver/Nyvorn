@@ -23,6 +23,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // Door occlusion callback (optional)
         private Func<int, int, bool> isDoorBlockingTile;
 
+        // ETAPA 7: Artificial light sources callback
+        private Func<System.Collections.Generic.IEnumerable<ArtificialLightSource>> getArtificialLightSources;
+
+        // ETAPA 7: Artificial light debug stats
+        private int artificialSourcesThisFrame = 0;
+        private int artificialCandidateTilesThisFrame = 0;
+        private int artificialInsideRadiusThisFrame = 0;
+        private int artificialLosTestsThisFrame = 0;
+        private int artificialLosStepsThisFrame = 0;
+        private int artificialTilesWrittenThisFrame = 0;
+        private long artificialLightMs = 0;
+
         // ETAPA 5.3: Performance instrumentation (temporary)
         private int doorOcclusionQueriesThisFrame = 0;
         private int doorBlockingCallsThisFrame = 0;
@@ -64,6 +76,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public long AvgClassifyMs => computeCount > 0 ? totalClassifyMs / computeCount : 0;
         public long AvgComputeMs => computeCount > 0 ? totalComputeMs / computeCount : 0;
         public long AvgBackgroundMs => computeCount > 0 ? totalBackgroundMs / computeCount : 0;
+        public int ArtificialSourcesThisFrame => artificialSourcesThisFrame;
+        public int ArtificialCandidateTilesThisFrame => artificialCandidateTilesThisFrame;
+        public int ArtificialInsideRadiusThisFrame => artificialInsideRadiusThisFrame;
+        public int ArtificialLosTestsThisFrame => artificialLosTestsThisFrame;
+        public int ArtificialLosStepsThisFrame => artificialLosStepsThisFrame;
+        public int ArtificialTilesWrittenThisFrame => artificialTilesWrittenThisFrame;
+        public long ArtificialLightMs => artificialLightMs;
 
         public V6LightingSystem(WorldMap worldMap)
         {
@@ -75,6 +94,11 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void SetDoorOcclusionCallback(Func<int, int, bool> doorBlockingQuery)
         {
             this.isDoorBlockingTile = doorBlockingQuery;
+        }
+
+        public void SetArtificialLightSources(Func<System.Collections.Generic.IEnumerable<ArtificialLightSource>> getter)
+        {
+            this.getArtificialLightSources = getter;
         }
 
         public void RebuildEdgeOcclusionCache()
@@ -175,6 +199,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // STEP 4: Apply indirect background light to adjacent foreground (ETAPA 2.5)
             ApplyBackgroundIndirectToForeground(width, height, originX, originY);
+
+            // STEP 5: Apply artificial lights (ETAPA 7 — Torch)
+            var swArtificial = System.Diagnostics.Stopwatch.StartNew();
+            ApplyArtificialLights(width, height, originX, originY, tileSize);
+            swArtificial.Stop();
+            artificialLightMs = swArtificial.ElapsedMilliseconds;
 
             doorOcclusionStopwatch.Stop();
 
@@ -644,9 +674,247 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
         }
 
+        private void ApplyArtificialLights(int width, int height, int originX, int originY, int tileSize)
+        {
+            artificialSourcesThisFrame = 0;
+            artificialCandidateTilesThisFrame = 0;
+            artificialInsideRadiusThisFrame = 0;
+            artificialLosTestsThisFrame = 0;
+            artificialLosStepsThisFrame = 0;
+            artificialTilesWrittenThisFrame = 0;
+
+            if (getArtificialLightSources == null)
+                return;
+
+            var sources = getArtificialLightSources();
+
+            // Fast path: check if there are any sources
+            var sourceList = new System.Collections.Generic.List<ArtificialLightSource>();
+            foreach (var s in sources)
+                sourceList.Add(s);
+
+            if (sourceList.Count == 0)
+                return;
+
+            var lightR = lightMap.LightR;
+            var lightG = lightMap.LightG;
+            var lightB = lightMap.LightB;
+            var mediumMask = lightMap.MediumMask;
+
+            float airAttenuationPerTile = V6LightingConfig.PointLightAirAttenuationPerTile;
+            float foregroundAttenuation = V6LightingConfig.PointLightForegroundObstacleAttenuation;
+            float doorAttenuation = V6LightingConfig.PointLightDoorObstacleAttenuation;
+
+            // Process each point light source
+            foreach (var source in sourceList)
+            {
+                artificialSourcesThisFrame++;
+
+                int sourceTileX = (int)(source.PositionPixels.X / tileSize);
+                int sourceTileY = (int)(source.PositionPixels.Y / tileSize);
+
+                // Calculate local scan rectangle
+                int minTileX = sourceTileX - source.RadiusTiles;
+                int maxTileX = sourceTileX + source.RadiusTiles;
+                int minTileY = sourceTileY - source.RadiusTiles;
+                int maxTileY = sourceTileY + source.RadiusTiles;
+
+                // Clamp to buffer bounds
+                int minLocalX = System.Math.Max(0, minTileX - originX);
+                int maxLocalX = System.Math.Min(width - 1, maxTileX - originX);
+                int minLocalY = System.Math.Max(0, minTileY - originY);
+                int maxLocalY = System.Math.Min(height - 1, maxTileY - originY);
+
+                // Preserve source color ratio
+                float sourceR = source.ColorRGB.R / 255f;
+                float sourceG = source.ColorRGB.G / 255f;
+                float sourceB = source.ColorRGB.B / 255f;
+                float sourceIntensity = source.Intensity;
+
+                float radiusPixels = source.RadiusTiles * tileSize;
+                float radiusSquared = radiusPixels * radiusPixels;
+
+                // Local scan
+                for (int localY = minLocalY; localY <= maxLocalY; localY++)
+                {
+                    for (int localX = minLocalX; localX <= maxLocalX; localX++)
+                    {
+                        artificialCandidateTilesThisFrame++;
+
+                        int worldTileX = originX + localX;
+                        int worldTileY = originY + localY;
+                        float tileCenterPixelX = (worldTileX + 0.5f) * tileSize;
+                        float tileCenterPixelY = (worldTileY + 0.5f) * tileSize;
+
+                        // Distance-based air attenuation
+                        float dx = tileCenterPixelX - source.PositionPixels.X;
+                        float dy = tileCenterPixelY - source.PositionPixels.Y;
+                        float distanceSquared = dx * dx + dy * dy;
+
+                        if (distanceSquared > radiusSquared)
+                            continue;
+
+                        artificialInsideRadiusThisFrame++;
+
+                        float distance = (float)System.Math.Sqrt(distanceSquared);
+                        float airAttenuation = distance / tileSize * airAttenuationPerTile;
+
+                        // Ray-cast for obstacle attenuation
+                        artificialLosTestsThisFrame++;
+                        float obstacleAttenuation = ComputeObstacleAttenuation(
+                            sourceTileX, sourceTileY, worldTileX, worldTileY,
+                            originX, originY, width, height, mediumMask,
+                            foregroundAttenuation, doorAttenuation
+                        );
+
+                        // Total energy remaining
+                        float totalAttenuation = airAttenuation + obstacleAttenuation;
+                        float remainingEnergy = sourceIntensity - totalAttenuation;
+
+                        if (remainingEnergy <= 0f)
+                            continue;
+
+                        // Apply light: preserve RGB ratio, scale by remaining energy
+                        int cellIndex = (localY * width) + localX;
+                        float contributionR = sourceR * remainingEnergy;
+                        float contributionG = sourceG * remainingEnergy;
+                        float contributionB = sourceB * remainingEnergy;
+
+                        ApplyBoundedAdd(ref lightR[cellIndex], contributionR);
+                        ApplyBoundedAdd(ref lightG[cellIndex], contributionG);
+                        ApplyBoundedAdd(ref lightB[cellIndex], contributionB);
+                        artificialTilesWrittenThisFrame++;
+                    }
+                }
+            }
+        }
+
+        private float ComputeObstacleAttenuation(int sourceTileX, int sourceTileY, int targetTileX, int targetTileY,
+            int originX, int originY, int width, int height, V6LightMap.CellMedium[] mediumMask,
+            float foregroundAttenuation, float doorAttenuation)
+        {
+            // Weighted line traversal (Xiaolin-Wu-like)
+            // Distributes obstacle attenuation proportionally to ray coverage in each cell
+
+            float sourceX = sourceTileX + 0.5f;
+            float sourceY = sourceTileY + 0.5f;
+            float targetX = targetTileX + 0.5f;
+            float targetY = targetTileY + 0.5f;
+
+            float dx = targetX - sourceX;
+            float dy = targetY - sourceY;
+
+            float attenuation = 0f;
+
+            // Handle zero-distance case
+            if (System.Math.Abs(dx) < 0.001f && System.Math.Abs(dy) < 0.001f)
+                return 0f;
+
+            // Directional correction factor for angle-independent attenuation
+            float maxDir = System.Math.Max(System.Math.Abs(dx), System.Math.Abs(dy));
+            float directionCorrection = maxDir > 0 ? 1f / maxDir : 1f;
+
+            // Xiaolin-Wu-like anti-aliased line
+            float length = (float)System.Math.Sqrt(dx * dx + dy * dy);
+            float numSteps = length;  // Approximate steps needed
+
+            int stepCount = System.Math.Max((int)System.Math.Ceiling(numSteps), 1);
+
+            for (int step = 0; step < stepCount; step++)
+            {
+                artificialLosStepsThisFrame++;
+
+                // Position along the line (0 = source, 1 = target)
+                float t = stepCount > 1 ? (float)step / (stepCount - 1) : 0.5f;
+
+                // Current position on the line in floating point
+                float currentX = sourceX + dx * t;
+                float currentY = sourceY + dy * t;
+
+                // Get the cell containing this point and the adjacent cell
+                int cellX = (int)System.Math.Floor(currentX);
+                int cellY = (int)System.Math.Floor(currentY);
+
+                // Calculate coverage weights (how much the line covers each cell)
+                float fracX = currentX - cellX;
+                float fracY = currentY - cellY;
+
+                // Simple coverage: prefer primary cell
+                float coverage1 = 1f - System.Math.Max(fracX, fracY) * 0.5f;
+                float coverage2 = 1f - coverage1;
+
+                // Check primary cell
+                ApplyWeightedCellAttenuation(cellX, cellY, originX, originY, width, height, mediumMask,
+                    coverage1 * directionCorrection, foregroundAttenuation, doorAttenuation, ref attenuation,
+                    cellX + (fracX > 0.5 ? 1 : 0), cellY + (fracY > 0.5 ? 1 : 0), targetTileX, targetTileY);
+
+                // Check adjacent cell
+                int adjX = cellX + (fracX > 0.5 ? 1 : -1);
+                int adjY = cellY + (fracY > 0.5 ? 1 : -1);
+
+                if (adjX != cellX || adjY != cellY)
+                {
+                    ApplyWeightedCellAttenuation(adjX, adjY, originX, originY, width, height, mediumMask,
+                        coverage2 * directionCorrection, foregroundAttenuation, doorAttenuation, ref attenuation,
+                        adjX, adjY, targetTileX, targetTileY);
+                }
+
+                // Early exit if attenuation is already severe enough
+                if (attenuation >= 1.0f)
+                    break;
+            }
+
+            return System.Math.Min(attenuation, 1.0f);  // Clamp to 1.0
+        }
+
+        private void ApplyWeightedCellAttenuation(int cellX, int cellY, int originX, int originY, int width, int height,
+            V6LightMap.CellMedium[] mediumMask, float coverage, float foregroundAttenuation, float doorAttenuation,
+            ref float totalAttenuation, int prevX, int prevY, int targetX, int targetY)
+        {
+            // Skip target cell itself (it receives light as a receiver, not an obstacle)
+            if (cellX == targetX && cellY == targetY)
+                return;
+
+            // Check buffer bounds
+            int localX = cellX - originX;
+            int localY = cellY - originY;
+
+            if (localX < 0 || localX >= width || localY < 0 || localY >= height)
+                return;
+
+            int cellIndex = (localY * width) + localX;
+            V6LightMap.CellMedium medium = mediumMask[cellIndex];
+
+            // Apply obstacle attenuation weighted by coverage
+            if (medium == V6LightMap.CellMedium.Foreground)
+            {
+                totalAttenuation += coverage * foregroundAttenuation;
+            }
+
+            // Check door between previous and current
+            if (System.Math.Abs(cellX - prevX) <= 1 && System.Math.Abs(cellY - prevY) <= 1)
+            {
+                if (!CanLightPassBetween(prevX, prevY, cellX, cellY))
+                {
+                    totalAttenuation += coverage * doorAttenuation;
+                }
+            }
+        }
+
+        private void ApplyBoundedAdd(ref float channel, float addition)
+        {
+            // Formula: result = base + addition * (1 - base)
+            channel = channel + (addition * (1f - channel));
+
+            // Clamp to [0..1]
+            if (channel < 0f) channel = 0f;
+            if (channel > 1f) channel = 1f;
+        }
+
         public string GetDiagnosticsString()
         {
-            return $"V6 Surface: Classify {AvgClassifyMs}ms | Compute {AvgComputeMs}ms | BG {AvgBackgroundMs}ms | SkyOpen: {skyOpenSourceCount} | FG: {foregroundCount} | BG Seeds: {backgroundSeedCount}";
+            int avgStepsPerRay = artificialLosTestsThisFrame > 0 ? artificialLosStepsThisFrame / artificialLosTestsThisFrame : 0;
+            return $"V6 PointLight: {artificialSourcesThisFrame} src | {artificialCandidateTilesThisFrame} cand | {artificialInsideRadiusThisFrame} radius | {artificialLosTestsThisFrame} rays ({avgStepsPerRay} weighted-steps avg) | {artificialTilesWrittenThisFrame} lit | {artificialLightMs}ms";
         }
 
         public void Dispose()

@@ -845,7 +845,51 @@ namespace Nyvorn.Source.Game.States
             PlatformRuntimeSystem?.Draw(spriteBatch);
         }
 
+        // ETAPA 6: Overload for V6 lighting sampler
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler mobileEntitySampler, float visualTimeSeconds = 0f)
+        {
+            DrawLoopedWorldEntitiesInternal(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                visualTimeSeconds,
+                position => mobileEntitySampler.SampleLightAt(position)
+            );
+        }
+
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            // Legacy version without lighting
+            DrawLoopedWorldEntitiesInternal(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                0f,
+                position => Color.White
+            );
+        }
+
         public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, WorldLightingSystem lightingSystem, float visualTimeSeconds)
+        {
+            DrawLoopedWorldEntitiesInternal(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                visualTimeSeconds,
+                position => GetAmbientTintAt(lightingSystem, position)
+            );
+        }
+
+        private void DrawLoopedWorldEntitiesInternal(
+            SpriteBatch spriteBatch,
+            int screenWidth,
+            int screenHeight,
+            float worldOffsetX,
+            float visualTimeSeconds,
+            System.Func<Vector2, Color> resolveTint)
         {
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
@@ -859,7 +903,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(enemy.Hurtbox, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                enemy.Draw(spriteBatch, GetAmbientTintAt(lightingSystem, enemy.Position));
+                enemy.Draw(spriteBatch, resolveTint(enemy.Position));
                 HealthBarRenderer.Draw(spriteBatch, enemy.Position + new Vector2(0f, -30f), enemy.Health, enemy.MaxHealth, 22, 3);
             }
 
@@ -868,7 +912,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(worldItem.WorldBounds, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                worldItem.Draw(spriteBatch, GetAmbientTintAt(lightingSystem, worldItem.WorldBounds.Center.ToVector2()));
+                worldItem.Draw(spriteBatch, resolveTint(worldItem.WorldBounds.Center.ToVector2()));
             }
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);

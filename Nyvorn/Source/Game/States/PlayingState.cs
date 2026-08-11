@@ -153,7 +153,33 @@ namespace Nyvorn.Source.Game.States
             v6LightingSystem.SetDoorOcclusionCallback(
                 (x, y) => session.DoorRuntimeSystem.IsMovementBlockingTile(x, y)
             );
+
+            // ETAPA 7: Set artificial light sources (torches)
+            v6LightingSystem.SetArtificialLightSources(
+                () => GetArtificialLightSourcesForV6(session)
+            );
             swV6.Stop();
+        }
+
+        private static System.Collections.Generic.IEnumerable<ArtificialLightSource> GetArtificialLightSourcesForV6(PlayingSession session)
+        {
+            if (session.TorchRuntimeSystem == null)
+                yield break;
+
+            var torchColor = V6LightingConfig.TorchLightColor;
+            var torchIntensity = V6LightingConfig.TorchLightIntensity;
+            var torchRadiusTiles = V6LightingConfig.TorchLightRadiusTiles;
+
+            foreach (var torch in session.TorchRuntimeSystem.Torches)
+            {
+                yield return new ArtificialLightSource
+                {
+                    PositionPixels = torch.LightOrigin,
+                    ColorRGB = torchColor,
+                    Intensity = torchIntensity,
+                    RadiusTiles = torchRadiusTiles
+                };
+            }
         }
 
         public void SetProfiler(RenderedFrameProfiler profiler)

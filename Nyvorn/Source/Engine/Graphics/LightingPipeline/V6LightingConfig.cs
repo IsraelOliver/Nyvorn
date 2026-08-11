@@ -39,5 +39,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         // Foreground indirect from background (ETAPA 2.5)
         public static float ForegroundIndirectFromBackgroundStrength { get; set; } = 0.20f;  // Very weak coupling
+
+        // Artificial lighting (ETAPA 7 — Torch Point Light)
+        public static Color TorchLightColor { get; set; } = new Color(1.0f, 0.60f, 0.20f);  // Warm orange
+        public static float TorchLightIntensity { get; set; } = 1.0f;
+        public static int TorchLightRadiusTiles { get; set; } = 9;
+
+        // Point Light Attenuation (Starbound-style energy loss)
+        public static float PointLightAirAttenuationPerTile { get; set; } = 0.08f;      // Linear per distance
+        public static float PointLightForegroundObstacleAttenuation { get; set; } = 0.5f;  // Per Foreground cell traversed
+        public static float PointLightDoorObstacleAttenuation { get; set; } = 0.95f;   // Closed door: nearly blocks
     }
 }
