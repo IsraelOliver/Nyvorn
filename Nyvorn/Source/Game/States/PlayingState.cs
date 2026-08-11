@@ -405,6 +405,25 @@ namespace Nyvorn.Source.Game.States
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
+
+            // ETAPA 5.2: Compute V6 Terraria Lighting System before rendering
+            var skyColor = session.EnvironmentSystem.SkyState.AmbientLight;
+            var camera = session.Camera;
+            int tileSize = session.WorldMap.TileSize;
+            int camTileX = (int)(camera.Position.X / tileSize);
+            int camTileY = (int)(camera.Position.Y / tileSize);
+            int tileWindowWidth = (screenW + tileSize - 1) / tileSize;
+            int tileWindowHeight = (screenH + tileSize - 1) / tileSize;
+
+            v6LightingSystem.Update(
+                (int)camera.Position.X,
+                (int)camera.Position.Y,
+                screenW,
+                screenH,
+                tileSize,
+                skyColor);
+
+            v6LightMapRenderer.Update();
             float worldWidthPixels = session.WorldMap.PixelWidth;
             IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
 
