@@ -153,38 +153,12 @@ namespace Nyvorn.Source.Game.States
             v6LightingSystem.SetDoorOcclusionCallback(
                 (x, y) => session.DoorRuntimeSystem.IsMovementBlockingTile(x, y)
             );
-
-            // ETAPA 7: Set artificial light sources (torches)
-            v6LightingSystem.SetArtificialLightSources(
-                () => GetArtificialLightSourcesForV6(session)
-            );
             swV6.Stop();
         }
 
         public void SetProfiler(RenderedFrameProfiler profiler)
         {
             _renderedFrameProfiler = profiler;
-        }
-
-        private static System.Collections.Generic.IEnumerable<ArtificialLightSource> GetArtificialLightSourcesForV6(PlayingSession session)
-        {
-            if (session.TorchRuntimeSystem == null)
-                yield break;
-
-            var torchColor = V6LightingConfig.TorchLightColor;
-            var torchIntensity = V6LightingConfig.TorchLightIntensity;
-            var torchRadiusTiles = V6LightingConfig.TorchLightRadiusTiles;
-
-            foreach (var torch in session.TorchRuntimeSystem.Torches)
-            {
-                yield return new ArtificialLightSource
-                {
-                    PositionPixels = torch.LightOrigin,
-                    ColorRGB = torchColor,
-                    Intensity = torchIntensity,
-                    RadiusTiles = torchRadiusTiles
-                };
-            }
         }
 
         private RenderedFrameProfiler.LightingMode GetProfilerLightingMode()
@@ -1055,17 +1029,7 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-
-                // ETAPA 6: Use V6 sampler for mobile entities in V6 mode
-                if (isV6TerrariaMode)
-                {
-                    session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
-                }
-                else
-                {
-                    session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
-                }
-
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
 

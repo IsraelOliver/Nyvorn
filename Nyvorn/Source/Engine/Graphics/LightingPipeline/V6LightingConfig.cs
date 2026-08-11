@@ -39,10 +39,5 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         // Foreground indirect from background (ETAPA 2.5)
         public static float ForegroundIndirectFromBackgroundStrength { get; set; } = 0.20f;  // Very weak coupling
-
-        // Artificial lighting (ETAPA 7 — Torch)
-        public static Color TorchLightColor { get; set; } = new Color(1.0f, 0.60f, 0.20f);  // Warm orange
-        public static float TorchLightIntensity { get; set; } = 1.0f;
-        public static int TorchLightRadiusTiles { get; set; } = 9;
     }
 }

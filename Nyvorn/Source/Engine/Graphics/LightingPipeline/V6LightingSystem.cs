@@ -23,19 +23,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // Door occlusion callback (optional)
         private Func<int, int, bool> isDoorBlockingTile;
 
-        // ETAPA 7: Artificial light sources callback
-        private Func<System.Collections.Generic.IEnumerable<ArtificialLightSource>> getArtificialLightSources;
-
-        // ETAPA 7: Artificial light debug stats
-        private int artificialSourcesThisFrame = 0;
-        private int artificialTilesWrittenThisFrame = 0;
-        private int artificialTilesProcessedThisFrame = 0;
-        private long artificialLightMs = 0;
-
-        // ETAPA 7: Artificial light BFS scratch (grown-only, reused each frame)
-        private int[] artificialVisitStamp = Array.Empty<int>();
-        private int artificialCurrentStamp = 0;
-
         // ETAPA 5.3: Performance instrumentation (temporary)
         private int doorOcclusionQueriesThisFrame = 0;
         private int doorBlockingCallsThisFrame = 0;
@@ -77,9 +64,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public long AvgClassifyMs => computeCount > 0 ? totalClassifyMs / computeCount : 0;
         public long AvgComputeMs => computeCount > 0 ? totalComputeMs / computeCount : 0;
         public long AvgBackgroundMs => computeCount > 0 ? totalBackgroundMs / computeCount : 0;
-        public int ArtificialSourcesThisFrame => artificialSourcesThisFrame;
-        public int ArtificialTilesWrittenThisFrame => artificialTilesWrittenThisFrame;
-        public long ArtificialLightMs => artificialLightMs;
 
         public V6LightingSystem(WorldMap worldMap)
         {
@@ -91,11 +75,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void SetDoorOcclusionCallback(Func<int, int, bool> doorBlockingQuery)
         {
             this.isDoorBlockingTile = doorBlockingQuery;
-        }
-
-        public void SetArtificialLightSources(Func<System.Collections.Generic.IEnumerable<ArtificialLightSource>> getter)
-        {
-            this.getArtificialLightSources = getter;
         }
 
         public void RebuildEdgeOcclusionCache()
@@ -196,12 +175,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
             // STEP 4: Apply indirect background light to adjacent foreground (ETAPA 2.5)
             ApplyBackgroundIndirectToForeground(width, height, originX, originY);
-
-            // STEP 5: Apply artificial lights (ETAPA 7 — Torch)
-            var swArtificial = System.Diagnostics.Stopwatch.StartNew();
-            ApplyArtificialLights(width, height, originX, originY, tileSize);
-            swArtificial.Stop();
-            artificialLightMs = swArtificial.ElapsedMilliseconds;
 
             doorOcclusionStopwatch.Stop();
 
@@ -671,210 +644,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             }
         }
 
-        private void ApplyArtificialLights(int width, int height, int originX, int originY, int tileSize)
-        {
-            artificialSourcesThisFrame = 0;
-            artificialTilesWrittenThisFrame = 0;
-            artificialTilesProcessedThisFrame = 0;
-
-            if (getArtificialLightSources == null)
-                return;
-
-            var lightR = lightMap.LightR;
-            var lightG = lightMap.LightG;
-            var lightB = lightMap.LightB;
-            var mediumMask = lightMap.MediumMask;
-
-            int cellCount = width * height;
-
-            // Allocate visited array if needed
-            if (artificialVisitStamp.Length < cellCount)
-                artificialVisitStamp = new int[cellCount];
-
-            // Allocate BFS queue if needed (reuse queueX/queueY would need synchronization with background BFS, so use separate)
-            int maxQueueSize = width * height;
-            if (queueX.Length < maxQueueSize)
-            {
-                // Reuse background queue if background BFS is done
-                // For now, assume it's done since ApplyArtificialLights is called after ApplyBackgroundIndirectToForeground
-                // If problems occur, create separate arrays
-            }
-
-            // Process each artificial light source
-            foreach (var source in getArtificialLightSources())
-            {
-                artificialSourcesThisFrame++;
-                artificialCurrentStamp++;  // Increment for visited tracking per source
-
-                // Convert world pixels to tile coordinates
-                int sourceTileX = (int)(source.PositionPixels.X / tileSize);
-                int sourceTileY = (int)(source.PositionPixels.Y / tileSize);
-
-                // Convert to buffer-local coordinates
-                int localX = sourceTileX - originX;
-                int localY = sourceTileY - originY;
-
-                // Check if source is within buffer
-                if (localX >= 0 && localX < width && localY >= 0 && localY < height)
-                {
-                    // Source is inside buffer: start BFS from source
-                    ProcessArtificialLightBFS(source, localX, localY, width, height, originX, originY, tileSize,
-                        lightR, lightG, lightB, mediumMask);
-                }
-                // TODO PHASE 2B: Handle off-screen source intersection with buffer
-                // For now, skip off-screen sources
-            }
-        }
-
-        private void ProcessArtificialLightBFS(ArtificialLightSource source, int startLocalX, int startLocalY,
-            int width, int height, int originX, int originY, int tileSize,
-            float[] lightR, float[] lightG, float[] lightB, V6LightMap.CellMedium[] mediumMask)
-        {
-            float radiusPixels = source.RadiusTiles * tileSize;
-            float radiusPixelsSquared = radiusPixels * radiusPixels;
-            float sourcePixelX = source.PositionPixels.X;
-            float sourcePixelY = source.PositionPixels.Y;
-
-            float torchR = source.ColorRGB.R / 255f * source.Intensity;
-            float torchG = source.ColorRGB.G / 255f * source.Intensity;
-            float torchB = source.ColorRGB.B / 255f * source.Intensity;
-
-            // BFS using queueX/queueY
-            int queueHead = 0;
-            int queueTail = 0;
-            int maxQueue = width * height;
-
-            // Ensure queue is large enough
-            if (queueX.Length < maxQueue)
-                System.Array.Resize(ref queueX, maxQueue);
-            if (queueY.Length < maxQueue)
-                System.Array.Resize(ref queueY, maxQueue);
-
-            // Enqueue start tile
-            queueX[queueTail] = startLocalX;
-            queueY[queueTail] = startLocalY;
-            queueTail++;
-
-            int markVisited = artificialCurrentStamp;
-
-            while (queueHead < queueTail)
-            {
-                int localX = queueX[queueHead];
-                int localY = queueY[queueHead];
-                queueHead++;
-
-                int cellIndex = (localY * width) + localX;
-
-                // Mark as visited
-                artificialVisitStamp[cellIndex] = markVisited;
-                artificialTilesProcessedThisFrame++;
-
-                // Calculate tile center in world pixels
-                float worldPixelX = ((originX + localX) + 0.5f) * tileSize;
-                float worldPixelY = ((originY + localY) + 0.5f) * tileSize;
-
-                float dx = worldPixelX - sourcePixelX;
-                float dy = worldPixelY - sourcePixelY;
-                float distanceSquared = dx * dx + dy * dy;
-
-                // Skip if outside radius
-                if (distanceSquared > radiusPixelsSquared)
-                    continue;
-
-                // Calculate intensity using euclidian distance
-                float distance = (float)System.Math.Sqrt(distanceSquared);
-                float normalizedDistance = distance / radiusPixels;
-                float t = System.Math.Max(0, 1f - normalizedDistance);
-                float strength = t * t;  // Quadratic falloff
-
-                float contributionR = torchR * strength;
-                float contributionG = torchG * strength;
-                float contributionB = torchB * strength;
-
-                // Apply light to this cell
-                ApplyBoundedAdd(ref lightR[cellIndex], contributionR);
-                ApplyBoundedAdd(ref lightG[cellIndex], contributionG);
-                ApplyBoundedAdd(ref lightB[cellIndex], contributionB);
-                artificialTilesWrittenThisFrame++;
-
-                // Expand to neighbors based on medium type
-                V6LightMap.CellMedium currentMedium = mediumMask[cellIndex];
-
-                if (currentMedium != V6LightMap.CellMedium.Foreground)
-                {
-                    // Background/SkyOpen can propagate light
-                    // Get current world coordinates for door occlusion checking
-                    int currentWorldX = originX + localX;
-                    int currentWorldY = originY + localY;
-
-                    // Try to expand to 4 neighbors
-                    // Up
-                    if (localY > 0)
-                    {
-                        TryExpandArtificialLight(localX, localY - 1, currentWorldX, currentWorldY,
-                            width, height, originX, originY, mediumMask, queueX, queueY, ref queueTail, markVisited);
-                    }
-                    // Down
-                    if (localY < height - 1)
-                    {
-                        TryExpandArtificialLight(localX, localY + 1, currentWorldX, currentWorldY,
-                            width, height, originX, originY, mediumMask, queueX, queueY, ref queueTail, markVisited);
-                    }
-                    // Left
-                    if (localX > 0)
-                    {
-                        TryExpandArtificialLight(localX - 1, localY, currentWorldX, currentWorldY,
-                            width, height, originX, originY, mediumMask, queueX, queueY, ref queueTail, markVisited);
-                    }
-                    // Right
-                    if (localX < width - 1)
-                    {
-                        TryExpandArtificialLight(localX + 1, localY, currentWorldX, currentWorldY,
-                            width, height, originX, originY, mediumMask, queueX, queueY, ref queueTail, markVisited);
-                    }
-                }
-            }
-        }
-
-        private void TryExpandArtificialLight(int neighborLocalX, int neighborLocalY,
-            int currentWorldX, int currentWorldY, int width, int height, int originX, int originY,
-            V6LightMap.CellMedium[] mediumMask, int[] queueX, int[] queueY, ref int queueTail, int visitedStamp)
-        {
-            if (neighborLocalX < 0 || neighborLocalX >= width || neighborLocalY < 0 || neighborLocalY >= height)
-                return;
-
-            int cellIndex = (neighborLocalY * width) + neighborLocalX;
-
-            // Check if already visited
-            if (artificialVisitStamp[cellIndex] == visitedStamp)
-                return;
-
-            // Check if we can pass light between cells (door occlusion)
-            int neighborWorldX = originX + neighborLocalX;
-            int neighborWorldY = originY + neighborLocalY;
-
-            if (!CanLightPassBetween(currentWorldX, currentWorldY, neighborWorldX, neighborWorldY))
-                return;
-
-            // Enqueue if not visited and passable
-            queueX[queueTail] = neighborLocalX;
-            queueY[queueTail] = neighborLocalY;
-            queueTail++;
-        }
-
-        private void ApplyBoundedAdd(ref float channel, float addition)
-        {
-            // Formula: result = base + addition * (1 - base)
-            channel = channel + (addition * (1f - channel));
-
-            // Clamp to [0..1]
-            if (channel < 0f) channel = 0f;
-            if (channel > 1f) channel = 1f;
-        }
-
         public string GetDiagnosticsString()
         {
-            return $"V6 Surface: Classify {AvgClassifyMs}ms | Compute {AvgComputeMs}ms | BG {AvgBackgroundMs}ms | SkyOpen: {skyOpenSourceCount} | FG: {foregroundCount} | BG Seeds: {backgroundSeedCount} | Artificial: {artificialSourcesThisFrame} sources, {artificialTilesWrittenThisFrame} tiles, {artificialLightMs}ms";
+            return $"V6 Surface: Classify {AvgClassifyMs}ms | Compute {AvgComputeMs}ms | BG {AvgBackgroundMs}ms | SkyOpen: {skyOpenSourceCount} | FG: {foregroundCount} | BG Seeds: {backgroundSeedCount}";
         }
 
         public void Dispose()
