@@ -996,6 +996,21 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                     session.DrawWorldLitObjects(spriteBatch);
                     spriteBatch.End();
                 }
+
+                // Apply V6 lighting mask (ProductionTexture) with MultiplyBlend
+                if (v6LightMapRenderer.ProductionTexture != null)
+                {
+                    for (int i = 0; i < visibleLoopOffsets.Count; i++)
+                    {
+                        int loopIndex = visibleLoopOffsets[i];
+                        float worldOffset = loopIndex * worldWidthPixels;
+                        Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                        spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                        spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, Vector2.Zero, Color.White);
+                        spriteBatch.End();
+                    }
+                }
             }
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
