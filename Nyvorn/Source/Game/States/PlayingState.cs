@@ -974,43 +974,52 @@ private void DrawWithLegacyPipeline(SpriteBatch spriteBatch, int screenW, int sc
                 session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                session.DrawWorldLighting(spriteBatch, worldOffset);
-                spriteBatch.End();
+                if (!isV6TerrariaMode)
+                {
+                    spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                    session.DrawWorldLighting(spriteBatch, worldOffset);
+                    spriteBatch.End();
+                }
+                else
+                {
+                    // ETAPA 5.2: Draw world-lit objects (static furniture) with V6 lighting
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawWorldLitObjects(spriteBatch);
+                    spriteBatch.End();
+
+                    // Apply V6 lighting mask (ProductionTexture) with MultiplyBlend
+                    if (v6LightMapRenderer.ProductionTexture != null)
+                    {
+                        int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
+                        int bufferOriginTileY = v6LightingSystem.LightMap.BufferOriginTileY;
+                        int bufferWidth = v6LightingSystem.LightMap.BufferWidth;
+                        int bufferHeight = v6LightingSystem.LightMap.BufferHeight;
+                        int tileSize = session.WorldMap.TileSize;
+                        int worldWidthTiles = (int)(worldWidthPixels / tileSize);
+
+                        // Check if buffer's X origin falls within this loop
+                        int bufferLoopIndex = bufferOriginTileX / worldWidthTiles;
+                        if (bufferLoopIndex == loopIndex)
+                        {
+                            // Position relative to this loop's origin
+                            int bufferXInLoop = (bufferOriginTileX % worldWidthTiles) * tileSize;
+                            Rectangle destRect = new Rectangle(
+                                bufferXInLoop,
+                                bufferOriginTileY * tileSize,
+                                bufferWidth * tileSize,
+                                bufferHeight * tileSize
+                            );
+
+                            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
+                            spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, destRect, Color.White);
+                            spriteBatch.End();
+                        }
+                    }
+                }
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTerrainOverlay(spriteBatch);
                 spriteBatch.End();
-            }
-
-            // ETAPA 5.2: Draw world-lit objects (static furniture) before applying lighting mask
-            if (isV6TerrariaMode)
-            {
-                for (int i = 0; i < visibleLoopOffsets.Count; i++)
-                {
-                    int loopIndex = visibleLoopOffsets[i];
-                    float worldOffset = loopIndex * worldWidthPixels;
-                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                    session.DrawWorldLitObjects(spriteBatch);
-                    spriteBatch.End();
-                }
-
-                // Apply V6 lighting mask (ProductionTexture) with MultiplyBlend
-                if (v6LightMapRenderer.ProductionTexture != null)
-                {
-                    for (int i = 0; i < visibleLoopOffsets.Count; i++)
-                    {
-                        int loopIndex = visibleLoopOffsets[i];
-                        float worldOffset = loopIndex * worldWidthPixels;
-                        Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                        spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: MultiplyBlend, transformMatrix: transform);
-                        spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, Vector2.Zero, Color.White);
-                        spriteBatch.End();
-                    }
-                }
             }
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
