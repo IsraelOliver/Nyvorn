@@ -104,6 +104,7 @@ namespace Nyvorn.Source.Game.States
         private const int HelpCommandsPerPage = 10;
         private bool showFps;
         private float fpsSmoothed;
+        private bool debugPixelLightBuffer;
 
         // V6 Terraria-inspired Lighting System (ETAPA 5.2)
         private V6LightingSystem v6LightingSystem;
@@ -196,6 +197,8 @@ namespace Nyvorn.Source.Game.States
         {
             saveService.Save(session);
             session.ViewCoordinator.DisposeSceneRenderTarget();
+            session.ViewCoordinator.DisposeWorldColorRenderTarget();
+            session.ViewCoordinator.DisposePixelLightBuffer();
             session.ViewCoordinator.DisposeLightingMaskRenderTarget();
             session.ViewCoordinator.DisposeDirectionalSunlightMap();
             session.ViewCoordinator.DisposeForegroundBlockageMap();
@@ -306,6 +309,18 @@ namespace Nyvorn.Source.Game.States
                 if (ctrlPressed && altPressed && tPressed && !previousConsoleKeyboard.IsKeyDown(Keys.T))
                 {
                     // V3 tests removed (Legacy only)
+                }
+            }
+
+            // DEBUG HOTKEY: Shift+P to toggle PixelLightBuffer visualization
+            if (!handledConsoleThisFrame)
+            {
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool pPressed = keyboard.IsKeyDown(Keys.P);
+
+                if (shiftPressed && pPressed && !previousConsoleKeyboard.IsKeyDown(Keys.P))
+                {
+                    debugPixelLightBuffer = !debugPixelLightBuffer;
                 }
             }
 
@@ -921,15 +936,70 @@ namespace Nyvorn.Source.Game.States
 private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH,
                                             IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
-            // Uncomment for legacy pipeline diagnostics
-            // System.Console.WriteLine("\n▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ LEGACY PIPELINE ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓");
+            // P1A: WORLD COLOR RENDER TARGET FOUNDATION
+            // Correct order: render world to RT first, then composite back to backbuffer WITH sky.
 
-            // Clear backbuffer at start of frame
+            // PHASE 0A: Prepare WorldColorRenderTarget
+            session.ViewCoordinator.EnsureWorldColorRenderTarget(graphicsDevice, screenW, screenH);
+
+            // PHASE 0B: Render world content to WorldColorRenderTarget (preserves alpha)
+            graphicsDevice.SetRenderTarget(session.ViewCoordinator.GetWorldColorRenderTarget());
+            graphicsDevice.Clear(Color.Transparent);
+
+            DrawWorldContentToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+
+            // PHASE 0C: P1B - Build PixelLightBuffer from V6 coarse lighting (offscreen preparation)
+            BuildPixelLightBuffer(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+
+            // PHASE 1: Return to backbuffer and draw complete frame
+            graphicsDevice.SetRenderTarget(null);
+
+            // PHASE 1A: Clear backbuffer
             graphicsDevice.Clear(Color.Black);
 
-            // Atmospheric background (sky, sun, moons, mountains)
+            // PHASE 1B: Draw atmospheric background (sky, sun, moons, parallax)
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
 
+            // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            spriteBatch.Draw(session.ViewCoordinator.GetWorldColorRenderTarget(), Vector2.Zero, Color.White);
+            spriteBatch.End();
+
+            // PHASE 2: Screen-space overlays (rain, night overlay)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+            session.DrawRainFront(spriteBatch, screenW, screenH);
+            if (session.LegacyNightOverlayMode)
+                session.DrawNightOverlay(spriteBatch, screenW, screenH);
+            spriteBatch.End();
+
+            // PHASE 3: HUD (screen-space)
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            session.DrawHud(spriteBatch, screenW, screenH);
+            if (minimapVisible)
+                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
+            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
+            if (showFps)
+                DrawFpsCounter(spriteBatch);
+            if (consoleOpen)
+                DrawConsole(spriteBatch, screenW);
+            spriteBatch.End();
+
+            // DEBUG: P1B PixelLightBuffer visualization (Shift+P to toggle)
+            if (debugPixelLightBuffer && session.ViewCoordinator.GetPixelLightBuffer() != null)
+            {
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                spriteBatch.Draw(session.ViewCoordinator.GetPixelLightBuffer(), Vector2.Zero, Color.White);
+                spriteBatch.End();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                spriteBatch.DrawString(consoleFont, "P1B DEBUG: PIXEL LIGHT BUFFER (Shift+P to toggle)", new Vector2(10, 10), Color.Yellow);
+                spriteBatch.End();
+            }
+        }
+
+        private void DrawWorldContentToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
+                                                     IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -971,12 +1041,10 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                // V6 Terraria-inspired lighting: Draw world-lit objects and apply ProductionTexture
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawWorldLitObjects(spriteBatch);
                 spriteBatch.End();
 
-                // Apply V6 lighting mask (ProductionTexture) with MultiplyBlend
                 if (v6LightMapRenderer.ProductionTexture != null)
                 {
                     int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
@@ -986,11 +1054,9 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                     int tileSize = session.WorldMap.TileSize;
                     int worldWidthTiles = (int)(worldWidthPixels / tileSize);
 
-                    // Check if buffer's X origin falls within this loop
                     int bufferLoopIndex = bufferOriginTileX / worldWidthTiles;
                     if (bufferLoopIndex == loopIndex)
                     {
-                        // Position relative to this loop's origin
                         int bufferXInLoop = (bufferOriginTileX % worldWidthTiles) * tileSize;
                         Rectangle destRect = new Rectangle(
                             bufferXInLoop,
@@ -1037,7 +1103,6 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
             }
 
-            // Entity lighting with V6
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
             session.DrawEntities(spriteBatch, v6LightSampler);
             spriteBatch.End();
@@ -1063,24 +1128,53 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 session.DrawTissueDebug(spriteBatch);
                 spriteBatch.End();
             }
+        }
 
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-            session.DrawRainFront(spriteBatch, screenW, screenH);
-            if (session.LegacyNightOverlayMode)
-                session.DrawNightOverlay(spriteBatch, screenW, screenH);
-            spriteBatch.End();
+        private void BuildPixelLightBuffer(SpriteBatch spriteBatch, int screenW, int screenH,
+                                          IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            // P1B: Build PixelLightBuffer from V6 coarse ProductionTexture
+            // Upscale V6 (~247×141 tiles) to pixel resolution (1920×1080)
+            // PixelLightBuffer is neutral Color.White (lighting multiplier 1.0)
 
-            // V4 debug (legacy pipeline) - loop through all visible offsets
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            session.DrawHud(spriteBatch, screenW, screenH);
-            if (minimapVisible)
-                session.DrawMinimap(spriteBatch, screenW, screenH, minimapTissueMode);
-            playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
-            if (showFps)
-                DrawFpsCounter(spriteBatch);
-            if (consoleOpen)
-                DrawConsole(spriteBatch, screenW);
-            spriteBatch.End();
+            session.ViewCoordinator.EnsurePixelLightBuffer(graphicsDevice, screenW, screenH);
+            graphicsDevice.SetRenderTarget(session.ViewCoordinator.GetPixelLightBuffer());
+            graphicsDevice.Clear(Color.White);
+
+            if (v6LightMapRenderer.ProductionTexture != null)
+            {
+                int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
+                int bufferOriginTileY = v6LightingSystem.LightMap.BufferOriginTileY;
+                int bufferWidth = v6LightingSystem.LightMap.BufferWidth;
+                int bufferHeight = v6LightingSystem.LightMap.BufferHeight;
+                int tileSize = session.WorldMap.TileSize;
+                int worldWidthTiles = (int)(worldWidthPixels / tileSize);
+
+                for (int i = 0; i < visibleLoopOffsets.Count; i++)
+                {
+                    int loopIndex = visibleLoopOffsets[i];
+                    float worldOffset = loopIndex * worldWidthPixels;
+                    Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                    int bufferLoopIndex = bufferOriginTileX / worldWidthTiles;
+                    if (bufferLoopIndex == loopIndex)
+                    {
+                        int bufferXInLoop = (bufferOriginTileX % worldWidthTiles) * tileSize;
+                        Rectangle destRect = new Rectangle(
+                            bufferXInLoop,
+                            bufferOriginTileY * tileSize,
+                            bufferWidth * tileSize,
+                            bufferHeight * tileSize
+                        );
+
+                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Opaque, transformMatrix: transform);
+                        spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, destRect, Color.White);
+                        spriteBatch.End();
+                    }
+                }
+            }
+
+            graphicsDevice.SetRenderTarget(null);
         }
 
         /// <summary>

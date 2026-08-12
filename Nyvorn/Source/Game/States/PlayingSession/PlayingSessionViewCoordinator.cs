@@ -97,6 +97,13 @@ namespace Nyvorn.Source.Game.States
         private int foregroundBlockageCapacityWidth;
         private int foregroundBlockageCapacityHeight;
 
+        private RenderTarget2D worldColorRenderTarget;
+        private int worldColorRenderTargetCapacityWidth;
+        private int worldColorRenderTargetCapacityHeight;
+
+        private RenderTarget2D pixelLightBuffer;
+        private int pixelLightBufferCapacityWidth;
+        private int pixelLightBufferCapacityHeight;
 
         private readonly List<WorldChunkCoord> activeSimulationChunks = new();
         private Vector2 smoothedCameraTarget;
@@ -349,6 +356,94 @@ namespace Nyvorn.Source.Game.States
         {
             sceneRenderTarget?.Dispose();
             sceneRenderTarget = null;
+        }
+
+        /// <summary>
+        /// P1 Pixel Lighting: WorldColorRenderTarget stores world geometry before lighting composition.
+        /// Resolution: physical backbuffer (1920×1080) to preserve per-pixel lighting fidelity.
+        /// Used in P1A: captures all world content (terrain, objects) with alpha preservation.
+        /// </summary>
+        public RenderTarget2D GetWorldColorRenderTarget()
+        {
+            return worldColorRenderTarget;
+        }
+
+        public void EnsureWorldColorRenderTarget(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = worldColorRenderTarget == null ||
+                                   screenWidth > worldColorRenderTargetCapacityWidth ||
+                                   screenHeight > worldColorRenderTargetCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (worldColorRenderTarget != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating WorldColorRenderTarget: {worldColorRenderTargetCapacityWidth}x{worldColorRenderTargetCapacityHeight} → {screenWidth}x{screenHeight}");
+                    worldColorRenderTarget.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating WorldColorRenderTarget: {screenWidth}x{screenHeight}");
+                }
+
+                worldColorRenderTargetCapacityWidth = System.Math.Max(screenWidth, worldColorRenderTargetCapacityWidth);
+                worldColorRenderTargetCapacityHeight = System.Math.Max(screenHeight, worldColorRenderTargetCapacityHeight);
+                worldColorRenderTarget = new RenderTarget2D(graphicsDevice, worldColorRenderTargetCapacityWidth, worldColorRenderTargetCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+            }
+        }
+
+        public void DisposeWorldColorRenderTarget()
+        {
+            worldColorRenderTarget?.Dispose();
+            worldColorRenderTarget = null;
+        }
+
+        /// <summary>
+        /// P1B Pixel Lighting: PixelLightBuffer stores upscaled V6 lighting in pixel resolution.
+        /// Resolution: 1920×1080 (or viewport logical resolution).
+        /// Source: V6 ProductionTexture (coarse ~247×141) scaled by GPU to pixel resolution.
+        /// This buffer is NOT YET applied to the final image (that's P1C).
+        /// It exists for validation and future per-pixel lighting operations.
+        /// </summary>
+        public RenderTarget2D GetPixelLightBuffer()
+        {
+            return pixelLightBuffer;
+        }
+
+        public void EnsurePixelLightBuffer(GraphicsDevice graphicsDevice, int screenWidth, int screenHeight)
+        {
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return;
+
+            bool needsRecreation = pixelLightBuffer == null ||
+                                   screenWidth > pixelLightBufferCapacityWidth ||
+                                   screenHeight > pixelLightBufferCapacityHeight;
+
+            if (needsRecreation)
+            {
+                if (pixelLightBuffer != null)
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Recreating PixelLightBuffer: {pixelLightBufferCapacityWidth}x{pixelLightBufferCapacityHeight} → {screenWidth}x{screenHeight}");
+                    pixelLightBuffer.Dispose();
+                }
+                else
+                {
+                    System.Console.WriteLine($"[GRAPHICS] Creating PixelLightBuffer: {screenWidth}x{screenHeight}");
+                }
+
+                pixelLightBufferCapacityWidth = System.Math.Max(screenWidth, pixelLightBufferCapacityWidth);
+                pixelLightBufferCapacityHeight = System.Math.Max(screenHeight, pixelLightBufferCapacityHeight);
+                pixelLightBuffer = new RenderTarget2D(graphicsDevice, pixelLightBufferCapacityWidth, pixelLightBufferCapacityHeight, false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+            }
+        }
+
+        public void DisposePixelLightBuffer()
+        {
+            pixelLightBuffer?.Dispose();
+            pixelLightBuffer = null;
         }
 
         /// <summary>
