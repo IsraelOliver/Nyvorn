@@ -111,6 +111,7 @@ namespace Nyvorn.Source.Game.States
         private V6LightSampler v6LightSampler;
         private V6LightMapRenderer v6LightMapRenderer;
         private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
 
