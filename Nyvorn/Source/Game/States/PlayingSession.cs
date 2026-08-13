@@ -594,6 +594,12 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, enemyLightSampler, worldItemLightSampler, EnvironmentSystem.SkyState.VisualTimeSeconds);
         }
 
+        // P1E-C: Overload for torch flame control (PIXEL mode separation)
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler enemyLightSampler, IEntityLightSampler worldItemLightSampler, bool drawTorchFlames)
+        {
+            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, enemyLightSampler, worldItemLightSampler, EnvironmentSystem.SkyState.VisualTimeSeconds, drawTorchFlames);
+        }
+
         public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawInteriorFocusOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);

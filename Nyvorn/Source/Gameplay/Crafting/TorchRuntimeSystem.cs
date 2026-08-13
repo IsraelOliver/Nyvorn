@@ -78,7 +78,8 @@ namespace Nyvorn.Source.Gameplay.Crafting
             });
         }
 
-        public void Draw(SpriteBatch spriteBatch, float visualTimeSeconds)
+        // P1E: Separate body and flame for world-space lighting vs emissive rendering
+        public void DrawBody(SpriteBatch spriteBatch)
         {
             for (int i = 0; i < furnitureItems.Count; i++)
             {
@@ -86,14 +87,6 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 Rectangle poleSource = new Rectangle(torch.PoleFrameIndex * PoleFrameSize, 0, PoleFrameSize, PoleFrameSize);
                 SpriteEffects effects = torch.FacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
                 spriteBatch.Draw(PoleTexture, torch.Bounds, poleSource, Color.White, 0f, Vector2.Zero, effects, 0f);
-
-                Point poleAnchor = PoleAnchors[torch.PoleFrameIndex];
-                int flameFrame = GetFlameFrame(torch, visualTimeSeconds);
-                Rectangle flameSource = new Rectangle(flameFrame * FlameFrameSize, 0, FlameFrameSize, FlameFrameSize);
-                Vector2 flamePosition = new Vector2(
-                    torch.Bounds.X + poleAnchor.X - FlameAnchor.X,
-                    torch.Bounds.Y + poleAnchor.Y - FlameAnchor.Y);
-                spriteBatch.Draw(FlameTexture, flamePosition, flameSource, Color.White);
             }
 
             if (previewVisible)
@@ -103,6 +96,28 @@ namespace Nyvorn.Source.Gameplay.Crafting
                 SpriteEffects effects = previewFacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
                 spriteBatch.Draw(PoleTexture, preview.Bounds, poleSource, previewValid ? ValidPreviewTint : InvalidPreviewTint, 0f, Vector2.Zero, effects, 0f);
             }
+        }
+
+        public void DrawFlames(SpriteBatch spriteBatch, float visualTimeSeconds)
+        {
+            for (int i = 0; i < furnitureItems.Count; i++)
+            {
+                TorchInstance torch = furnitureItems[i];
+                Point poleAnchor = PoleAnchors[torch.PoleFrameIndex];
+                int flameFrame = GetFlameFrame(torch, visualTimeSeconds);
+                Rectangle flameSource = new Rectangle(flameFrame * FlameFrameSize, 0, FlameFrameSize, FlameFrameSize);
+                Vector2 flamePosition = new Vector2(
+                    torch.Bounds.X + poleAnchor.X - FlameAnchor.X,
+                    torch.Bounds.Y + poleAnchor.Y - FlameAnchor.Y);
+                spriteBatch.Draw(FlameTexture, flamePosition, flameSource, Color.White);
+            }
+        }
+
+        public void Draw(SpriteBatch spriteBatch, float visualTimeSeconds)
+        {
+            // P1E: Compatibility wrapper - draws both body and flames together (TILE mode)
+            DrawBody(spriteBatch);
+            DrawFlames(spriteBatch, visualTimeSeconds);
         }
 
         // Deterministic per-position phase (not saved, doesn't need to be) so torches placed at

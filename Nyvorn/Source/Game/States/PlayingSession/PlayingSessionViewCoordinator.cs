@@ -838,6 +838,21 @@ namespace Nyvorn.Source.Game.States
             );
         }
 
+        // P1E-C: Overload for torch flame control (PIXEL mode separation)
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler enemyLightSampler, IEntityLightSampler worldItemLightSampler, float visualTimeSeconds, bool drawTorchFlames)
+        {
+            DrawLoopedWorldEntitiesInternal(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                visualTimeSeconds,
+                position => enemyLightSampler.SampleLightAt(position),
+                position => worldItemLightSampler.SampleLightAt(position),
+                drawTorchFlames
+            );
+        }
+
         private void DrawLoopedWorldEntitiesInternal(
             SpriteBatch spriteBatch,
             int screenWidth,
@@ -845,7 +860,8 @@ namespace Nyvorn.Source.Game.States
             float worldOffsetX,
             float visualTimeSeconds,
             System.Func<Vector2, Color> resolveEnemyTint,
-            System.Func<Vector2, Color> resolveWorldItemTint)
+            System.Func<Vector2, Color> resolveWorldItemTint,
+            bool drawTorchFlames = true)
         {
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
@@ -873,7 +889,13 @@ namespace Nyvorn.Source.Game.States
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);
             DamageNumberSystem.Draw(spriteBatch, HudRenderer.Font);
-            TorchRuntimeSystem?.Draw(spriteBatch, visualTimeSeconds);
+
+            // P1E-C: Draw torch body only, flame drawn separately in PIXEL mode
+            TorchRuntimeSystem?.DrawBody(spriteBatch);
+            if (drawTorchFlames)
+            {
+                TorchRuntimeSystem?.DrawFlames(spriteBatch, visualTimeSeconds);
+            }
         }
 
         public void DrawSky(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
