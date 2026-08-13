@@ -301,6 +301,12 @@
 /processorParam:DebugMode=Auto
 /build:effects/ComposeLighting.fx
 
+#begin effects/PixelComposite.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/PixelComposite.fx
+
 #begin ui/toolbar.png
 /importer:TextureImporter
 /processor:TextureProcessor

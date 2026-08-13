@@ -106,11 +106,22 @@ namespace Nyvorn.Source.Game.States
         private float fpsSmoothed;
         private bool debugPixelLightBuffer;
 
+        // P1C-1: Presentation mode for testing pixel-resolution lighting
+        private enum LightingPresentationMode
+        {
+            Tile,        // Baseline: ProductionTexture in WorldColorRT
+            PixelTest    // Test: WorldColorRT without ProductionTexture
+        }
+        private LightingPresentationMode presentationMode = LightingPresentationMode.Tile;
+
         // V6 Terraria-inspired Lighting System (ETAPA 5.2)
         private V6LightingSystem v6LightingSystem;
         private V6LightSampler v6LightSampler;
         private V6LightMapRenderer v6LightMapRenderer;
         private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        // P1C-2: PixelComposite effect for sprite-based compositing
+        private Effect pixelCompositeEffect;
 
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
@@ -142,6 +153,9 @@ namespace Nyvorn.Source.Game.States
             consolePixel.SetData(new[] { Color.White });
             playerHubUI = new PlayerHubUI(graphicsDevice, session);
             autoSaveTimer = AutoSaveInterval;
+
+            // P1C-2: Load PixelComposite effect
+            pixelCompositeEffect = content.Load<Effect>("effects/PixelComposite");
 
             // Initialize V6 Terraria-inspired Lighting System (ETAPA 5.2)
             var swV6 = System.Diagnostics.Stopwatch.StartNew();
@@ -313,7 +327,7 @@ namespace Nyvorn.Source.Game.States
                 }
             }
 
-            // DEBUG HOTKEY: Shift+P to toggle PixelLightBuffer visualization
+            // DEBUG HOTKEY: Shift+P to toggle presentation mode (TILE vs PIXEL_TEST)
             if (!handledConsoleThisFrame)
             {
                 bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
@@ -321,7 +335,9 @@ namespace Nyvorn.Source.Game.States
 
                 if (shiftPressed && pPressed && !previousConsoleKeyboard.IsKeyDown(Keys.P))
                 {
-                    debugPixelLightBuffer = !debugPixelLightBuffer;
+                    presentationMode = presentationMode == LightingPresentationMode.Tile
+                        ? LightingPresentationMode.PixelTest
+                        : LightingPresentationMode.Tile;
                 }
             }
 
@@ -947,7 +963,9 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             graphicsDevice.SetRenderTarget(session.ViewCoordinator.GetWorldColorRenderTarget());
             graphicsDevice.Clear(Color.Transparent);
 
-            DrawWorldContentToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+            // P1C-1: Control whether ProductionTexture is applied to WorldColorRT
+            bool applyProductionTexture = (presentationMode == LightingPresentationMode.Tile);
+            DrawWorldContentToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels, applyProductionTexture);
 
             // PHASE 0C: P1B - Build PixelLightBuffer from V6 coarse lighting (offscreen preparation)
             BuildPixelLightBuffer(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
@@ -962,9 +980,45 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
 
             // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
-            spriteBatch.Draw(session.ViewCoordinator.GetWorldColorRenderTarget(), Vector2.Zero, Color.White);
-            spriteBatch.End();
+            if (presentationMode == LightingPresentationMode.PixelTest && pixelCompositeEffect != null)
+            {
+                // P1C-2: Use PixelComposite effect for PIXEL_TEST mode
+                // P1C-2B: Set MatrixTransform with orthographic projection (screen-space coordinates)
+                Matrix projection = Matrix.CreateOrthographicOffCenter(
+                    left: 0,
+                    right: screenW,
+                    bottom: screenH,
+                    top: 0,
+                    zNearPlane: 0,
+                    zFarPlane: -1
+                );
+                pixelCompositeEffect.Parameters["MatrixTransform"]?.SetValue(projection);
+
+                // P1C-3B: Set PixelLightBuffer as effect parameter
+                // Effect handles texture register assignment internally
+                pixelCompositeEffect.Parameters["LightBuffer"]?.SetValue(
+                    session.ViewCoordinator.GetPixelLightBuffer()
+                );
+
+                spriteBatch.Begin(
+                    samplerState: SamplerState.PointClamp,
+                    blendState: BlendState.AlphaBlend,
+                    effect: pixelCompositeEffect
+                );
+                spriteBatch.Draw(
+                    session.ViewCoordinator.GetWorldColorRenderTarget(),
+                    new Rectangle(0, 0, screenW, screenH),
+                    Color.White
+                );
+                spriteBatch.End();
+            }
+            else
+            {
+                // TILE mode: baseline drawing without effect
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+                spriteBatch.Draw(session.ViewCoordinator.GetWorldColorRenderTarget(), Vector2.Zero, Color.White);
+                spriteBatch.End();
+            }
 
             // PHASE 2: Screen-space overlays (rain, night overlay)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
@@ -985,7 +1039,13 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
 
-            // DEBUG: P1B PixelLightBuffer visualization (Shift+P to toggle)
+            // DEBUG: P1C-1 presentation mode label (Shift+P to toggle)
+            string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL_TEST";
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            spriteBatch.DrawString(consoleFont, $"LIGHTING PRESENTATION: {modeLabel} (Shift+P to toggle)", new Vector2(10, 10), Color.Yellow);
+            spriteBatch.End();
+
+            // DEBUG: P1B PixelLightBuffer visualization
             if (debugPixelLightBuffer && session.ViewCoordinator.GetPixelLightBuffer() != null)
             {
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp);
@@ -993,13 +1053,14 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-                spriteBatch.DrawString(consoleFont, "P1B DEBUG: PIXEL LIGHT BUFFER (Shift+P to toggle)", new Vector2(10, 10), Color.Yellow);
+                spriteBatch.DrawString(consoleFont, "P1B DEBUG: PIXEL LIGHT BUFFER (active)", new Vector2(10, 30), Color.Yellow);
                 spriteBatch.End();
             }
         }
 
         private void DrawWorldContentToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
-                                                     IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+                                                     IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels,
+                                                     bool applyProductionTexture = true)
         {
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
@@ -1046,7 +1107,8 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 session.DrawWorldLitObjects(spriteBatch);
                 spriteBatch.End();
 
-                if (v6LightMapRenderer.ProductionTexture != null)
+                // P1C-1: Apply ProductionTexture only if requested
+                if (applyProductionTexture && v6LightMapRenderer.ProductionTexture != null)
                 {
                     int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
                     int bufferOriginTileY = v6LightingSystem.LightMap.BufferOriginTileY;
