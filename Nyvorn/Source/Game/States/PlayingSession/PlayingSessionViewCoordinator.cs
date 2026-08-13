@@ -819,7 +819,22 @@ namespace Nyvorn.Source.Game.States
                 screenHeight,
                 worldOffsetX,
                 visualTimeSeconds,
+                position => mobileEntitySampler.SampleLightAt(position),
                 position => mobileEntitySampler.SampleLightAt(position)
+            );
+        }
+
+        // P1D-B: Overload for separate enemy and world-item light samplers
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler enemyLightSampler, IEntityLightSampler worldItemLightSampler, float visualTimeSeconds = 0f)
+        {
+            DrawLoopedWorldEntitiesInternal(
+                spriteBatch,
+                screenWidth,
+                screenHeight,
+                worldOffsetX,
+                visualTimeSeconds,
+                position => enemyLightSampler.SampleLightAt(position),
+                position => worldItemLightSampler.SampleLightAt(position)
             );
         }
 
@@ -829,7 +844,8 @@ namespace Nyvorn.Source.Game.States
             int screenHeight,
             float worldOffsetX,
             float visualTimeSeconds,
-            System.Func<Vector2, Color> resolveTint)
+            System.Func<Vector2, Color> resolveEnemyTint,
+            System.Func<Vector2, Color> resolveWorldItemTint)
         {
             float viewWidth = screenWidth / Camera.Zoom;
             float viewHeight = screenHeight / Camera.Zoom;
@@ -843,7 +859,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(enemy.Hurtbox, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                enemy.Draw(spriteBatch, resolveTint(enemy.Position));
+                enemy.Draw(spriteBatch, resolveEnemyTint(enemy.Position));
                 HealthBarRenderer.Draw(spriteBatch, enemy.Position + new Vector2(0f, -30f), enemy.Health, enemy.MaxHealth, 22, 3);
             }
 
@@ -852,7 +868,7 @@ namespace Nyvorn.Source.Game.States
                 if (!IntersectsVisibleArea(worldItem.WorldBounds, localLeft, localTop, localRight, localBottom))
                     continue;
 
-                worldItem.Draw(spriteBatch, resolveTint(worldItem.WorldBounds.Center.ToVector2()));
+                worldItem.Draw(spriteBatch, resolveWorldItemTint(worldItem.WorldBounds.Center.ToVector2()));
             }
 
             BlockParticleSystem.Draw(spriteBatch, localLeft, localTop, localRight, localBottom);

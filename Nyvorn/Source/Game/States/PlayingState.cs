@@ -118,6 +118,9 @@ namespace Nyvorn.Source.Game.States
         private V6LightingSystem v6LightingSystem;
         private V6LightSampler v6LightSampler;
         private V6LightMapRenderer v6LightMapRenderer;
+
+        // P1D-A: Neutral sampler for pixel-mode entity lighting
+        private Engine.Graphics.LightingPipeline.NeutralEntityLightSampler neutralEntityLightSampler;
         private readonly System.Diagnostics.Stopwatch fpsStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         // P1C-2: PixelComposite effect for sprite-based compositing
@@ -162,6 +165,11 @@ namespace Nyvorn.Source.Game.States
             v6LightingSystem = new V6LightingSystem(session.WorldMap);
             v6LightSampler = new V6LightSampler(v6LightingSystem.LightMap, session.WorldMap);
             v6LightMapRenderer = new V6LightMapRenderer(graphicsDevice, v6LightingSystem.LightMap);
+
+            // P1D-A: Initialize neutral sampler for pixel-mode player lighting
+            neutralEntityLightSampler = new Engine.Graphics.LightingPipeline.NeutralEntityLightSampler(
+                LightingPipelineCoordinator.I
+            );
 
             // Set door occlusion callback for light transport blocking
             v6LightingSystem.SetDoorOcclusionCallback(
@@ -789,8 +797,17 @@ namespace Nyvorn.Source.Game.States
                 session.DrawTerrainOverlay(spriteBatch);
                 spriteBatch.End();
 
+                // P1D-C: Use neutral sampler for both Enemy and WorldItem in PIXEL mode
+                var enemyLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
+                var worldItemLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler);
                 spriteBatch.End();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
@@ -859,8 +876,17 @@ namespace Nyvorn.Source.Game.States
                 spriteBatch.End();
 
                 // Looped entities (enemies, items, particles, furniture)
+                // P1D-C: Use neutral sampler for both Enemy and WorldItem in PIXEL mode
+                var enemyLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
+                var worldItemLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler);
                 spriteBatch.End();
 
                 // Player (with Color.White to avoid double lighting)
@@ -1145,8 +1171,17 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
+                // P1D-C: Use neutral sampler for both Enemy and WorldItem in PIXEL mode
+                var enemyLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
+                var worldItemLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler);
                 spriteBatch.End();
             }
 
@@ -1166,8 +1201,13 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
             }
 
+            // P1D-A: Use neutral sampler in PIXEL mode to avoid double-lighting Player
+            var playerLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                ? (IEntityLightSampler)v6LightSampler
+                : neutralEntityLightSampler;
+
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: session.Camera.GetViewMatrix());
-            session.DrawEntities(spriteBatch, v6LightSampler);
+            session.DrawEntities(spriteBatch, playerLightSampler);
             spriteBatch.End();
 
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
@@ -1309,8 +1349,17 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
+                // P1D-C: Use neutral sampler for both Enemy and WorldItem in PIXEL mode
+                var enemyLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
+                var worldItemLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                    ? v6LightSampler
+                    : (IEntityLightSampler)neutralEntityLightSampler;
+
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, v6LightSampler);
+                session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler);
                 spriteBatch.End();
             }
 

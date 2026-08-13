@@ -588,6 +588,12 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, lightSampler, EnvironmentSystem.SkyState.VisualTimeSeconds);
         }
 
+        // P1D-B: Overload for separate enemy and world-item light samplers
+        public void DrawLoopedWorldEntities(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, IEntityLightSampler enemyLightSampler, IEntityLightSampler worldItemLightSampler)
+        {
+            ViewCoordinator.DrawLoopedWorldEntities(spriteBatch, screenWidth, screenHeight, worldOffsetX, enemyLightSampler, worldItemLightSampler, EnvironmentSystem.SkyState.VisualTimeSeconds);
+        }
+
         public void DrawInteriorFocusOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
         {
             ViewCoordinator.DrawInteriorFocusOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
