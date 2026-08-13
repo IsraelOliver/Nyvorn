@@ -114,6 +114,14 @@ namespace Nyvorn.Source.Game.States
         }
         private LightingPresentationMode presentationMode = LightingPresentationMode.Tile;
 
+        // P2-A1: Pixel light reconstruction mode (PIXEL mode only)
+        private enum PixelLightReconstructionMode
+        {
+            Point,       // Nearest-neighbor: baseline coarse appearance (for A/B comparison)
+            Linear       // Bilinear interpolation: smoother gradients (P2-A approved default)
+        }
+        private PixelLightReconstructionMode pixelLightReconstructionMode = PixelLightReconstructionMode.Linear;
+
         // V6 Terraria-inspired Lighting System (ETAPA 5.2)
         private V6LightingSystem v6LightingSystem;
         private V6LightSampler v6LightSampler;
@@ -346,6 +354,20 @@ namespace Nyvorn.Source.Game.States
                     presentationMode = presentationMode == LightingPresentationMode.Tile
                         ? LightingPresentationMode.PixelTest
                         : LightingPresentationMode.Tile;
+                }
+            }
+
+            // P2-A1: Shift+O to toggle pixel light reconstruction mode (PIXEL mode only)
+            if (!handledConsoleThisFrame && presentationMode == LightingPresentationMode.PixelTest)
+            {
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool oPressed = keyboard.IsKeyDown(Keys.O);
+
+                if (shiftPressed && oPressed && !previousConsoleKeyboard.IsKeyDown(Keys.O))
+                {
+                    pixelLightReconstructionMode = pixelLightReconstructionMode == PixelLightReconstructionMode.Point
+                        ? PixelLightReconstructionMode.Linear
+                        : PixelLightReconstructionMode.Point;
                 }
             }
 
@@ -1081,6 +1103,14 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL_TEST";
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             spriteBatch.DrawString(consoleFont, $"LIGHTING PRESENTATION: {modeLabel} (Shift+P to toggle)", new Vector2(10, 10), Color.Yellow);
+
+            // P2-A1: Show reconstruction mode when in PIXEL mode
+            if (presentationMode == LightingPresentationMode.PixelTest)
+            {
+                string reconstructionLabel = pixelLightReconstructionMode == PixelLightReconstructionMode.Point ? "POINT" : "LINEAR";
+                spriteBatch.DrawString(consoleFont, $"PIXEL LIGHT: {reconstructionLabel} (Shift+O to toggle)", new Vector2(10, 25), Color.Cyan);
+            }
+
             spriteBatch.End();
 
             // DEBUG: P1B PixelLightBuffer visualization
@@ -1285,7 +1315,13 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                             bufferHeight * tileSize
                         );
 
-                        spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Opaque, transformMatrix: transform);
+                        // P2-A2: Reconstruction sampler mode (POINT vs LINEAR)
+                        SamplerState reconstructionSampler =
+                            pixelLightReconstructionMode == PixelLightReconstructionMode.Point
+                                ? SamplerState.PointClamp
+                                : SamplerState.LinearClamp;
+
+                        spriteBatch.Begin(samplerState: reconstructionSampler, blendState: BlendState.Opaque, transformMatrix: transform);
                         spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, destRect, Color.White);
                         spriteBatch.End();
                     }
