@@ -826,6 +826,15 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                         float contributionG = finalG * finalEnergy;
                         float contributionB = finalB * finalEnergy;
 
+                        // P2-B3: Apply output multiplier for flicker/pulsing effects
+                        float outputMultiplier = source.OutputMultiplier > 0f
+                            ? source.OutputMultiplier
+                            : 1f;
+
+                        contributionR *= outputMultiplier;
+                        contributionG *= outputMultiplier;
+                        contributionB *= outputMultiplier;
+
                         ApplyBoundedAdd(ref lightR[cellIndex], contributionR);
                         ApplyBoundedAdd(ref lightG[cellIndex], contributionG);
                         ApplyBoundedAdd(ref lightB[cellIndex], contributionB);

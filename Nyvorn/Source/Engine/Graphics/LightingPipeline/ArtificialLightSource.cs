@@ -11,5 +11,6 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public bool UseColorShaping;          // P2-B2: Enable color temperature shaping
         public float Intensity;               // Multiplier (typically 0..2)
         public int RadiusTiles;               // Reach in tiles
+        public float OutputMultiplier;        // P2-B3: Brightness multiplier for flicker/pulsing (default 1.0)
     }
 }

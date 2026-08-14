@@ -53,6 +53,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public static float TorchLightColorCoreExponent { get; set; } = 2.0f;  // Exponent for core blend concentration
         public static bool TorchLightColorShapingEnabled { get; set; } = true;  // Default: shaped color (approved visual)
 
+        // P2-B3: Torch light flicker (subtle brightness oscillation)
+        public static bool TorchLightFlickerEnabled { get; set; } = false;  // Default: off (baseline stable)
+        public static float TorchLightFlickerAmount { get; set; } = 0.08f;  // Oscillation intensity (±8% by default)
+
         // Point Light Attenuation (Starbound-style energy loss)
         public static float PointLightAirAttenuationPerTile { get; set; } = 0.08f;      // Linear per distance
         public static float PointLightForegroundObstacleAttenuation { get; set; } = 0.70f;  // Per Foreground cell traversed

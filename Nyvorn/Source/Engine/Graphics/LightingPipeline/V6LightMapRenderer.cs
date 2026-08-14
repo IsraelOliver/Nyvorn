@@ -45,12 +45,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         private Texture2D productionTexture;
         private Color[] productionTextureData = Array.Empty<Color>();
 
+        private Texture2D rawLightTexture;
+        private Color[] rawLightTextureData = Array.Empty<Color>();
+
         public Texture2D ProductionTexture => productionTexture;
+        public Texture2D RawLightTexture => rawLightTexture;
 
         public void Update()
         {
             // Always update production texture (for rendering in game)
             UpdateProductionTexture();
+
+            // Always update raw light texture (for pixel pipeline)
+            UpdateRawLightTexture();
 
             // Only update debug texture if debug mode is ON
             if (currentMode == DebugMode.Off)
@@ -143,6 +150,41 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             productionTexture.SetData(productionTextureData);
         }
 
+        private void UpdateRawLightTexture()
+        {
+            int width = lightMap.BufferWidth;
+            int height = lightMap.BufferHeight;
+            int cellCount = width * height;
+
+            if (rawLightTextureData.Length < cellCount)
+                rawLightTextureData = new Color[cellCount];
+
+            var lightR = lightMap.LightR;
+            var lightG = lightMap.LightG;
+            var lightB = lightMap.LightB;
+
+            for (int i = 0; i < cellCount; i++)
+            {
+                float r = lightR[i];
+                float g = lightG[i];
+                float b = lightB[i];
+
+                int ri = (int)Math.Clamp(r * 255, 0, 255);
+                int gi = (int)Math.Clamp(g * 255, 0, 255);
+                int bi = (int)Math.Clamp(b * 255, 0, 255);
+
+                rawLightTextureData[i] = new Color(ri, gi, bi, 255);
+            }
+
+            if (rawLightTexture == null || rawLightTexture.Width != width || rawLightTexture.Height != height)
+            {
+                rawLightTexture?.Dispose();
+                rawLightTexture = new Texture2D(graphicsDevice, width, height);
+            }
+
+            rawLightTexture.SetData(rawLightTextureData);
+        }
+
         private void GenerateLightIntensityColors(int width, int height, int cellCount)
         {
             var lightR = lightMap.LightR;
@@ -186,6 +228,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
         public void Dispose()
         {
+            productionTexture?.Dispose();
+            productionTexture = null;
+            rawLightTexture?.Dispose();
+            rawLightTexture = null;
             debugTexture?.Dispose();
             debugTexture = null;
         }

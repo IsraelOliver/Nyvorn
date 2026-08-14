@@ -17,15 +17,17 @@ namespace Nyvorn.Source.Gameplay.World.Simulation
 
         private static readonly SkyKeyframe[] SkyKeyframes =
         {
-            new(0f / 24f, new Color(8, 18, 43), new Color(15, 34, 77), new Color(78, 95, 132), new Color(27, 38, 68)),
-            new(4f / 24f, new Color(17, 37, 79), new Color(66, 72, 104), new Color(95, 104, 134), new Color(46, 50, 83)),
-            new(5f / 24f, new Color(47, 82, 126), new Color(223, 128, 86), new Color(170, 134, 118), new Color(124, 93, 94)),
+            // P2-C2: Deep Night Sky palette — meia-noite profunda, céu azul-marinho
+            new(0f / 24f, new Color(3, 7, 18), new Color(7, 14, 32), new Color(78, 95, 132), new Color(27, 38, 68)),
+            new(4f / 24f, new Color(5, 11, 27), new Color(12, 25, 52), new Color(95, 104, 134), new Color(46, 50, 83)),
+            new(5f / 24f, new Color(12, 25, 52), new Color(28, 55, 90), new Color(170, 134, 118), new Color(124, 93, 94)),
             new(6.5f / 24f, new Color(102, 190, 255), new Color(156, 220, 255), new Color(222, 236, 245), new Color(164, 205, 228)),
             new(12f / 24f, new Color(87, 179, 255), new Color(137, 216, 255), new Color(245, 250, 255), new Color(176, 215, 234)),
             new(14.5f / 24f, new Color(99, 184, 247), new Color(150, 214, 245), new Color(238, 244, 250), new Color(171, 205, 224)),
             new(17.5f / 24f, new Color(74, 129, 204), new Color(246, 146, 82), new Color(212, 164, 126), new Color(132, 85, 94)),
-            new(19.5f / 24f, new Color(13, 31, 73), new Color(30, 47, 86), new Color(82, 95, 123), new Color(32, 43, 73)),
-            new(1f, new Color(8, 18, 43), new Color(15, 34, 77), new Color(78, 95, 132), new Color(27, 38, 68))
+            // P2-C2: Early Night Sky — transição clara para noite profunda
+            new(19.5f / 24f, new Color(7, 15, 36), new Color(15, 30, 62), new Color(82, 95, 123), new Color(32, 43, 73)),
+            new(1f, new Color(3, 7, 18), new Color(7, 14, 32), new Color(78, 95, 132), new Color(27, 38, 68))
         };
 
         private readonly int seed;
