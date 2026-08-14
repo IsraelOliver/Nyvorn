@@ -371,6 +371,24 @@ namespace Nyvorn.Source.Game.States
                 }
             }
 
+            // P2-B1B: Shift+I to cycle torch light falloff curve exponent (1.0 → 1.4 → 1.6)
+            if (!handledConsoleThisFrame)
+            {
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool iPressed = keyboard.IsKeyDown(Keys.I);
+
+                if (shiftPressed && iPressed && !previousConsoleKeyboard.IsKeyDown(Keys.I))
+                {
+                    float current = V6LightingConfig.TorchLightFalloffExponent;
+                    if (System.Math.Abs(current - 1.0f) < 0.01f)
+                        V6LightingConfig.TorchLightFalloffExponent = 1.4f;
+                    else if (System.Math.Abs(current - 1.4f) < 0.01f)
+                        V6LightingConfig.TorchLightFalloffExponent = 1.6f;
+                    else
+                        V6LightingConfig.TorchLightFalloffExponent = 1.0f;
+                }
+            }
+
             if (minimapVisible)
             {
                 WorldMinimapInteractionResult minimapInteraction = session.UpdateMinimapInteraction(
@@ -1109,6 +1127,17 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             {
                 string reconstructionLabel = pixelLightReconstructionMode == PixelLightReconstructionMode.Point ? "POINT" : "LINEAR";
                 spriteBatch.DrawString(consoleFont, $"PIXEL LIGHT: {reconstructionLabel} (Shift+O to toggle)", new Vector2(10, 25), Color.Cyan);
+
+                // P2-B1B: Show torch falloff curve exponent (cycles 1.0 → 1.4 → 1.6)
+                string curveLabel;
+                float exponent = V6LightingConfig.TorchLightFalloffExponent;
+                if (System.Math.Abs(exponent - 1.0f) < 0.01f)
+                    curveLabel = "1.0";
+                else if (System.Math.Abs(exponent - 1.4f) < 0.01f)
+                    curveLabel = "1.4";
+                else
+                    curveLabel = "1.6";
+                spriteBatch.DrawString(consoleFont, $"TORCH CURVE: {curveLabel} (Shift+I to cycle)", new Vector2(10, 40), Color.Magenta);
             }
 
             spriteBatch.End();

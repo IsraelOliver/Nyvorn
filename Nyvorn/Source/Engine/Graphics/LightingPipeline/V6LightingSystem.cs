@@ -774,11 +774,29 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                         if (remainingEnergy <= 0f)
                             continue;
 
-                        // Apply light: preserve RGB ratio, scale by remaining energy
+                        // P2-B1: Apply falloff curve to remaining energy
+                        float finalEnergy = remainingEnergy;
+                        if (sourceIntensity > 0f)
+                        {
+                            float normalizedEnergy = System.Math.Clamp(
+                                remainingEnergy / sourceIntensity,
+                                0f,
+                                1f
+                            );
+
+                            float curvedEnergy = MathF.Pow(
+                                normalizedEnergy,
+                                V6LightingConfig.TorchLightFalloffExponent
+                            );
+
+                            finalEnergy = curvedEnergy * sourceIntensity;
+                        }
+
+                        // Apply light: preserve RGB ratio, scale by final curved energy
                         int cellIndex = (localY * width) + localX;
-                        float contributionR = sourceR * remainingEnergy;
-                        float contributionG = sourceG * remainingEnergy;
-                        float contributionB = sourceB * remainingEnergy;
+                        float contributionR = sourceR * finalEnergy;
+                        float contributionG = sourceG * finalEnergy;
+                        float contributionB = sourceB * finalEnergy;
 
                         ApplyBoundedAdd(ref lightR[cellIndex], contributionR);
                         ApplyBoundedAdd(ref lightG[cellIndex], contributionG);

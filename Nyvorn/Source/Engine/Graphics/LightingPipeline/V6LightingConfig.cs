@@ -45,6 +45,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public static float TorchLightIntensity { get; set; } = 1.0f;
         public static int TorchLightRadiusTiles { get; set; } = 9;
 
+        // P2-B1: Torch light falloff curve exponent
+        public static float TorchLightFalloffExponent { get; set; } = 1.4f;  // 1.4=balanced (default), 1.0/1.6=debug A/B
+
         // Point Light Attenuation (Starbound-style energy loss)
         public static float PointLightAirAttenuationPerTile { get; set; } = 0.08f;      // Linear per distance
         public static float PointLightForegroundObstacleAttenuation { get; set; } = 0.70f;  // Per Foreground cell traversed
