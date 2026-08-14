@@ -106,13 +106,13 @@ namespace Nyvorn.Source.Game.States
         private float fpsSmoothed;
         private bool debugPixelLightBuffer;
 
-        // P1C-1: Presentation mode for testing pixel-resolution lighting
+        // Presentation mode for lighting rendering
         private enum LightingPresentationMode
         {
-            Tile,        // Baseline: ProductionTexture in WorldColorRT
-            PixelTest    // Test: WorldColorRT without ProductionTexture
+            Tile,        // Legacy: ProductionTexture in WorldColorRT (fallback)
+            Pixel        // Official: RawLightTexture with PixelComposite
         }
-        private LightingPresentationMode presentationMode = LightingPresentationMode.Tile;
+        private LightingPresentationMode presentationMode = LightingPresentationMode.Pixel;
 
         // P2-A1: Pixel light reconstruction mode (PIXEL mode only)
         private enum PixelLightReconstructionMode
@@ -121,10 +121,6 @@ namespace Nyvorn.Source.Game.States
             Linear       // Bilinear interpolation: smoother gradients (P2-A approved default)
         }
         private PixelLightReconstructionMode pixelLightReconstructionMode = PixelLightReconstructionMode.Linear;
-
-        // P2-C4: Night overlay A/B diagnostic toggle (PIXEL mode only)
-        // Default: false (OFF) because PIXEL currently has no overlay due to LegacyNightOverlayMode=false
-        private bool pixelNightOverlayEnabled = false;
 
         // V6 Terraria-inspired Lighting System (ETAPA 5.2)
         private V6LightingSystem v6LightingSystem;
@@ -384,13 +380,13 @@ namespace Nyvorn.Source.Game.States
                 if (shiftPressed && pPressed && !previousConsoleKeyboard.IsKeyDown(Keys.P))
                 {
                     presentationMode = presentationMode == LightingPresentationMode.Tile
-                        ? LightingPresentationMode.PixelTest
+                        ? LightingPresentationMode.Pixel
                         : LightingPresentationMode.Tile;
                 }
             }
 
             // P2-A1: Shift+O to toggle pixel light reconstruction mode (PIXEL mode only)
-            if (!handledConsoleThisFrame && presentationMode == LightingPresentationMode.PixelTest)
+            if (!handledConsoleThisFrame && presentationMode == LightingPresentationMode.Pixel)
             {
                 bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
                 bool oPressed = keyboard.IsKeyDown(Keys.O);
@@ -400,62 +396,6 @@ namespace Nyvorn.Source.Game.States
                     pixelLightReconstructionMode = pixelLightReconstructionMode == PixelLightReconstructionMode.Point
                         ? PixelLightReconstructionMode.Linear
                         : PixelLightReconstructionMode.Point;
-                }
-            }
-
-            // P2-B1B: Shift+I to cycle torch light falloff curve exponent (1.0 → 1.4 → 1.6)
-            if (!handledConsoleThisFrame)
-            {
-                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool iPressed = keyboard.IsKeyDown(Keys.I);
-
-                if (shiftPressed && iPressed && !previousConsoleKeyboard.IsKeyDown(Keys.I))
-                {
-                    float current = V6LightingConfig.TorchLightFalloffExponent;
-                    if (System.Math.Abs(current - 1.0f) < 0.01f)
-                        V6LightingConfig.TorchLightFalloffExponent = 1.4f;
-                    else if (System.Math.Abs(current - 1.4f) < 0.01f)
-                        V6LightingConfig.TorchLightFalloffExponent = 1.6f;
-                    else
-                        V6LightingConfig.TorchLightFalloffExponent = 1.0f;
-                }
-            }
-
-            // P2-B2: Shift+U to toggle torch color shaping (UNIFORM vs SHAPED)
-            if (!handledConsoleThisFrame)
-            {
-                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool uPressed = keyboard.IsKeyDown(Keys.U);
-
-                if (shiftPressed && uPressed && !previousConsoleKeyboard.IsKeyDown(Keys.U))
-                {
-                    V6LightingConfig.TorchLightColorShapingEnabled =
-                        !V6LightingConfig.TorchLightColorShapingEnabled;
-                }
-            }
-
-            // P2-B3: Shift+Y to toggle torch light flicker (OFF vs ON)
-            if (!handledConsoleThisFrame)
-            {
-                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool yPressed = keyboard.IsKeyDown(Keys.Y);
-
-                if (shiftPressed && yPressed && !previousConsoleKeyboard.IsKeyDown(Keys.Y))
-                {
-                    V6LightingConfig.TorchLightFlickerEnabled =
-                        !V6LightingConfig.TorchLightFlickerEnabled;
-                }
-            }
-
-            // P2-C4: Shift+N to toggle night overlay A/B diagnostic (PIXEL mode only)
-            if (!handledConsoleThisFrame)
-            {
-                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
-                bool nPressed = keyboard.IsKeyDown(Keys.N);
-
-                if (shiftPressed && nPressed && !previousConsoleKeyboard.IsKeyDown(Keys.N))
-                {
-                    pixelNightOverlayEnabled = !pixelNightOverlayEnabled;
                 }
             }
 
@@ -1122,7 +1062,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
 
             // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
-            if (presentationMode == LightingPresentationMode.PixelTest && pixelCompositeEffect != null)
+            if (presentationMode == LightingPresentationMode.Pixel && pixelCompositeEffect != null)
             {
                 // P1C-2: Use PixelComposite effect for PIXEL_TEST mode
                 // P1C-2B: Set MatrixTransform with orthographic projection (screen-space coordinates)
@@ -1163,7 +1103,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             }
 
             // P1E-C: Draw torch flames in PIXEL mode (emissive, after composite)
-            if (presentationMode == LightingPresentationMode.PixelTest)
+            if (presentationMode == LightingPresentationMode.Pixel)
             {
                 DrawPixelModeTorchFlames(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels, session.EnvironmentSystem.SkyState.VisualTimeSeconds);
             }
@@ -1171,19 +1111,8 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             // PHASE 2: Screen-space overlays (rain, night overlay)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
             session.DrawRainFront(spriteBatch, screenW, screenH);
-            // P2-C4: Night overlay A/B diagnostic — PIXEL mode independent of LegacyNightOverlayMode
-            bool shouldDrawNightOverlay;
-            if (presentationMode == LightingPresentationMode.Tile)
-            {
-                // TILE: maintain historical behavior
-                shouldDrawNightOverlay = session.LegacyNightOverlayMode;
-            }
-            else
-            {
-                // PIXEL: P2-C4 diagnostic — force real A/B independent of legacy flag
-                shouldDrawNightOverlay = pixelNightOverlayEnabled;
-            }
-            if (shouldDrawNightOverlay)
+            // Night overlay: TILE mode only (legacy behavior), PIXEL mode has no overlay
+            if (presentationMode == LightingPresentationMode.Tile && session.LegacyNightOverlayMode)
                 session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
@@ -1199,41 +1128,16 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
 
-            // DEBUG: P1C-1 presentation mode label (Shift+P to toggle)
-            string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL_TEST";
+            // DEBUG: Presentation mode label (Shift+P to toggle)
+            string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL";
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            spriteBatch.DrawString(consoleFont, $"LIGHTING PRESENTATION: {modeLabel} (Shift+P to toggle)", new Vector2(10, 10), Color.Yellow);
+            spriteBatch.DrawString(consoleFont, $"LIGHTING: {modeLabel} (Shift+P)", new Vector2(10, 10), Color.Yellow);
 
-            // P2-A1: Show reconstruction mode when in PIXEL mode
-            if (presentationMode == LightingPresentationMode.PixelTest)
+            // Show reconstruction mode diagnostic when in Pixel mode
+            if (presentationMode == LightingPresentationMode.Pixel)
             {
                 string reconstructionLabel = pixelLightReconstructionMode == PixelLightReconstructionMode.Point ? "POINT" : "LINEAR";
-                spriteBatch.DrawString(consoleFont, $"PIXEL LIGHT: {reconstructionLabel} (Shift+O to toggle)", new Vector2(10, 25), Color.Cyan);
-
-                // P2-B1B: Show torch falloff curve exponent (cycles 1.0 → 1.4 → 1.6)
-                string curveLabel;
-                float exponent = V6LightingConfig.TorchLightFalloffExponent;
-                if (System.Math.Abs(exponent - 1.0f) < 0.01f)
-                    curveLabel = "1.0";
-                else if (System.Math.Abs(exponent - 1.4f) < 0.01f)
-                    curveLabel = "1.4";
-                else
-                    curveLabel = "1.6";
-                spriteBatch.DrawString(consoleFont, $"TORCH CURVE: {curveLabel} (Shift+I to cycle)", new Vector2(10, 40), Color.Magenta);
-
-                // P2-B2: Show torch color shaping mode
-                string colorLabel = V6LightingConfig.TorchLightColorShapingEnabled ? "SHAPED" : "UNIFORM";
-                spriteBatch.DrawString(consoleFont, $"TORCH COLOR: {colorLabel} (Shift+U to toggle)", new Vector2(10, 55), Color.LimeGreen);
-
-                // P2-B3: Show torch flicker mode
-                string flickerLabel = V6LightingConfig.TorchLightFlickerEnabled
-                    ? $"ON {(V6LightingConfig.TorchLightFlickerAmount * 100f):F0}%"
-                    : "OFF";
-                spriteBatch.DrawString(consoleFont, $"TORCH FLICKER: {flickerLabel} (Shift+Y to toggle)", new Vector2(10, 70), Color.Gold);
-
-                // P2-C4: Show night overlay A/B diagnostic mode (PIXEL-only)
-                string nightOverlayLabel = pixelNightOverlayEnabled ? "ON" : "OFF";
-                spriteBatch.DrawString(consoleFont, $"NIGHT OVERLAY: {nightOverlayLabel} (Shift+N to toggle) [LEGACY: {(session.LegacyNightOverlayMode ? "ON" : "OFF")}]", new Vector2(10, 85), Color.Lime);
+                spriteBatch.DrawString(consoleFont, $"PIXEL LIGHT: {reconstructionLabel} (Shift+O)", new Vector2(10, 25), Color.Cyan);
             }
 
             spriteBatch.End();
@@ -1293,7 +1197,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
 
                 // P2-C5: Surface night tint for Grass (PIXEL mode only, applied before wetness)
-                if (presentationMode == LightingPresentationMode.PixelTest)
+                if (presentationMode == LightingPresentationMode.Pixel)
                 {
                     spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                     session.DrawSurfaceNightTint(spriteBatch, screenW, screenH, worldOffset);

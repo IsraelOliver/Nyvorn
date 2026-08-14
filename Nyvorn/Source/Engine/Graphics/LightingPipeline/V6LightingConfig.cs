@@ -45,17 +45,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public static float TorchLightIntensity { get; set; } = 1.0f;
         public static int TorchLightRadiusTiles { get; set; } = 9;
 
-        // P2-B1: Torch light falloff curve exponent
-        public static float TorchLightFalloffExponent { get; set; } = 1.4f;  // 1.4=balanced (default), 1.0/1.6=debug A/B
+        // Torch light falloff curve exponent — APPROVED VISUAL (1.4)
+        public static float TorchLightFalloffExponent { get; set; } = 1.4f;
 
-        // P2-B2: Torch light color shaping (temperature gradient)
-        public static Color TorchLightCoreColor { get; set; } = new Color(1.0f, 0.82f, 0.45f);  // Core color: warm yellow
-        public static float TorchLightColorCoreExponent { get; set; } = 2.0f;  // Exponent for core blend concentration
-        public static bool TorchLightColorShapingEnabled { get; set; } = true;  // Default: shaped color (approved visual)
+        // Torch light color shaping (temperature gradient) — APPROVED VISUAL (SHAPED)
+        public static Color TorchLightCoreColor { get; set; } = new Color(1.0f, 0.82f, 0.45f);
+        public static float TorchLightColorCoreExponent { get; set; } = 2.0f;
+        public static bool TorchLightColorShapingEnabled { get; set; } = true;
 
-        // P2-B3: Torch light flicker (subtle brightness oscillation)
-        public static bool TorchLightFlickerEnabled { get; set; } = false;  // Default: off (baseline stable)
-        public static float TorchLightFlickerAmount { get; set; } = 0.08f;  // Oscillation intensity (±8% by default)
+        // P2-B3: Torch light flicker (subtle brightness oscillation) — APPROVED VISUAL
+        public static bool TorchLightFlickerEnabled { get; set; } = true;   // Enabled: approved visual effect
+        public static float TorchLightFlickerAmount { get; set; } = 0.08f;  // Oscillation intensity (±8%)
 
         // Point Light Attenuation (Starbound-style energy loss)
         public static float PointLightAirAttenuationPerTile { get; set; } = 0.08f;      // Linear per distance
