@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using Nyvorn.Source.Engine.Input;
 using System;
@@ -14,6 +15,7 @@ using Nyvorn.Source.Gameplay.Items;
 using Nyvorn.Source.Gameplay.UI;
 using Nyvorn.Source.Gameplay.World.Simulation;
 using Nyvorn.Source.World.Decorations;
+using Nyvorn.Source.World.Generation;
 using Nyvorn.Source.World.Persistence;
 using Nyvorn.Source.World.Tissue;
 using System.Collections.Generic;
@@ -613,6 +615,89 @@ namespace Nyvorn.Source.Game.States
         }
 
         /// <summary>
+        /// P2-E-BG1: Draw subterranean background placeholders (Cavern and DeepCavern layers).
+        /// World-Y anchored solid colored rectangles, no parallax or animation.
+        /// Drawn after atmospheric background and before pixel composite.
+        /// </summary>
+        private void DrawSubterraneanBackgroundPlaceholders(SpriteBatch spriteBatch, int screenW, int screenH)
+        {
+            if (session?.LayerDefinitions == null || session.LayerDefinitions.Count == 0)
+                return;
+
+            const int CAVERN_R = 72;
+            const int CAVERN_G = 52;
+            const int CAVERN_B = 38;
+            const int CAVERN_A = 255;
+            Color cavernColor = new Color(CAVERN_R, CAVERN_G, CAVERN_B, CAVERN_A);
+
+            const int DEEP_R = 52;
+            const int DEEP_G = 48;
+            const int DEEP_B = 44;
+            const int DEEP_A = 255;
+            Color deepCavernColor = new Color(DEEP_R, DEEP_G, DEEP_B, DEEP_A);
+
+            int tileSize = session.WorldMap.TileSize;
+            Camera2D camera = session.ViewCoordinator.Camera;
+
+            float visibleWorldTopY = camera.Position.Y;
+            float visibleWorldBottomY = camera.Position.Y + (screenH / camera.Zoom);
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
+
+            // Draw Cavern layer
+            foreach (var layer in session.LayerDefinitions)
+            {
+                if (layer.LayerType == WorldLayerType.Cavern)
+                {
+                    DrawLayerBackground(spriteBatch, layer, cavernColor, tileSize, visibleWorldTopY, visibleWorldBottomY, camera, screenW, screenH);
+                }
+                else if (layer.LayerType == WorldLayerType.DeepCavern)
+                {
+                    DrawLayerBackground(spriteBatch, layer, deepCavernColor, tileSize, visibleWorldTopY, visibleWorldBottomY, camera, screenW, screenH);
+                }
+            }
+
+            spriteBatch.End();
+        }
+
+        private void DrawLayerBackground(
+            SpriteBatch spriteBatch,
+            WorldLayerDefinition layer,
+            Color color,
+            int tileSize,
+            float visibleWorldTopY,
+            float visibleWorldBottomY,
+            Camera2D camera,
+            int screenW,
+            int screenH)
+        {
+            // Convert tile coordinates to world pixels
+            float layerWorldTopY = layer.StartY * tileSize;
+            float layerWorldBottomY = (layer.EndY + 1) * tileSize;
+
+            // Calculate intersection with visible viewport
+            float visibleTop = System.Math.Max(layerWorldTopY, visibleWorldTopY);
+            float visibleBottom = System.Math.Min(layerWorldBottomY, visibleWorldBottomY);
+
+            if (visibleBottom <= visibleTop)
+                return;
+
+            // Convert world Y coordinates to screen space
+            float screenTop = (visibleTop - camera.Position.Y) * camera.Zoom;
+            float screenBottom = (visibleBottom - camera.Position.Y) * camera.Zoom;
+
+            // Clamp to screen bounds and create rectangle
+            int screenY = System.Math.Max(0, (int)System.Math.Floor(screenTop));
+            int screenHeight = System.Math.Min(screenH, (int)System.Math.Ceiling(screenBottom)) - screenY;
+
+            if (screenHeight <= 0)
+                return;
+
+            Rectangle drawRect = new Rectangle(0, screenY, screenW, screenHeight);
+            spriteBatch.Draw(session.ViewCoordinator.DebugPixel, drawRect, color);
+        }
+
+        /// <summary>
         /// Builds lighting mask alongside world scene in PHASE 2.
         /// Renderiza branco (1.0) para elementos ilumináveis, preto (0.0) para atmosfera/emissivos.
         /// Executado enquanto SceneRenderTarget é preenchido - os dois RenderTargets crescem juntos.
@@ -1060,6 +1145,9 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
             // PHASE 1B: Draw atmospheric background (sky, sun, moons, parallax)
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
+
+            // P2-E-BG1: Draw subterranean background placeholders
+            DrawSubterraneanBackgroundPlaceholders(spriteBatch, screenW, screenH);
 
             // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
             if (presentationMode == LightingPresentationMode.Pixel && pixelCompositeEffect != null)

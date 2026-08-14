@@ -31,6 +31,7 @@ namespace Nyvorn.Source.Game.States
         private const int MaxSavedConsoleCommands = 100;
         private int consoleCommandHistoryRevision;
         private int persistedConsoleCommandHistoryRevision;
+        private WorldLayerDefinition[] layerDefinitions = System.Array.Empty<WorldLayerDefinition>();
 
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required string PlayerId { get; init; }
@@ -75,6 +76,7 @@ namespace Nyvorn.Source.Game.States
         public long MediumTickCount => WorldTickCoordinator.MediumTickCount;
         public long SlowTickCount => WorldTickCoordinator.SlowTickCount;
         public WorldMap WorldMap => RuntimeContext.WorldMap;
+        public IReadOnlyList<WorldLayerDefinition> LayerDefinitions => layerDefinitions;
         public bool HasUnsavedWorldChanges => WorldMap.HasUnsavedChanges ||
                                               DayNightCycle.HasUnsavedChanges ||
                                               EnvironmentSystem.HasUnsavedChanges ||
@@ -132,6 +134,11 @@ namespace Nyvorn.Source.Game.States
                 ViewCoordinator.WorldObjectRegistry.IsPlatformBlockingMovement(playerBounds, velocity);
 
             Player.Motor.SetPlatformCollisionCheck(platformCheck);
+        }
+
+        public void SetLayerDefinitions(WorldLayerDefinition[] definitions)
+        {
+            layerDefinitions = definitions ?? System.Array.Empty<WorldLayerDefinition>();
         }
 
         public void AddConsoleCommand(string command)

@@ -917,6 +917,11 @@ namespace Nyvorn.Source.Game.States
 
             session.SetSelectedHotbarIndex(selectedHotbarIndex);
             session.InitializeRuntimeState();
+
+            // P2-E-BG1: Calculate and set layer definitions (derived from world config)
+            WorldLayerDefinition[] layerDefinitions = WorldGenerator.BuildLayerDefinitions(build.WorldMap, build.WorldGenConfig);
+            session.SetLayerDefinitions(layerDefinitions);
+
             PrewarmVisibleTerrainChunks(session);
             return session;
         }

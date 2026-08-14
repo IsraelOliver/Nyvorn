@@ -183,7 +183,7 @@ namespace Nyvorn.Source.World.Generation
             return layers[^1];
         }
 
-        private static WorldLayerDefinition[] BuildLayerDefinitions(WorldMap worldMap, WorldGenConfig config)
+        public static WorldLayerDefinition[] BuildLayerDefinitions(WorldMap worldMap, WorldGenConfig config)
         {
             int lastRow = Math.Max(0, worldMap.Height - 1);
             int spaceEnd = ClampBoundary((int)MathF.Round(worldMap.Height * config.SpaceLayerEndPercent), 0, lastRow - 4);
