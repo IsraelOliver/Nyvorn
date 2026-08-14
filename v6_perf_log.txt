@@ -1,0 +1,14 @@
+[V6 PERF] Frame 0: DoorQueries=303548 DoorBlockingCalls=607096 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=59ms
+[V6 PERF] Frame 30: DoorQueries=391521 DoorBlockingCalls=783042 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=67ms
+[V6 PERF] Frame 60: DoorQueries=391417 DoorBlockingCalls=782834 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=68ms
+[V6 PERF] Frame 90: DoorQueries=391069 DoorBlockingCalls=782138 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=67ms
+[V6 PERF] Frame 120: DoorQueries=387662 DoorBlockingCalls=775324 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=66ms
+[V6 PERF] Frame 150: DoorQueries=391521 DoorBlockingCalls=783042 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=67ms
+[V6 PERF] Frame 180: DoorQueries=351810 DoorBlockingCalls=703620 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=62ms
+[V6 PERF] Frame 210: DoorQueries=328146 DoorBlockingCalls=656292 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=57ms
+[V6 PERF] Frame 240: DoorQueries=328146 DoorBlockingCalls=656292 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=58ms
+[V6 PERF] Frame 270: DoorQueries=328146 DoorBlockingCalls=656292 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=57ms
+[V6 PERF] Frame 300: DoorQueries=328146 DoorBlockingCalls=656292 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=57ms
+[V6 PERF] Frame 330: DoorQueries=328146 DoorBlockingCalls=656292 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=57ms
+[V6 PERF] Frame 360: DoorQueries=389260 DoorBlockingCalls=778520 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=69ms
+[V6 PERF] Frame 390: DoorQueries=309726 DoorBlockingCalls=619452 ClosedDoors=0 Buffer=256x143 DoorOcclusionMs=54ms
