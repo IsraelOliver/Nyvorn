@@ -792,11 +792,39 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                             finalEnergy = curvedEnergy * sourceIntensity;
                         }
 
-                        // Apply light: preserve RGB ratio, scale by final curved energy
+                        // P2-B2: Color shaping based on energy (temperature gradient)
+                        float finalR = sourceR;
+                        float finalG = sourceG;
+                        float finalB = sourceB;
+
+                        if (source.UseColorShaping && sourceIntensity > 0f)
+                        {
+                            float energy01 = System.Math.Clamp(
+                                finalEnergy / sourceIntensity,
+                                0f,
+                                1f
+                            );
+
+                            float colorExponent = source.ColorCoreExponent > 0f
+                                ? source.ColorCoreExponent
+                                : 1f;
+
+                            float coreBlend = MathF.Pow(energy01, colorExponent);
+
+                            float coreR = source.CoreColorRGB.R / 255f;
+                            float coreG = source.CoreColorRGB.G / 255f;
+                            float coreB = source.CoreColorRGB.B / 255f;
+
+                            finalR = MathHelper.Lerp(sourceR, coreR, coreBlend);
+                            finalG = MathHelper.Lerp(sourceG, coreG, coreBlend);
+                            finalB = MathHelper.Lerp(sourceB, coreB, coreBlend);
+                        }
+
+                        // Apply light: preserve shaped RGB, scale by final curved energy
                         int cellIndex = (localY * width) + localX;
-                        float contributionR = sourceR * finalEnergy;
-                        float contributionG = sourceG * finalEnergy;
-                        float contributionB = sourceB * finalEnergy;
+                        float contributionR = finalR * finalEnergy;
+                        float contributionG = finalG * finalEnergy;
+                        float contributionB = finalB * finalEnergy;
 
                         ApplyBoundedAdd(ref lightR[cellIndex], contributionR);
                         ApplyBoundedAdd(ref lightG[cellIndex], contributionG);

@@ -199,6 +199,9 @@ namespace Nyvorn.Source.Game.States
             var torchColor = V6LightingConfig.TorchLightColor;
             var torchIntensity = V6LightingConfig.TorchLightIntensity;
             var torchRadiusTiles = V6LightingConfig.TorchLightRadiusTiles;
+            var torchCoreColor = V6LightingConfig.TorchLightCoreColor;
+            var torchColorCoreExponent = V6LightingConfig.TorchLightColorCoreExponent;
+            var torchColorShapingEnabled = V6LightingConfig.TorchLightColorShapingEnabled;
 
             foreach (var torch in session.TorchRuntimeSystem.Torches)
             {
@@ -206,6 +209,9 @@ namespace Nyvorn.Source.Game.States
                 {
                     PositionPixels = torch.LightOrigin,
                     ColorRGB = torchColor,
+                    CoreColorRGB = torchCoreColor,
+                    ColorCoreExponent = torchColorCoreExponent,
+                    UseColorShaping = torchColorShapingEnabled,
                     Intensity = torchIntensity,
                     RadiusTiles = torchRadiusTiles
                 };
@@ -386,6 +392,19 @@ namespace Nyvorn.Source.Game.States
                         V6LightingConfig.TorchLightFalloffExponent = 1.6f;
                     else
                         V6LightingConfig.TorchLightFalloffExponent = 1.0f;
+                }
+            }
+
+            // P2-B2: Shift+U to toggle torch color shaping (UNIFORM vs SHAPED)
+            if (!handledConsoleThisFrame)
+            {
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool uPressed = keyboard.IsKeyDown(Keys.U);
+
+                if (shiftPressed && uPressed && !previousConsoleKeyboard.IsKeyDown(Keys.U))
+                {
+                    V6LightingConfig.TorchLightColorShapingEnabled =
+                        !V6LightingConfig.TorchLightColorShapingEnabled;
                 }
             }
 
@@ -1138,6 +1157,10 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 else
                     curveLabel = "1.6";
                 spriteBatch.DrawString(consoleFont, $"TORCH CURVE: {curveLabel} (Shift+I to cycle)", new Vector2(10, 40), Color.Magenta);
+
+                // P2-B2: Show torch color shaping mode
+                string colorLabel = V6LightingConfig.TorchLightColorShapingEnabled ? "SHAPED" : "UNIFORM";
+                spriteBatch.DrawString(consoleFont, $"TORCH COLOR: {colorLabel} (Shift+U to toggle)", new Vector2(10, 55), Color.LimeGreen);
             }
 
             spriteBatch.End();

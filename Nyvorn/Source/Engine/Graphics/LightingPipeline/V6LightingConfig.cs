@@ -41,12 +41,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public static float ForegroundIndirectFromBackgroundStrength { get; set; } = 0.20f;  // Very weak coupling
 
         // Artificial lighting (ETAPA 7 — Torch Point Light)
-        public static Color TorchLightColor { get; set; } = new Color(1.0f, 0.60f, 0.20f);  // Warm orange
+        public static Color TorchLightColor { get; set; } = new Color(1.0f, 0.60f, 0.20f);  // Outer/base color: warm orange
         public static float TorchLightIntensity { get; set; } = 1.0f;
         public static int TorchLightRadiusTiles { get; set; } = 9;
 
         // P2-B1: Torch light falloff curve exponent
         public static float TorchLightFalloffExponent { get; set; } = 1.4f;  // 1.4=balanced (default), 1.0/1.6=debug A/B
+
+        // P2-B2: Torch light color shaping (temperature gradient)
+        public static Color TorchLightCoreColor { get; set; } = new Color(1.0f, 0.82f, 0.45f);  // Core color: warm yellow
+        public static float TorchLightColorCoreExponent { get; set; } = 2.0f;  // Exponent for core blend concentration
+        public static bool TorchLightColorShapingEnabled { get; set; } = true;  // Default: shaped color (approved visual)
 
         // Point Light Attenuation (Starbound-style energy loss)
         public static float PointLightAirAttenuationPerTile { get; set; } = 0.08f;      // Linear per distance
