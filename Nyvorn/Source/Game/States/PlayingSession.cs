@@ -503,6 +503,11 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawWetnessOverlay(spriteBatch, screenWidth, screenHeight, worldOffsetX);
         }
 
+        // P2-C5: Surface night tint for Grass during darkness (PIXEL mode only)
+        public void DrawSurfaceNightTint(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)
+        {
+            ViewCoordinator.DrawSurfaceNightTint(spriteBatch, screenWidth, screenHeight, worldOffsetX, WorldNightStrength);
+        }
 
         public void DrawTreeDecorations(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, TreeRenderLayer layer)
         {

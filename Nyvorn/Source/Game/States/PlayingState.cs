@@ -122,6 +122,10 @@ namespace Nyvorn.Source.Game.States
         }
         private PixelLightReconstructionMode pixelLightReconstructionMode = PixelLightReconstructionMode.Linear;
 
+        // P2-C4: Night overlay A/B diagnostic toggle (PIXEL mode only)
+        // Default: false (OFF) because PIXEL currently has no overlay due to LegacyNightOverlayMode=false
+        private bool pixelNightOverlayEnabled = false;
+
         // V6 Terraria-inspired Lighting System (ETAPA 5.2)
         private V6LightingSystem v6LightingSystem;
         private V6LightSampler v6LightSampler;
@@ -203,8 +207,29 @@ namespace Nyvorn.Source.Game.States
             var torchColorCoreExponent = V6LightingConfig.TorchLightColorCoreExponent;
             var torchColorShapingEnabled = V6LightingConfig.TorchLightColorShapingEnabled;
 
+            // P2-B3: Read visual time once per frame for flicker calculation
+            float visualTimeSeconds = session.EnvironmentSystem.SkyState.VisualTimeSeconds;
+
             foreach (var torch in session.TorchRuntimeSystem.Torches)
             {
+                float outputMultiplier = 1.0f;
+
+                // P2-B3: Calculate subtle flicker based on torch position and time
+                if (V6LightingConfig.TorchLightFlickerEnabled)
+                {
+                    Vector2 lightOrigin = torch.LightOrigin;
+
+                    float phase = lightOrigin.X * 0.013f + lightOrigin.Y * 0.017f;
+
+                    float wave1 = MathF.Sin(visualTimeSeconds * 6.7f + phase);
+                    float wave2 = MathF.Sin(visualTimeSeconds * 11.3f + phase * 1.37f);
+                    float wave3 = MathF.Sin(visualTimeSeconds * 17.9f + phase * 0.73f);
+
+                    float noise = wave1 * 0.50f + wave2 * 0.30f + wave3 * 0.20f;
+
+                    outputMultiplier = 1.0f + noise * V6LightingConfig.TorchLightFlickerAmount;
+                }
+
                 yield return new ArtificialLightSource
                 {
                     PositionPixels = torch.LightOrigin,
@@ -213,7 +238,8 @@ namespace Nyvorn.Source.Game.States
                     ColorCoreExponent = torchColorCoreExponent,
                     UseColorShaping = torchColorShapingEnabled,
                     Intensity = torchIntensity,
-                    RadiusTiles = torchRadiusTiles
+                    RadiusTiles = torchRadiusTiles,
+                    OutputMultiplier = outputMultiplier
                 };
             }
         }
@@ -405,6 +431,31 @@ namespace Nyvorn.Source.Game.States
                 {
                     V6LightingConfig.TorchLightColorShapingEnabled =
                         !V6LightingConfig.TorchLightColorShapingEnabled;
+                }
+            }
+
+            // P2-B3: Shift+Y to toggle torch light flicker (OFF vs ON)
+            if (!handledConsoleThisFrame)
+            {
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool yPressed = keyboard.IsKeyDown(Keys.Y);
+
+                if (shiftPressed && yPressed && !previousConsoleKeyboard.IsKeyDown(Keys.Y))
+                {
+                    V6LightingConfig.TorchLightFlickerEnabled =
+                        !V6LightingConfig.TorchLightFlickerEnabled;
+                }
+            }
+
+            // P2-C4: Shift+N to toggle night overlay A/B diagnostic (PIXEL mode only)
+            if (!handledConsoleThisFrame)
+            {
+                bool shiftPressed = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                bool nPressed = keyboard.IsKeyDown(Keys.N);
+
+                if (shiftPressed && nPressed && !previousConsoleKeyboard.IsKeyDown(Keys.N))
+                {
+                    pixelNightOverlayEnabled = !pixelNightOverlayEnabled;
                 }
             }
 
@@ -1120,7 +1171,19 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             // PHASE 2: Screen-space overlays (rain, night overlay)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
             session.DrawRainFront(spriteBatch, screenW, screenH);
-            if (session.LegacyNightOverlayMode)
+            // P2-C4: Night overlay A/B diagnostic — PIXEL mode independent of LegacyNightOverlayMode
+            bool shouldDrawNightOverlay;
+            if (presentationMode == LightingPresentationMode.Tile)
+            {
+                // TILE: maintain historical behavior
+                shouldDrawNightOverlay = session.LegacyNightOverlayMode;
+            }
+            else
+            {
+                // PIXEL: P2-C4 diagnostic — force real A/B independent of legacy flag
+                shouldDrawNightOverlay = pixelNightOverlayEnabled;
+            }
+            if (shouldDrawNightOverlay)
                 session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
@@ -1161,6 +1224,16 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 // P2-B2: Show torch color shaping mode
                 string colorLabel = V6LightingConfig.TorchLightColorShapingEnabled ? "SHAPED" : "UNIFORM";
                 spriteBatch.DrawString(consoleFont, $"TORCH COLOR: {colorLabel} (Shift+U to toggle)", new Vector2(10, 55), Color.LimeGreen);
+
+                // P2-B3: Show torch flicker mode
+                string flickerLabel = V6LightingConfig.TorchLightFlickerEnabled
+                    ? $"ON {(V6LightingConfig.TorchLightFlickerAmount * 100f):F0}%"
+                    : "OFF";
+                spriteBatch.DrawString(consoleFont, $"TORCH FLICKER: {flickerLabel} (Shift+Y to toggle)", new Vector2(10, 70), Color.Gold);
+
+                // P2-C4: Show night overlay A/B diagnostic mode (PIXEL-only)
+                string nightOverlayLabel = pixelNightOverlayEnabled ? "ON" : "OFF";
+                spriteBatch.DrawString(consoleFont, $"NIGHT OVERLAY: {nightOverlayLabel} (Shift+N to toggle) [LEGACY: {(session.LegacyNightOverlayMode ? "ON" : "OFF")}]", new Vector2(10, 85), Color.Lime);
             }
 
             spriteBatch.End();
@@ -1218,6 +1291,14 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
+
+                // P2-C5: Surface night tint for Grass (PIXEL mode only, applied before wetness)
+                if (presentationMode == LightingPresentationMode.PixelTest)
+                {
+                    spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
+                    session.DrawSurfaceNightTint(spriteBatch, screenW, screenH, worldOffset);
+                    spriteBatch.End();
+                }
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: MultiplyBlend, transformMatrix: transform);
                 session.DrawWetnessOverlay(spriteBatch, screenW, screenH, worldOffset);
@@ -1333,15 +1414,15 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
         private void BuildPixelLightBuffer(SpriteBatch spriteBatch, int screenW, int screenH,
                                           IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
         {
-            // P1B: Build PixelLightBuffer from V6 coarse ProductionTexture
-            // Upscale V6 (~247×141 tiles) to pixel resolution (1920×1080)
-            // PixelLightBuffer is neutral Color.White (lighting multiplier 1.0)
+            // P2-C1: Build PixelLightBuffer from V6 coarse RawLightTexture
+            // Upscale V6 (~247×141 tiles) with real RGB data to pixel resolution (1920×1080)
+            // Uses LINEAR/POINT reconstruction mode (P2-A2)
 
             session.ViewCoordinator.EnsurePixelLightBuffer(graphicsDevice, screenW, screenH);
             graphicsDevice.SetRenderTarget(session.ViewCoordinator.GetPixelLightBuffer());
             graphicsDevice.Clear(Color.White);
 
-            if (v6LightMapRenderer.ProductionTexture != null)
+            if (v6LightMapRenderer.RawLightTexture != null)
             {
                 int bufferOriginTileX = v6LightingSystem.LightMap.BufferOriginTileX;
                 int bufferOriginTileY = v6LightingSystem.LightMap.BufferOriginTileY;
@@ -1374,7 +1455,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                                 : SamplerState.LinearClamp;
 
                         spriteBatch.Begin(samplerState: reconstructionSampler, blendState: BlendState.Opaque, transformMatrix: transform);
-                        spriteBatch.Draw(v6LightMapRenderer.ProductionTexture, destRect, Color.White);
+                        spriteBatch.Draw(v6LightMapRenderer.RawLightTexture, destRect, Color.White);
                         spriteBatch.End();
                     }
                 }

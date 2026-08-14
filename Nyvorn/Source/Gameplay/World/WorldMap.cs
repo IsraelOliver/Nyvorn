@@ -1118,6 +1118,37 @@ namespace Nyvorn.Source.World
             }
         }
 
+        // P2-C5: Surface night tint for Grass tiles during darkness
+        // Applied BEFORE WetnessOverlay so wetness renders on top correctly
+        public void DrawSurfaceNightTint(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY, float nightStrength)
+        {
+            const float MaxGrassNightDarkening = 0.10f;
+
+            float night = MathHelper.Clamp(nightStrength, 0f, 1f);
+            float brightness = 1.0f - night * MaxGrassNightDarkening;
+
+            if (System.Math.Abs(brightness - 1.0f) < 0.001f)
+                return; // No darkening needed (nearly full day)
+
+            Color tint = new Color(brightness, brightness, brightness, 1.0f);
+
+            for (int y = minTileY; y <= maxTileY; y++)
+            {
+                for (int x = minTileX; x <= maxTileX; x++)
+                {
+                    TileType tile = GetTile(x, y);
+                    if (tile != TileType.Grass)
+                        continue;
+
+                    if (!TryGetTileSprite(x, y, out Texture2D texture, out Rectangle? sourceRectangle))
+                        continue;
+
+                    Rectangle destination = new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, tint);
+                }
+            }
+        }
+
         // Drawn fresh every frame (never baked into the chunk cache) so it always reflects current
         // wetness instead of going stale - see the comment in DrawTiles. Uses a multiply blend so it
         // darkens whatever's already on screen rather than needing to duplicate the base tile draw.

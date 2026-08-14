@@ -306,7 +306,12 @@ namespace Nyvorn.Source.Game.States
             WorldMap.DrawWetnessOverlay(spriteBatch, startTileX, endTileX, startTileY, endTileY);
         }
 
-
+        // P2-C5: Surface night tint for Grass during darkness (PIXEL mode only)
+        public void DrawSurfaceNightTint(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX, float nightStrength)
+        {
+            GetVisibleTileRange(screenWidth, screenHeight, worldOffsetX, out int startTileX, out int endTileX, out int startTileY, out int endTileY);
+            WorldMap.DrawSurfaceNightTint(spriteBatch, startTileX, endTileX, startTileY, endTileY, nightStrength);
+        }
 
         /// <summary>
         /// Retrieve the current scene RenderTarget (may be null if not allocated).
