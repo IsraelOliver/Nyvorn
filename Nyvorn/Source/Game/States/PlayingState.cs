@@ -942,7 +942,7 @@ namespace Nyvorn.Source.Game.States
                     : (IEntityLightSampler)neutralEntityLightSampler;
 
                 // P1E-C: In PIXEL mode, draw torch body only (flames drawn separately after composite)
-                bool drawTorchFlames = (presentationMode == LightingPresentationMode.Tile);
+                bool drawTorchFlames = true;
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler, drawTorchFlames: drawTorchFlames);
@@ -1024,7 +1024,7 @@ namespace Nyvorn.Source.Game.States
                     : (IEntityLightSampler)neutralEntityLightSampler;
 
                 // P1E-C: In PIXEL mode, draw torch body only (flames drawn separately after composite)
-                bool drawTorchFlames = (presentationMode == LightingPresentationMode.Tile);
+                bool drawTorchFlames = true;
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler, drawTorchFlames: drawTorchFlames);
@@ -1190,12 +1190,6 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
             }
 
-            // P1E-C: Draw torch flames in PIXEL mode (emissive, after composite)
-            if (presentationMode == LightingPresentationMode.Pixel)
-            {
-                DrawPixelModeTorchFlames(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels, session.EnvironmentSystem.SkyState.VisualTimeSeconds);
-            }
-
             // PHASE 2: Screen-space overlays (rain, night overlay)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
             session.DrawRainFront(spriteBatch, screenW, screenH);
@@ -1348,7 +1342,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                     : (IEntityLightSampler)neutralEntityLightSampler;
 
                 // P1E-C: In PIXEL mode, draw torch body only (flames drawn separately after composite)
-                bool drawTorchFlames = (presentationMode == LightingPresentationMode.Tile);
+                bool drawTorchFlames = true;
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler, drawTorchFlames: drawTorchFlames);
@@ -1535,7 +1529,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                     : (IEntityLightSampler)neutralEntityLightSampler;
 
                 // P1E-C: In PIXEL mode, draw torch body only (flames drawn separately after composite)
-                bool drawTorchFlames = (presentationMode == LightingPresentationMode.Tile);
+                bool drawTorchFlames = true;
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler, drawTorchFlames: drawTorchFlames);
@@ -1620,24 +1614,6 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
             spriteBatch.DrawString(consoleFont, text, position + Vector2.One, Color.Black);
             spriteBatch.DrawString(consoleFont, text, position, Color.White);
-        }
-
-        private void DrawPixelModeTorchFlames(SpriteBatch spriteBatch, int screenW, int screenH,
-                                             IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels, float visualTimeSeconds)
-        {
-            // P1E-C: Draw torch flames in world space for PIXEL mode (emissive, unaffected by PixelLightBuffer)
-            // Using session.EnvironmentSystem.SkyState.VisualTimeSeconds (same source as TILE mode)
-
-            for (int i = 0; i < visibleLoopOffsets.Count; i++)
-            {
-                int loopIndex = visibleLoopOffsets[i];
-                float worldOffset = loopIndex * worldWidthPixels;
-                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
-
-                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
-                session.TorchRuntimeSystem?.DrawFlames(spriteBatch, visualTimeSeconds);
-                spriteBatch.End();
-            }
         }
 
         private void HandleConsoleInput(KeyboardState keyboard)
