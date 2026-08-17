@@ -23,6 +23,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         // Door occlusion callback (optional)
         private Func<int, int, bool> isDoorBlockingTile;
 
+        // P2-E-L1: Layer definitions for sky transmission cutoff
+        private Nyvorn.Source.World.Generation.WorldLayerDefinition[] layerDefinitions;
+
         // ETAPA 7: Artificial light sources callback
         private Func<System.Collections.Generic.IEnumerable<ArtificialLightSource>> getArtificialLightSources;
 
@@ -99,6 +102,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
         public void SetArtificialLightSources(Func<System.Collections.Generic.IEnumerable<ArtificialLightSource>> getter)
         {
             this.getArtificialLightSources = getter;
+        }
+
+        // P2-E-L1: Set layer definitions for sky transmission cutoff
+        public void SetLayerDefinitions(Nyvorn.Source.World.Generation.WorldLayerDefinition[] definitions)
+        {
+            this.layerDefinitions = definitions;
         }
 
         public void RebuildEdgeOcclusionCache()
@@ -291,7 +300,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // V5 approved foreground depth weights (Surface layer)
             float[] depthWeights = new[] { 1.00f, 0.65f, 0.35f, 0.15f };
 
-            // STEP 1: Inject sky color into SkyOpen cells
+            // STEP 1: Inject sky color into SkyOpen cells (P2-E-L1: with sky transmission cutoff)
             for (int localY = 0; localY < height; localY++)
             {
                 for (int localX = 0; localX < width; localX++)
@@ -300,9 +309,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
 
                     if (mediumMask[index] == V6LightMap.CellMedium.SkyOpen)
                     {
-                        lightR[index] = skyR;
-                        lightG[index] = skyG;
-                        lightB[index] = skyB;
+                        // P2-E-L1: Apply sky transmission factor based on world Y
+                        int worldTileY = originY + localY;
+                        float transmission = SkyTransmissionHelper.GetSkyTransmissionAtWorldY(worldTileY, layerDefinitions);
+
+                        lightR[index] = skyR * transmission;
+                        lightG[index] = skyG * transmission;
+                        lightB[index] = skyB * transmission;
                         foregroundDepth[index] = -1;  // Mark as SkyOpen
                         skyOpenSourceCount++;
                     }
@@ -316,7 +329,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
             // STEP 2: Compute foreground depth (distance to nearest SkyOpen)
             ComputeForegroundDepth(width, height, originX, originY);
 
-            // STEP 3: Apply depth weights to foreground, store RGB
+            // STEP 3: Apply depth weights to foreground, store RGB (P2-E-L1: with sky transmission cutoff)
             for (int localY = 0; localY < height; localY++)
             {
                 for (int localX = 0; localX < width; localX++)
@@ -332,9 +345,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                             weight = depthWeights[depth];
                         // else: depth >= 4 or unreachable → weight = 0 (black)
 
-                        lightR[index] = skyR * weight;
-                        lightG[index] = skyG * weight;
-                        lightB[index] = skyB * weight;
+                        // P2-E-L1: Apply sky transmission factor based on this foreground's world Y
+                        int worldTileY = originY + localY;
+                        float transmission = SkyTransmissionHelper.GetSkyTransmissionAtWorldY(worldTileY, layerDefinitions);
+
+                        lightR[index] = skyR * weight * transmission;
+                        lightG[index] = skyG * weight * transmission;
+                        lightB[index] = skyB * weight * transmission;
                         foregroundCount++;
                     }
                     else if (mediumMask[index] == V6LightMap.CellMedium.Background)
@@ -516,7 +533,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                 PropagateBackgroundToNeighbor(localX, localY + 1, currentWorldX, currentWorldY, width, height, originX, originY, mediumMask, candidateIntensity, ref queueHead, ref queueTail);
             }
 
-            // STEP 3: Write Background RGB to LightMap
+            // STEP 3: Write Background RGB to LightMap (P2-E-L1: with sky transmission cutoff)
             float skyR = skyColor.R / 255f;
             float skyG = skyColor.G / 255f;
             float skyB = skyColor.B / 255f;
@@ -538,9 +555,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
                     intensity = System.Math.Clamp(intensity, 0f, softCap);
                     float normalized = intensity / softCap;
 
-                    lightR[index] = skyR * normalized;
-                    lightG[index] = skyG * normalized;
-                    lightB[index] = skyB * normalized;
+                    // P2-E-L1: Apply sky transmission factor based on this background's world Y
+                    int worldTileY = originY + localY;
+                    float transmission = SkyTransmissionHelper.GetSkyTransmissionAtWorldY(worldTileY, layerDefinitions);
+
+                    lightR[index] = skyR * normalized * transmission;
+                    lightG[index] = skyG * normalized * transmission;
+                    lightB[index] = skyB * normalized * transmission;
 
                     if (intensity > 0f)
                         backgroundPropagatedCount++;

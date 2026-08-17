@@ -113,6 +113,8 @@ namespace Nyvorn.Source.Game.States
 
         private Engine.Graphics.LightingPipeline.LightingPipelineMode lightingPipelineMode = Engine.Graphics.LightingPipeline.LightingPipelineMode.Legacy;
 
+        // P2-E-BG2: Parallax renderer for subterranean backgrounds
+        private Engine.Graphics.SubterraneanParallaxRenderer subterraneanParallaxRenderer;
 
         /// <summary>
         /// Lighting pipeline mode (OFFICIAL: New Pipeline):
@@ -272,6 +274,37 @@ namespace Nyvorn.Source.Game.States
 
             wasFocusingInterior = focusingInterior;
             Camera.Follow(smoothedCameraTarget, screenWidth, screenHeight);
+        }
+
+        /// <summary>
+        /// P2-E-BG2: Initialize parallax renderer for subterranean backgrounds.
+        /// Called once during session creation.
+        /// </summary>
+        public void InitializeSubterraneanParallax(
+            Texture2D[] parallaxTextures,
+            Nyvorn.Source.World.Generation.WorldLayerDefinition[] layerDefinitions)
+        {
+            if (parallaxTextures != null && parallaxTextures.Length == 6 && layerDefinitions != null && layerDefinitions.Length > 0)
+            {
+                subterraneanParallaxRenderer = new Engine.Graphics.SubterraneanParallaxRenderer(
+                    parallaxTextures,
+                    layerDefinitions,
+                    Camera,
+                    WorldMap.TileSize);
+            }
+        }
+
+        /// <summary>
+        /// P2-E-BG2: Draw parallax layers for Cavern and DeepCavern.
+        /// Call AFTER DrawAtmosphericBackground, BEFORE PixelComposite composition.
+        /// Backbuffer must be active.
+        /// </summary>
+        public void DrawSubterraneanParallax(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        {
+            if (subterraneanParallaxRenderer != null)
+            {
+                subterraneanParallaxRenderer.Draw(spriteBatch, screenWidth, screenHeight);
+            }
         }
 
         public void DrawTerrainBase(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float worldOffsetX)

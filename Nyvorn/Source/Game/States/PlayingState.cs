@@ -186,6 +186,12 @@ namespace Nyvorn.Source.Game.States
                 (x, y) => session.DoorRuntimeSystem.IsMovementBlockingTile(x, y)
             );
 
+            // P2-E-L1: Set layer definitions for sky transmission cutoff
+            v6LightingSystem.SetLayerDefinitions(session.LayerDefinitions.Count > 0 ?
+                new System.Collections.Generic.List<Nyvorn.Source.World.Generation.WorldLayerDefinition>(session.LayerDefinitions).ToArray() :
+                System.Array.Empty<Nyvorn.Source.World.Generation.WorldLayerDefinition>()
+            );
+
             // ETAPA 7: Set artificial light sources (torches)
             v6LightingSystem.SetArtificialLightSources(
                 () => GetArtificialLightSourcesForV6(session)
@@ -1063,6 +1069,9 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
             // PHASE 1B: Draw atmospheric background (sky, sun, moons, parallax)
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
+
+            // P2-E-BG2: Draw parallax layers for Cavern/DeepCavern (world-anchored bands)
+            session.ViewCoordinator.DrawSubterraneanParallax(spriteBatch, screenW, screenH);
 
             // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
             if (presentationMode == LightingPresentationMode.Pixel && pixelCompositeEffect != null)

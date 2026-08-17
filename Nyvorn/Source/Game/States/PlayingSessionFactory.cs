@@ -542,6 +542,17 @@ namespace Nyvorn.Source.Game.States
             build.BackgroundFarTexture = content.Load<Texture2D>("ui/background_parallax/background1");
             build.BackgroundMidTexture = content.Load<Texture2D>("ui/background_parallax/background2");
             build.BackgroundNearTexture = content.Load<Texture2D>("ui/background_parallax/background3");
+
+            // P2-E-BG2: Load subterranean parallax layers (order: farthest to nearest)
+            build.SubterraneanParallaxTextures = new[]
+            {
+                content.Load<Texture2D>("Tiles/parallax/1"),  // Farthest (parallax 0.1)
+                content.Load<Texture2D>("Tiles/parallax/2"),  // parallax 0.2
+                content.Load<Texture2D>("Tiles/parallax/4"),  // parallax 0.4
+                content.Load<Texture2D>("Tiles/parallax/5"),  // parallax 0.6
+                content.Load<Texture2D>("Tiles/parallax/7"),  // parallax 0.8
+                content.Load<Texture2D>("Tiles/parallax/9")   // Nearest (parallax 1.0)
+            };
             build.LifeBarTexture = content.Load<Texture2D>("ui/lifebar");
             build.UiFont = content.Load<SpriteFont>("ui/UIFont");
             build.EnemyTexture = content.Load<Texture2D>("entities/enemy/enemy_test");
@@ -921,6 +932,9 @@ namespace Nyvorn.Source.Game.States
             // P2-E-BG1: Calculate and set layer definitions (derived from world config)
             WorldLayerDefinition[] layerDefinitions = WorldGenerator.BuildLayerDefinitions(build.WorldMap, build.WorldGenConfig);
             session.SetLayerDefinitions(layerDefinitions);
+
+            // P2-E-BG2: Initialize parallax renderer for subterranean backgrounds
+            session.ViewCoordinator.InitializeSubterraneanParallax(build.SubterraneanParallaxTextures, layerDefinitions);
 
             PrewarmVisibleTerrainChunks(session);
             return session;
@@ -1310,6 +1324,7 @@ namespace Nyvorn.Source.Game.States
             public Texture2D BackgroundFarTexture { get; set; }
             public Texture2D BackgroundMidTexture { get; set; }
             public Texture2D BackgroundNearTexture { get; set; }
+            public Texture2D[] SubterraneanParallaxTextures { get; set; }  // P2-E-BG2: 6-layer subterranean parallax
             public Texture2D EnemyTexture { get; set; }
             public Effect SunRaysEffect { get; set; }
             public Effect MoonPhaseEffect { get; set; }
