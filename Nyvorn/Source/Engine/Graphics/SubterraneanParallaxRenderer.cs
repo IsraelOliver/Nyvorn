@@ -33,7 +33,7 @@ namespace Nyvorn.Source.Engine.Graphics
         // P2-E-BG3: Color tints for subterranean backdrop darkness
         // RGB multipliers applied to each biome's parallax layers
         public Color CavernTint { get; set; } = new Color(115, 128, 140);  // (0.45, 0.50, 0.55)
-        public Color DeepTint { get; set; } = new Color(64, 77, 89);       // (0.25, 0.30, 0.35)
+        public Color DeepTint { get; set; } = new Color(120, 65, 45);       // Volcanic rock: warm reddish-brown
 
         public SubterraneanParallaxRenderer(
             Texture2D[] parallaxTextures,
