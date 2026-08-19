@@ -141,6 +141,27 @@ namespace Nyvorn.Source.Game.States
             layerDefinitions = definitions ?? System.Array.Empty<WorldLayerDefinition>();
         }
 
+        // S1-BG: Detect player's current world layer based on position
+        public Nyvorn.Source.World.Generation.WorldLayerType GetPlayerWorldLayer()
+        {
+            if (layerDefinitions.Length == 0)
+                return Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern;
+
+            float playerCenterY = Player.Position.Y + (Player.SpriteH * 0.5f);
+            int tileSize = WorldMap.TileSize;
+
+            foreach (var layer in layerDefinitions)
+            {
+                float layerTopPixels = layer.StartY * tileSize;
+                float layerBottomPixels = (layer.EndY + 1) * tileSize;
+
+                if (playerCenterY >= layerTopPixels && playerCenterY < layerBottomPixels)
+                    return layer.LayerType;
+            }
+
+            return Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern;
+        }
+
         public void AddConsoleCommand(string command)
         {
             if (string.IsNullOrWhiteSpace(command))

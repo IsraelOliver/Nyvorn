@@ -2,7 +2,6 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Graphics.LightingPipeline;
-using Nyvorn.Source.Engine.Input;
 using Nyvorn.Source.Engine.Physics.Liquids;
 using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.Gameplay.Combat;
@@ -58,22 +57,6 @@ namespace Nyvorn.Source.Game.States
         private static readonly Color WaterPixelColor = new Color(34, 128, 205) * 0.78f;
 
         private Texture2D lightTexture;
-        private int lightTextureCapacityWidth;
-        private int lightTextureCapacityHeight;
-        private Color[] lightTextureBuffer = System.Array.Empty<Color>();
-        private int lightTextureActiveWidth;
-        private int lightTextureActiveHeight;
-        private int lightTextureOriginTileX;
-        private int lightTextureOriginTileY;
-
-        private Texture2D glowTexture;
-        private int glowTextureCapacityWidth;
-        private int glowTextureCapacityHeight;
-        private Color[] glowTextureBuffer = System.Array.Empty<Color>();
-        private int glowTextureActiveWidth;
-        private int glowTextureActiveHeight;
-        private int glowTextureOriginTileX;
-        private int glowTextureOriginTileY;
 
         private RenderTarget2D sceneRenderTarget;
         private int sceneRenderTargetCapacityWidth;

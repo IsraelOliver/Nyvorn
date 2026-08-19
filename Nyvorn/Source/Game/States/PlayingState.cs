@@ -140,8 +140,6 @@ namespace Nyvorn.Source.Game.States
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
 
         // Phase 2: Logging flags (one-time per session)
-        private bool _hasLoggedFirstFoundationUpdate = false;
-        private int _foundationUpdateCount = 0;
 
         public PlayingState(GraphicsDevice graphicsDevice, ContentManager content, StateMachine stateMachine)
             : this(graphicsDevice, content, stateMachine, new PlayingSessionFactory(graphicsDevice, content).Create())
@@ -1159,6 +1157,23 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.DrawString(consoleFont, "P1B DEBUG: PIXEL LIGHT BUFFER (active)", new Vector2(10, 30), Color.Yellow);
                 spriteBatch.End();
             }
+
+            // S1-BG: Player world layer detection debug
+            var playerLayerType = session.GetPlayerWorldLayer();
+            string desiredParallax = playerLayerType switch
+            {
+                Nyvorn.Source.World.Generation.WorldLayerType.Space => "Space",
+                Nyvorn.Source.World.Generation.WorldLayerType.Surface => "Mountains",
+                Nyvorn.Source.World.Generation.WorldLayerType.ShallowUnderground => "Mountains",
+                Nyvorn.Source.World.Generation.WorldLayerType.Cavern => "Cave",
+                Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern => "Deep",
+                _ => "Unknown"
+            };
+
+            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            spriteBatch.DrawString(consoleFont, $"PLAYER LAYER: {playerLayerType}", new Vector2(10, 45), Color.Lime);
+            spriteBatch.DrawString(consoleFont, $"DESIRED PARALLAX: {desiredParallax}", new Vector2(10, 60), Color.Lime);
+            spriteBatch.End();
         }
 
         private void DrawWorldContentToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
