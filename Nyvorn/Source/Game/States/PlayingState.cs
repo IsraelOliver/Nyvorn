@@ -274,6 +274,10 @@ namespace Nyvorn.Source.Game.States
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
+            // S6.1-BG: Update parallax transition state (temporal, no visual changes yet)
+            session.UpdateDesiredParallax();
+            session.UpdateParallaxTransition(dt);
+
             if (consoleOpen)
                 consoleCursorBlinkTimer += dt;
 
@@ -613,9 +617,15 @@ namespace Nyvorn.Source.Game.States
             session.DrawSunGlow(spriteBatch, screenW, screenH);
             session.DrawMoons(spriteBatch, screenW, screenH);
 
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            session.DrawParallaxMountains(spriteBatch, screenW, screenH);
-            spriteBatch.End();
+            // S2-BG: Conditionally draw mountains based on player layer
+            var playerLayer = session.GetPlayerWorldLayer();
+            if (playerLayer == Nyvorn.Source.World.Generation.WorldLayerType.Surface ||
+                playerLayer == Nyvorn.Source.World.Generation.WorldLayerType.ShallowUnderground)
+            {
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                session.DrawParallaxMountains(spriteBatch, screenW, screenH);
+                spriteBatch.End();
+            }
         }
 
         /// <summary>
@@ -1068,8 +1078,121 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             // PHASE 1B: Draw atmospheric background (sky, sun, moons, parallax)
             DrawAtmosphericBackground(spriteBatch, screenW, screenH);
 
-            // P2-E-BG2: Draw parallax layers for Cavern/DeepCavern (world-anchored bands)
-            session.ViewCoordinator.DrawSubterraneanParallax(spriteBatch, screenW, screenH);
+            // S6.3-BG: Implement visual crossfade for Mountains ↔ Cave transitions
+            var playerLayer = session.GetPlayerWorldLayer();
+            var currentParallax = session.GetCurrentParallax();
+            var targetParallax = session.GetTargetParallax();
+            var transitionProgress = session.GetTransitionProgress();
+            var isTransitioning = session.IsParallaxTransitioning();
+
+            // Mountains ↔ Cave crossfade (Sky is drawn once in DrawAtmosphericBackground, only Mountains alpha varies)
+            if (isTransitioning &&
+                ((currentParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains &&
+                  targetParallax == Nyvorn.Source.Game.States.ParallaxType.Cave) ||
+                 (currentParallax == Nyvorn.Source.Game.States.ParallaxType.Cave &&
+                  targetParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains)))
+            {
+                // During Mountains ↔ Cave fade, redraw both with proper alphas
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+
+                if (currentParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains)
+                {
+                    // Mountains → Cave: Mountains fade out, Cave fades in
+                    float mountainsAlpha = 1f - transitionProgress;
+                    session.DrawParallaxMountains(spriteBatch, screenW, screenH, mountainsAlpha);
+                }
+                else
+                {
+                    // Cave → Mountains: Cave fades out, Mountains fade in
+                    float mountainsAlpha = transitionProgress;
+                    session.DrawParallaxMountains(spriteBatch, screenW, screenH, mountainsAlpha);
+                }
+
+                spriteBatch.End();
+            }
+
+            // S2-BG: Conditionally draw cave parallax based on player layer
+            // S6.2-BG: Implement visual crossfade for Cave ↔ Deep transitions
+            // S6.3.1-BG: During Mountains ↔ Cave fade, allow Cave draw even if playerLayer is Shallow
+            bool shouldDrawSubterranean =
+                playerLayer == Nyvorn.Source.World.Generation.WorldLayerType.Cavern ||
+                playerLayer == Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern ||
+                (isTransitioning &&
+                 ((currentParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains &&
+                   targetParallax == Nyvorn.Source.Game.States.ParallaxType.Cave) ||
+                  (currentParallax == Nyvorn.Source.Game.States.ParallaxType.Cave &&
+                   targetParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains)));
+
+            if (shouldDrawSubterranean)
+            {
+                // S6.3-BG: Handle Mountains ↔ Cave and Cave ↔ Deep fades
+                // For Mountains ↔ Cave, Cave alpha varies; for Cave ↔ Deep, both subterranean alphas vary
+                float caveAlpha = 1f;
+
+                if (isTransitioning &&
+                    currentParallax != Nyvorn.Source.Game.States.ParallaxType.Mountains &&
+                    targetParallax != Nyvorn.Source.Game.States.ParallaxType.Mountains)
+                {
+                    // Cave ↔ Deep crossfade (no Mountains involved)
+                    // Use the existing logic below
+                }
+                else if (isTransitioning &&
+                         ((currentParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains &&
+                           targetParallax == Nyvorn.Source.Game.States.ParallaxType.Cave) ||
+                          (currentParallax == Nyvorn.Source.Game.States.ParallaxType.Cave &&
+                           targetParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains)))
+                {
+                    // Mountains ↔ Cave: Cave alpha varies, Mountains already drawn above
+                    if (currentParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains)
+                    {
+                        caveAlpha = transitionProgress;  // Cave fades in
+                    }
+                    else
+                    {
+                        caveAlpha = 1f - transitionProgress;  // Cave fades out
+                    }
+                }
+
+                // S6.2-BG: Cave ↔ Deep crossfade with temporal alpha
+                if (isTransitioning &&
+                    currentParallax != Nyvorn.Source.Game.States.ParallaxType.Mountains &&
+                    targetParallax != Nyvorn.Source.Game.States.ParallaxType.Mountains)
+                {
+                    // Crossfade between Cave and Deep (no Mountains involved)
+                    var currentLayer = currentParallax == Nyvorn.Source.Game.States.ParallaxType.Cave
+                        ? Nyvorn.Source.World.Generation.WorldLayerType.Cavern
+                        : Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern;
+
+                    var targetLayer = targetParallax == Nyvorn.Source.Game.States.ParallaxType.Cave
+                        ? Nyvorn.Source.World.Generation.WorldLayerType.Cavern
+                        : Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern;
+
+                    // Draw Current with fading out (1 - progress)
+                    float currentAlpha = 1f - transitionProgress;
+                    session.ViewCoordinator.DrawSubterraneanParallax(
+                        spriteBatch, screenW, screenH, currentLayer, currentAlpha);
+
+                    // Draw Target with fading in (progress)
+                    session.ViewCoordinator.DrawSubterraneanParallax(
+                        spriteBatch, screenW, screenH, targetLayer, transitionProgress);
+                }
+                else if (isTransitioning &&
+                         ((currentParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains &&
+                           targetParallax == Nyvorn.Source.Game.States.ParallaxType.Cave) ||
+                          (currentParallax == Nyvorn.Source.Game.States.ParallaxType.Cave &&
+                           targetParallax == Nyvorn.Source.Game.States.ParallaxType.Mountains)))
+                {
+                    // S6.3-BG: Mountains ↔ Cave crossfade (Mountains already drawn above)
+                    // Only draw Cave with computed alpha
+                    session.ViewCoordinator.DrawSubterraneanParallax(spriteBatch, screenW, screenH,
+                        Nyvorn.Source.World.Generation.WorldLayerType.Cavern, caveAlpha);
+                }
+                else
+                {
+                    // No crossfade: draw only Current with full alpha
+                    session.ViewCoordinator.DrawSubterraneanParallax(spriteBatch, screenW, screenH, playerLayer, 1f);
+                }
+            }
 
             // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
             if (presentationMode == LightingPresentationMode.Pixel && pixelCompositeEffect != null)
@@ -1128,6 +1251,8 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             playerHubUI.Draw(spriteBatch, session.WorkbenchRuntimeSystem.GetNearbyCraftTier() | session.FurnaceRuntimeSystem.GetNearbyCraftTier());
             if (showFps)
                 DrawFpsCounter(spriteBatch);
+            // S6.1-BG: Draw parallax transition state for debug validation
+            DrawParallaxDebug(spriteBatch);
             if (consoleOpen)
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
@@ -1553,6 +1678,22 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
             spriteBatch.DrawString(consoleFont, text, position + Vector2.One, Color.Black);
             spriteBatch.DrawString(consoleFont, text, position, Color.White);
+        }
+
+        // S6.1-BG: Draw parallax transition state for validation
+        private void DrawParallaxDebug(SpriteBatch spriteBatch)
+        {
+            var currentParallax = session.GetCurrentParallax();
+            var targetParallax = session.GetTargetParallax();
+            var progress = session.GetTransitionProgress();
+            var isTransitioning = session.IsParallaxTransitioning();
+
+            string transitionState = isTransitioning
+                ? $"{progress:F2}"
+                : "COMPLETE";
+
+            string debugText = $"CURRENT: {currentParallax} | TARGET: {targetParallax} | TRANSITION: {transitionState}";
+            spriteBatch.DrawString(consoleFont, debugText, new Vector2(10, 40), Color.Cyan);
         }
 
         private void HandleConsoleInput(KeyboardState keyboard)

@@ -32,8 +32,9 @@ namespace Nyvorn.Source.Engine.Graphics
 
         // P2-E-BG3: Color tints for subterranean backdrop darkness
         // RGB multipliers applied to each biome's parallax layers
-        public Color CavernTint { get; set; } = new Color(115, 128, 140);  // (0.45, 0.50, 0.55)
-        public Color DeepTint { get; set; } = new Color(120, 65, 45);       // Volcanic rock: warm reddish-brown
+        // S4.1-BG: Debug tints - visually distinct for validation
+        public Color CavernTint { get; set; } = new Color(80, 115, 140);   // Debug: cold blue-petrol
+        public Color DeepTint { get; set; } = new Color(140, 80, 60);      // Debug: warm red-earth
 
         public SubterraneanParallaxRenderer(
             Texture2D[] parallaxTextures,
@@ -56,61 +57,47 @@ namespace Nyvorn.Source.Engine.Graphics
         }
 
         /// <summary>
-        /// Draw parallax layers for Cavern and DeepCavern.
-        /// World-anchored: each layer stays within its bounds regardless of camera.
+        /// Draw parallax layers for the active subterranean environment only.
+        ///
+        /// S3-BG: Cavern parallax renders full-viewport (no band clipping).
+        /// S4-BG: DeepCavern parallax renders full-viewport (no band clipping).
+        /// S4.2-BG: Draw only the active layer (Cavern or DeepCavern), not both.
+        ///
         /// Backbuffer must be active. Called AFTER DrawAtmosphericBackground, BEFORE PixelComposite.
         /// </summary>
-        public void Draw(SpriteBatch spriteBatch, int screenW, int screenH)
+        public void Draw(SpriteBatch spriteBatch, int screenW, int screenH, WorldLayerType activeLayer, float alpha = 1f)
         {
             if (_layerDefinitions.Length == 0 || _camera == null)
                 return;
 
-            float cameraWorldTop = _camera.Position.Y;
-            float cameraWorldBottom = _camera.Position.Y + (screenH / _camera.Zoom);
-            float cameraPanX = _camera.Position.X;
+            // S4.2-BG: Only draw the active parallax environment
+            if (activeLayer != WorldLayerType.Cavern && activeLayer != WorldLayerType.DeepCavern)
+                return;  // No subterranean parallax for non-cave layers
 
-            // For each subterranean layer (Cavern, DeepCavern)
-            foreach (var layer in _layerDefinitions)
+            float cameraPanX = _camera.Position.X;
+            Color layerTint = activeLayer == WorldLayerType.Cavern ? CavernTint : DeepTint;
+
+            // S6.2-BG: Apply alpha to tint for crossfade (Cave ↔ Deep)
+            // S6.2.1-BG: Fix premultiplied alpha mismatch (BlendState.AlphaBlend requires RGB * alpha)
+            float alphaValue = System.Math.Clamp(alpha, 0f, 1f);
+            Color tintWithAlpha = layerTint * alphaValue;
+
+            // Draw all 6 parallax layers for FULL VIEWPORT of the active layer only
+            for (int i = 0; i < 6; i++)
             {
-                if (layer.LayerType != WorldLayerType.Cavern && layer.LayerType != WorldLayerType.DeepCavern)
+                if (_parallaxTextures[i] == null)
                     continue;
 
-                // Layer bounds in world pixels
-                float layerWorldTop = layer.StartY * _tileSize;
-                float layerWorldBottom = (layer.EndY + 1) * _tileSize;
-
-                // Clip to visible viewport
-                float visibleWorldTop = Math.Max(layerWorldTop, cameraWorldTop);
-                float visibleWorldBottom = Math.Min(layerWorldBottom, cameraWorldBottom);
-
-                if (visibleWorldTop >= visibleWorldBottom)
-                    continue;  // Layer not visible
-
-                // Convert world coordinates to screen coordinates
-                float screenTop = (visibleWorldTop - cameraWorldTop) * _camera.Zoom;
-                float screenBottom = (visibleWorldBottom - cameraWorldTop) * _camera.Zoom;
-                int drawHeight = (int)(screenBottom - screenTop);
-
-                // Determine tint for this layer type (P2-E-BG3)
-                Color layerTint = layer.LayerType == WorldLayerType.Cavern ? CavernTint : DeepTint;
-
-                // Draw all 6 parallax layers for this band
-                for (int i = 0; i < 6; i++)
-                {
-                    if (_parallaxTextures[i] == null)
-                        continue;
-
-                    DrawParallaxLayer(
-                        spriteBatch,
-                        _parallaxTextures[i],
-                        screenW,
-                        (int)screenTop,
-                        drawHeight,
-                        _parallaxFactors[i],
-                        cameraPanX,
-                        _camera.Zoom,
-                        layerTint);
-                }
+                DrawParallaxLayer(
+                    spriteBatch,
+                    _parallaxTextures[i],
+                    screenW,
+                    0,          // screenTop = 0 (top of viewport)
+                    screenH,    // drawHeight = full screen height (no clipping)
+                    _parallaxFactors[i],
+                    cameraPanX,
+                    _camera.Zoom,
+                    tintWithAlpha);
             }
         }
 

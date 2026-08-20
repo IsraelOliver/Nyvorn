@@ -279,14 +279,16 @@ namespace Nyvorn.Source.Game.States
 
         /// <summary>
         /// P2-E-BG2: Draw parallax layers for Cavern and DeepCavern.
+        /// S4.2-BG: Pass activeLayer so renderer draws only the active parallax (not both).
+        /// S6.2-BG: Accept alpha for crossfade during Cave ↔ Deep transitions.
         /// Call AFTER DrawAtmosphericBackground, BEFORE PixelComposite composition.
         /// Backbuffer must be active.
         /// </summary>
-        public void DrawSubterraneanParallax(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        public void DrawSubterraneanParallax(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Nyvorn.Source.World.Generation.WorldLayerType activeLayer, float alpha = 1f)
         {
             if (subterraneanParallaxRenderer != null)
             {
-                subterraneanParallaxRenderer.Draw(spriteBatch, screenWidth, screenHeight);
+                subterraneanParallaxRenderer.Draw(spriteBatch, screenWidth, screenHeight, activeLayer, alpha);
             }
         }
 
@@ -939,9 +941,9 @@ namespace Nyvorn.Source.Game.States
             ElyraSkyRenderer.DrawMoons(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom, Camera.Position.X);
         }
 
-        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState)
+        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float alpha = 1f)
         {
-            ElyraSkyRenderer.DrawParallaxMountains(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom, Camera.Position.X);
+            ElyraSkyRenderer.DrawParallaxMountains(spriteBatch, screenWidth, screenHeight, skyState, Camera.Zoom, Camera.Position.X, alpha);
         }
 
         public void DrawNightOverlay(SpriteBatch spriteBatch, int screenWidth, int screenHeight, Color tint)

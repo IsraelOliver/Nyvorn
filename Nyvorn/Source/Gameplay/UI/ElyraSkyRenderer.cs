@@ -99,10 +99,14 @@ namespace Nyvorn.Source.Gameplay.UI
 
         // Called after DrawSunGlow/DrawMoons so the mountains (closer than the sky) occlude the
         // sun/moons instead of sitting behind them.
-        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f, float cameraPanX = 0f)
+        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, SkyState skyState, float zoom = 1f, float cameraPanX = 0f, float alpha = 1f)
         {
             if (screenWidth <= 0 || screenHeight <= 0)
                 return;
+
+            // S6.3-BG: Apply alpha for Mountains ↔ Cave crossfade
+            float alphaValue = System.Math.Clamp(alpha, 0f, 1f);
+            Color tintWithAlpha = skyState.AmbientLight * alphaValue;
 
             for (int i = 0; i < mountainTextures.Length; i++)
             {
@@ -110,7 +114,7 @@ namespace Nyvorn.Source.Gameplay.UI
                 if (texture == null)
                     continue;
 
-                DrawParallaxLayer(spriteBatch, texture, screenWidth, screenHeight, MountainLayers[i].ParallaxFactor, cameraPanX, zoom, skyState.AmbientLight);
+                DrawParallaxLayer(spriteBatch, texture, screenWidth, screenHeight, MountainLayers[i].ParallaxFactor, cameraPanX, zoom, tintWithAlpha);
             }
         }
 

@@ -33,6 +33,13 @@ namespace Nyvorn.Source.Game.States
         private int persistedConsoleCommandHistoryRevision;
         private WorldLayerDefinition[] layerDefinitions = System.Array.Empty<WorldLayerDefinition>();
 
+        // S6.1-BG: Parallax transition state (temporal, zero visual fade)
+        private ParallaxType currentParallax = ParallaxType.Mountains;
+        private ParallaxType targetParallax = ParallaxType.Mountains;
+        private float transitionProgress = 1f;
+        private bool isTransitioning = false;
+        private const float TransitionDuration = 0.8f;  // Seconds
+
         public required PlanetWorldMetadata PlanetMetadata { get; init; }
         public required string PlayerId { get; init; }
         public required SessionRuntimeContext RuntimeContext { get; init; }
@@ -161,6 +168,56 @@ namespace Nyvorn.Source.Game.States
 
             return Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern;
         }
+
+        // S6.1-BG: Convert WorldLayerType to ParallaxType for transition tracking
+        private ParallaxType WorldLayerToParallaxType(Nyvorn.Source.World.Generation.WorldLayerType layer)
+        {
+            return layer switch
+            {
+                Nyvorn.Source.World.Generation.WorldLayerType.Surface => ParallaxType.Mountains,
+                Nyvorn.Source.World.Generation.WorldLayerType.ShallowUnderground => ParallaxType.Mountains,
+                Nyvorn.Source.World.Generation.WorldLayerType.Cavern => ParallaxType.Cave,
+                Nyvorn.Source.World.Generation.WorldLayerType.DeepCavern => ParallaxType.Deep,
+                _ => ParallaxType.Mountains
+            };
+        }
+
+        // S6.1-BG: Update parallax transition progress based on elapsed time
+        public void UpdateParallaxTransition(float deltaTime)
+        {
+            if (!isTransitioning || TransitionDuration <= 0f)
+                return;
+
+            transitionProgress += deltaTime / TransitionDuration;
+
+            if (transitionProgress >= 1f)
+            {
+                transitionProgress = 1f;
+                currentParallax = targetParallax;
+                isTransitioning = false;
+            }
+        }
+
+        // S6.1-BG: Initiate transition to desired parallax (based on player layer)
+        public void UpdateDesiredParallax()
+        {
+            var playerLayer = GetPlayerWorldLayer();
+            var desiredParallax = WorldLayerToParallaxType(playerLayer);
+
+            // If desired parallax differs from target, start new transition
+            if (desiredParallax != targetParallax)
+            {
+                targetParallax = desiredParallax;
+                transitionProgress = 0f;
+                isTransitioning = true;
+            }
+        }
+
+        // S6.1-BG: Get current parallax for debug display
+        public ParallaxType GetCurrentParallax() => currentParallax;
+        public ParallaxType GetTargetParallax() => targetParallax;
+        public float GetTransitionProgress() => transitionProgress;
+        public bool IsParallaxTransitioning() => isTransitioning;
 
         public void AddConsoleCommand(string command)
         {
@@ -675,9 +732,9 @@ namespace Nyvorn.Source.Game.States
             ViewCoordinator.DrawMoons(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
         }
 
-        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight)
+        public void DrawParallaxMountains(SpriteBatch spriteBatch, int screenWidth, int screenHeight, float alpha = 1f)
         {
-            ViewCoordinator.DrawParallaxMountains(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState);
+            ViewCoordinator.DrawParallaxMountains(spriteBatch, screenWidth, screenHeight, EnvironmentSystem.SkyState, alpha);
         }
 
         public void DrawTissueDebug(SpriteBatch spriteBatch)
