@@ -12,6 +12,12 @@
 
 float4x4 MatrixTransform;
 
+// V7: light texels are stored as value / OverbrightScale (0..1). Multiplied back here so
+// light can exceed 1.0 (torches "warm" the scene instead of only tinting it). Legacy passes 1.0.
+float OverbrightScale = 1.0;
+// V7: 0 = off, N = quantize the light to N steps (optional pixel-art look)
+float PosterizeLevels = 0.0;
+
 Texture2D SpriteTexture;
 sampler2D SpriteTextureSampler = sampler_state
 {
@@ -65,7 +71,10 @@ float4 MainPS(VertexShaderOutput input) : COLOR0
     float2 uv = input.TextureCoordinates;
 
     float4 world = sample2D(SpriteTexture, uv) * input.Color;
-    float3 light = sample2D(LightBuffer, uv).rgb;
+    float3 light = sample2D(LightBuffer, uv).rgb * OverbrightScale;
+    float levels = max(PosterizeLevels, 1.0);
+    float3 posterized = floor(light * levels + 0.5) / levels;
+    light = (PosterizeLevels > 0.5) ? posterized : light;
 
     float4 result;
     result.rgb = world.rgb * light;

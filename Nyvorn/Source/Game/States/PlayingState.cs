@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Nyvorn.Source.Engine.Graphics;
 using Nyvorn.Source.Engine.Graphics.LightingPipeline;
+using Nyvorn.Source.Engine.Graphics.LightingV7;
 using Nyvorn.Source.Engine.Input;
 using System;
 using System.Diagnostics;
@@ -136,6 +137,13 @@ namespace Nyvorn.Source.Game.States
         // P1C-2: PixelComposite effect for sprite-based compositing
         private Effect pixelCompositeEffect;
 
+        // V7 lighting (Legacy = V6 kept behind this switch until V7 is approved)
+        private LightingPipelineMode lightingMode = LightingPipelineMode.V7;
+        private LightingV7System v7Lighting;
+        private bool v7ScreenshotRequested;
+        private string v7StatusMessage = string.Empty;
+        private float v7StatusTimer;
+
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
 
@@ -195,6 +203,9 @@ namespace Nyvorn.Source.Game.States
                 () => GetArtificialLightSourcesForV6(session)
             );
             swV6.Stop();
+
+            // V7 lighting: created alongside V6, selected by lightingMode (F9 toggles for A/B).
+            v7Lighting = new LightingV7System(graphicsDevice, session.WorldMap, session.LayerDefinitions);
         }
 
         private static System.Collections.Generic.IEnumerable<ArtificialLightSource> GetArtificialLightSourcesForV6(PlayingSession session)
@@ -261,6 +272,7 @@ namespace Nyvorn.Source.Game.States
         public void OnExit()
         {
             saveService.Save(session);
+            v7Lighting?.Dispose();
             session.ViewCoordinator.DisposeSceneRenderTarget();
             session.ViewCoordinator.DisposeWorldColorRenderTarget();
             session.ViewCoordinator.DisposePixelLightBuffer();
@@ -378,6 +390,31 @@ namespace Nyvorn.Source.Game.States
                 if (ctrlPressed && altPressed && tPressed && !previousConsoleKeyboard.IsKeyDown(Keys.T))
                 {
                     // V3 tests removed (Legacy only)
+                }
+            }
+
+            // V7 HOTKEYS: F9 toggles Legacy/V7, F10 cycles the V7 debug view, F12 saves screenshots.
+            if (v7StatusTimer > 0f)
+                v7StatusTimer -= dt;
+
+            if (!handledConsoleThisFrame)
+            {
+                if (keyboard.IsKeyDown(Keys.F9) && !previousConsoleKeyboard.IsKeyDown(Keys.F9))
+                {
+                    lightingMode = lightingMode == LightingPipelineMode.V7
+                        ? LightingPipelineMode.Legacy
+                        : LightingPipelineMode.V7;
+                }
+
+                if (keyboard.IsKeyDown(Keys.F10) && !previousConsoleKeyboard.IsKeyDown(Keys.F10) &&
+                    lightingMode == LightingPipelineMode.V7)
+                {
+                    v7Lighting.CycleDebugView();
+                }
+
+                if (keyboard.IsKeyDown(Keys.F12) && !previousConsoleKeyboard.IsKeyDown(Keys.F12))
+                {
+                    v7ScreenshotRequested = true;
                 }
             }
 
@@ -539,15 +576,27 @@ namespace Nyvorn.Source.Game.States
             int tileWindowWidth = (screenW + tileSize - 1) / tileSize;
             int tileWindowHeight = (screenH + tileSize - 1) / tileSize;
 
-            v6LightingSystem.Update(
-                (int)camera.Position.X,
-                (int)camera.Position.Y,
-                screenW,
-                screenH,
-                tileSize,
-                skyColor);
+            if (lightingMode == LightingPipelineMode.V7)
+            {
+                // V7: classify + seed sky, add point sources, propagate, upload texture.
+                v7Lighting.LiquidSystem = session.LiquidSystem;
+                v7Lighting.SkyColor = LightingV7Config.SkyColorDay;   // Phase 3: per-hour / weather colour
+                v7Lighting.BeginFrame(camera.Position.X, camera.Position.Y, screenW, screenH, camera.Zoom, tileSize);
+                AddV7PointLights(tileSize);
+                v7Lighting.EndFrame();
+            }
+            else
+            {
+                v6LightingSystem.Update(
+                    (int)camera.Position.X,
+                    (int)camera.Position.Y,
+                    screenW,
+                    screenH,
+                    tileSize,
+                    skyColor);
 
-            v6LightMapRenderer.Update();
+                v6LightMapRenderer.Update();
+            }
             float worldWidthPixels = session.WorldMap.PixelWidth;
             IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
 
@@ -1062,12 +1111,17 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             graphicsDevice.SetRenderTarget(session.ViewCoordinator.GetWorldColorRenderTarget());
             graphicsDevice.Clear(Color.Transparent);
 
-            // P1C-1: Control whether ProductionTexture is applied to WorldColorRT
-            bool applyProductionTexture = (presentationMode == LightingPresentationMode.Tile);
-            DrawWorldContentToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels, applyProductionTexture);
+            bool v7 = lightingMode == LightingPipelineMode.V7;
 
-            // PHASE 0C: P1B - Build PixelLightBuffer from V6 coarse lighting (offscreen preparation)
-            BuildPixelLightBuffer(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
+            // P1C-1: Control whether ProductionTexture is applied to WorldColorRT
+            bool applyProductionTexture = !v7 && (presentationMode == LightingPresentationMode.Tile);
+            DrawWorldContentToRenderTarget(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels, applyProductionTexture, v7);
+
+            // PHASE 0C: Build the screen-space light buffer (V7 texture or V6 coarse lighting)
+            if (v7)
+                BuildV7LightBuffer(spriteBatch, screenW, screenH);
+            else
+                BuildPixelLightBuffer(spriteBatch, screenW, screenH, visibleLoopOffsets, worldWidthPixels);
 
             // PHASE 1: Return to backbuffer and draw complete frame
             graphicsDevice.SetRenderTarget(null);
@@ -1195,8 +1249,18 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             }
 
             // PHASE 1C: Composite WorldColorRenderTarget onto backbuffer (over sky)
-            if (presentationMode == LightingPresentationMode.Pixel && pixelCompositeEffect != null)
+            if (v7 && v7Lighting.DebugView != LightingV7DebugView.Off)
             {
+                // V7 debug view: show the light buffer itself instead of the composed world.
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.Opaque);
+                spriteBatch.Draw(session.ViewCoordinator.GetPixelLightBuffer(), new Rectangle(0, 0, screenW, screenH), Color.White);
+                spriteBatch.End();
+            }
+            else if ((v7 || presentationMode == LightingPresentationMode.Pixel) && pixelCompositeEffect != null)
+            {
+                pixelCompositeEffect.Parameters["OverbrightScale"]?.SetValue(v7 ? LightingV7Config.OverbrightScale : 1f);
+                pixelCompositeEffect.Parameters["PosterizeLevels"]?.SetValue(v7 ? (float)LightingV7Config.PosterizeLevels : 0f);
+
                 // P1C-2: Use PixelComposite effect for PIXEL_TEST mode
                 // P1C-2B: Set MatrixTransform with orthographic projection (screen-space coordinates)
                 Matrix projection = Matrix.CreateOrthographicOffCenter(
@@ -1235,11 +1299,15 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
             }
 
+            // V7 PHASE 1D: Emissives (unlit, world space) — torch flames. Phase 2 adds eyes/mushrooms/halos.
+            if (v7 && v7Lighting.DebugView == LightingV7DebugView.Off)
+                DrawV7Emissives(spriteBatch, visibleLoopOffsets, worldWidthPixels);
+
             // PHASE 2: Screen-space overlays (rain, night overlay)
             spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend);
             session.DrawRainFront(spriteBatch, screenW, screenH);
-            // Night overlay: TILE mode only (legacy behavior), PIXEL mode has no overlay
-            if (presentationMode == LightingPresentationMode.Tile && session.LegacyNightOverlayMode)
+            // Night overlay: Legacy TILE mode only, PIXEL and V7 have no overlay
+            if (!v7 && presentationMode == LightingPresentationMode.Tile && session.LegacyNightOverlayMode)
                 session.DrawNightOverlay(spriteBatch, screenW, screenH);
             spriteBatch.End();
 
@@ -1257,17 +1325,34 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 DrawConsole(spriteBatch, screenW);
             spriteBatch.End();
 
-            // DEBUG: Presentation mode label (Shift+P to toggle)
-            string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL";
+            // DEBUG: Lighting mode labels
             spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            spriteBatch.DrawString(consoleFont, $"LIGHTING: {modeLabel} (Shift+P)", new Vector2(10, 10), Color.Yellow);
-
-            // Show reconstruction mode diagnostic when in Pixel mode
-            if (presentationMode == LightingPresentationMode.Pixel)
+            if (v7)
             {
-                string reconstructionLabel = pixelLightReconstructionMode == PixelLightReconstructionMode.Point ? "POINT" : "LINEAR";
-                spriteBatch.DrawString(consoleFont, $"PIXEL LIGHT: {reconstructionLabel} (Shift+O)", new Vector2(10, 25), Color.Cyan);
+                spriteBatch.DrawString(consoleFont,
+                    $"LIGHTING: V7 (F9)  view: {v7Lighting.DebugView} (F10)  F12: screenshot",
+                    new Vector2(10, 10), Color.Yellow);
+                spriteBatch.DrawString(consoleFont,
+                    $"V7 cpu: {v7Lighting.LastCpuMs:0.00} ms " +
+                    $"(cls {v7Lighting.LastClassifyMs:0.00} / prop {v7Lighting.LastPropagateMs:0.00} / fill {v7Lighting.LastFillMs:0.00})  " +
+                    $"region: {v7Lighting.RegionWidth}x{v7Lighting.RegionHeight}  sources: {v7Lighting.SourceCount}",
+                    new Vector2(10, 25), Color.Cyan);
             }
+            else
+            {
+                string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL";
+                spriteBatch.DrawString(consoleFont, $"LIGHTING: LEGACY V6 {modeLabel} (F9 / Shift+P)", new Vector2(10, 10), Color.Yellow);
+
+                // Show reconstruction mode diagnostic when in Pixel mode
+                if (presentationMode == LightingPresentationMode.Pixel)
+                {
+                    string reconstructionLabel = pixelLightReconstructionMode == PixelLightReconstructionMode.Point ? "POINT" : "LINEAR";
+                    spriteBatch.DrawString(consoleFont, $"PIXEL LIGHT: {reconstructionLabel} (Shift+O)", new Vector2(10, 25), Color.Cyan);
+                }
+            }
+
+            if (v7StatusTimer > 0f && !string.IsNullOrEmpty(v7StatusMessage))
+                spriteBatch.DrawString(consoleFont, v7StatusMessage, new Vector2(10, 75), Color.White);
 
             spriteBatch.End();
 
@@ -1299,12 +1384,95 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             spriteBatch.DrawString(consoleFont, $"PLAYER LAYER: {playerLayerType}", new Vector2(10, 45), Color.Lime);
             spriteBatch.DrawString(consoleFont, $"DESIRED PARALLAX: {desiredParallax}", new Vector2(10, 60), Color.Lime);
             spriteBatch.End();
+
+            // F12: save worldRT, lightRT and the finished frame (everything above is already drawn).
+            if (v7ScreenshotRequested)
+            {
+                v7ScreenshotRequested = false;
+                string result = LightingV7Screenshot.SaveAll(
+                    graphicsDevice,
+                    session.ViewCoordinator.GetWorldColorRenderTarget(),
+                    session.ViewCoordinator.GetPixelLightBuffer(),
+                    screenW, screenH);
+                v7StatusMessage = result;
+                v7StatusTimer = 8f;
+                Console.WriteLine("[LightingV7] " + v7StatusMessage);
+            }
+        }
+
+        private void AddV7PointLights(int tileSize)
+        {
+            var torches = session.TorchRuntimeSystem?.Torches;
+            if (torches == null)
+                return;
+
+            Vector3 color = LightingV7Config.TorchColor;
+            float intensity = LightingV7Config.TorchIntensity;
+            for (int i = 0; i < torches.Count; i++)
+                v7Lighting.AddPointLight(torches[i].LightOrigin, color, intensity, tileSize);
+        }
+
+        /// <summary>
+        /// V7 lightRT: the per-tile light texture drawn with the camera transform and bilinear
+        /// upscale. The region is defined in the camera's unwrapped tile space (tile reads are
+        /// wrapped inside the system), so a single draw with the view matrix covers the screen.
+        /// </summary>
+        private void BuildV7LightBuffer(SpriteBatch spriteBatch, int screenW, int screenH)
+        {
+            session.ViewCoordinator.EnsurePixelLightBuffer(graphicsDevice, screenW, screenH);
+            graphicsDevice.SetRenderTarget(session.ViewCoordinator.GetPixelLightBuffer());
+            graphicsDevice.Clear(Color.Black);
+
+            Texture2D lightTexture = v7Lighting.Texture;
+            if (lightTexture != null)
+            {
+                int tileSize = session.WorldMap.TileSize;
+                Rectangle destRect = new Rectangle(
+                    v7Lighting.OriginTileX * tileSize,
+                    v7Lighting.OriginTileY * tileSize,
+                    v7Lighting.RegionWidth * tileSize,
+                    v7Lighting.RegionHeight * tileSize);
+
+                SamplerState sampler = v7Lighting.DebugView == LightingV7DebugView.Medium
+                    ? SamplerState.PointClamp
+                    : SamplerState.LinearClamp;
+
+                spriteBatch.Begin(samplerState: sampler, blendState: BlendState.Opaque, transformMatrix: session.Camera.GetViewMatrix());
+                spriteBatch.Draw(lightTexture, destRect, Color.White);
+                spriteBatch.End();
+            }
+
+            graphicsDevice.SetRenderTarget(null);
+        }
+
+        /// <summary>V7 emissive pass: drawn after the lit composite so it is never darkened.</summary>
+        private void DrawV7Emissives(SpriteBatch spriteBatch, IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels)
+        {
+            if (session.TorchRuntimeSystem == null)
+                return;
+
+            float visualTimeSeconds = session.EnvironmentSystem.SkyState.VisualTimeSeconds;
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                float worldOffset = visibleLoopOffsets[i] * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
+                session.TorchRuntimeSystem.DrawFlames(spriteBatch, visualTimeSeconds);
+                spriteBatch.End();
+            }
         }
 
         private void DrawWorldContentToRenderTarget(SpriteBatch spriteBatch, int screenW, int screenH,
                                                      IReadOnlyList<int> visibleLoopOffsets, float worldWidthPixels,
-                                                     bool applyProductionTexture = true)
+                                                     bool applyProductionTexture = true, bool v7 = false)
         {
+            // V7: the light map lights everything per pixel, so trees/mushrooms take no ambient tint,
+            // grass gets no night darkening, and torch flames move to the emissive pass.
+            Color decorationTint = session.EnvironmentSystem.SkyState.AmbientLight;
+            if (v7)
+                decorationTint = Color.White;
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 int loopIndex = visibleLoopOffsets[i];
@@ -1312,7 +1480,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Back, decorationTint);
                 session.DrawBackgroundWalls(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
             }
@@ -1324,7 +1492,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
-                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front);
+                session.DrawTreeDecorations(spriteBatch, screenW, screenH, worldOffset, TreeRenderLayer.Front, decorationTint);
                 spriteBatch.End();
             }
 
@@ -1342,8 +1510,8 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 session.DrawTerrainBase(spriteBatch, screenW, screenH, worldOffset);
                 spriteBatch.End();
 
-                // P2-C5: Surface night tint for Grass (PIXEL mode only, applied before wetness)
-                if (presentationMode == LightingPresentationMode.Pixel)
+                // P2-C5: Surface night tint for Grass (Legacy PIXEL mode only, applied before wetness)
+                if (!v7 && presentationMode == LightingPresentationMode.Pixel)
                 {
                     spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                     session.DrawSurfaceNightTint(spriteBatch, screenW, screenH, worldOffset);
@@ -1396,17 +1564,17 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 float worldOffset = loopIndex * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
-                // P1D-C: Use neutral sampler for both Enemy and WorldItem in PIXEL mode
-                var enemyLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                // Neutral sampler for Enemy and WorldItem in PIXEL and V7 modes (lit per pixel instead)
+                var enemyLightSampler = (!v7 && presentationMode == LightingPresentationMode.Tile)
                     ? v6LightSampler
                     : (IEntityLightSampler)neutralEntityLightSampler;
 
-                var worldItemLightSampler = (presentationMode == LightingPresentationMode.Tile)
+                var worldItemLightSampler = (!v7 && presentationMode == LightingPresentationMode.Tile)
                     ? v6LightSampler
                     : (IEntityLightSampler)neutralEntityLightSampler;
 
-                // P1E-C: In PIXEL mode, draw torch body only (flames drawn separately after composite)
-                bool drawTorchFlames = true;
+                // V7: torch body only here; flames drawn unlit after the composite (DrawV7Emissives)
+                bool drawTorchFlames = !v7;
 
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: transform);
                 session.DrawLoopedWorldEntities(spriteBatch, screenW, screenH, worldOffset, enemyLightSampler, worldItemLightSampler, drawTorchFlames: drawTorchFlames);
@@ -1429,8 +1597,8 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 spriteBatch.End();
             }
 
-            // P1D-A: Use neutral sampler in PIXEL mode to avoid double-lighting Player
-            var playerLightSampler = (presentationMode == LightingPresentationMode.Tile)
+            // Neutral sampler in PIXEL and V7 modes to avoid double-lighting the Player
+            var playerLightSampler = (!v7 && presentationMode == LightingPresentationMode.Tile)
                 ? (IEntityLightSampler)v6LightSampler
                 : neutralEntityLightSampler;
 

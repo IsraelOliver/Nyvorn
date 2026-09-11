@@ -4,16 +4,16 @@ namespace Nyvorn.Source.Engine.Graphics.LightingPipeline
     /// Rendering pipeline mode for world lighting.
     ///
     /// Legacy:
-    ///   - Uses WorldLightingSystem (BFS-based)
-    ///   - Applies BSL shadows
-    ///   - Draws night overlay
-    ///   - Legacy light/glow texture composition
+    ///   - V6 lighting (V6LightingSystem + V6LightMapRenderer), Tile/Pixel presentation.
+    /// V7:
+    ///   - LightingV7System (sky + block channels, Terraria-style sweeps, overbright compose).
     /// </summary>
     public enum LightingPipelineMode
     {
-        /// <summary>
-        /// Legacy lighting system (WorldLightingSystem + BSL + night overlay).
-        /// </summary>
-        Legacy = 0
+        /// <summary>V6 lighting (kept until V7 is approved).</summary>
+        Legacy = 0,
+
+        /// <summary>V7 lighting (Source/Engine/Graphics/LightingV7).</summary>
+        V7 = 1
     }
 }
