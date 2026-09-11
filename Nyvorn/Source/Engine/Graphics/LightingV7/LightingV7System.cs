@@ -61,6 +61,13 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         private float[] rowCap = Array.Empty<float>();
         private float[] rowAmbient = Array.Empty<float>();
         private Color[] texels = Array.Empty<Color>();
+
+        // The texture is uploaded every frame and drawn in the same frame. Writing to the same
+        // object the GPU may still be reading stalls the upload badly (measured ~12 ms in-game).
+        // Rotating through a small ring gives the driver a texture that is no longer in flight.
+        private const int TextureRingSize = 3;
+        private readonly Texture2D[] textureRing = new Texture2D[TextureRingSize];
+        private int textureRingIndex;
         private Texture2D texture;
 
         /// <param name="graphicsDevice">
@@ -112,6 +119,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         public double LastClassifyMs { get; private set; }
         public double LastPropagateMs { get; private set; }
         public double LastFillMs { get; private set; }
+        public double LastUploadMs { get; private set; }
         public int SourceCount { get; private set; }
 
         public void SetLayers(IReadOnlyList<WorldLayerDefinition> layers)
@@ -247,11 +255,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 rowAmbient = new float[height];
             }
 
-            if (graphicsDevice != null && (texture == null || texture.Width != width || texture.Height != height))
+            if (graphicsDevice == null)
+                return;
+
+            textureRingIndex = (textureRingIndex + 1) % TextureRingSize;
+            Texture2D candidate = textureRing[textureRingIndex];
+            if (candidate == null || candidate.Width != width || candidate.Height != height)
             {
-                texture?.Dispose();
-                texture = new Texture2D(graphicsDevice, width, height, false, SurfaceFormat.Color);
+                candidate?.Dispose();
+                candidate = new Texture2D(graphicsDevice, width, height, false, SurfaceFormat.Color);
+                textureRing[textureRingIndex] = candidate;
             }
+
+            texture = candidate;
         }
 
         private void ClassifyAndSeed()
@@ -558,12 +574,19 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                     break;
             }
 
+            double beforeUpload = stopwatch.Elapsed.TotalMilliseconds;
             texture?.SetData(texels, 0, cellCount);
+            LastUploadMs = stopwatch.Elapsed.TotalMilliseconds - beforeUpload;
         }
 
         public void Dispose()
         {
-            texture?.Dispose();
+            for (int i = 0; i < textureRing.Length; i++)
+            {
+                textureRing[i]?.Dispose();
+                textureRing[i] = null;
+            }
+
             texture = null;
         }
     }
