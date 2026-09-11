@@ -51,6 +51,21 @@ namespace Nyvorn.Source.Engine.Physics.Sand
             return IsInBounds(pixelX, pixelY) && occupiedSand.Contains(CreatePixelKey(pixelX, pixelY));
         }
 
+        // True when any pixel column inside this tile column holds sand at any depth. A per-tile
+        // loop (lighting) can test this once per column and skip the per-pixel probe entirely for
+        // the columns that hold none, which is nearly all of them outside a desert.
+        public bool HasSandInTileColumn(int tileX)
+        {
+            int startPixelX = tileX * TileSize;
+            for (int offset = 0; offset < TileSize; offset++)
+            {
+                if (occupiedSandColumns.TryGetValue(startPixelX + offset, out SortedSet<int> column) && column.Count > 0)
+                    return true;
+            }
+
+            return false;
+        }
+
         public void SetSandAt(int pixelX, int pixelY, bool value)
         {
             if (!IsInBounds(pixelX, pixelY))

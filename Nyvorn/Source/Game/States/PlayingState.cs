@@ -148,6 +148,8 @@ namespace Nyvorn.Source.Game.States
         // after it, so the lighting can be verified from a script without keyboard input.
         private int v7AutoShotFrame = -1;
         private int v7DrawCount;
+        private LightingV7Glow v7Glow;
+        private double v7SourcesMs;
 
         // private float debugOutputCooldown;  // Used only when debug output is uncommented
         // private const float DebugOutputInterval = 2f;  // Log debug info every 2 seconds
@@ -211,12 +213,21 @@ namespace Nyvorn.Source.Game.States
 
             // V7 lighting: created alongside V6, selected by lightingMode (F9 toggles for A/B).
             v7Lighting = new LightingV7System(graphicsDevice, session.WorldMap, session.LayerDefinitions);
+            v7Glow = new LightingV7Glow(graphicsDevice);
 
             if (int.TryParse(Environment.GetEnvironmentVariable("NYVORN_V7_AUTOSHOT"), out int autoShotFrame) && autoShotFrame > 0)
                 v7AutoShotFrame = autoShotFrame;
 
             if (string.Equals(Environment.GetEnvironmentVariable("NYVORN_LIGHTING"), "legacy", StringComparison.OrdinalIgnoreCase))
                 lightingMode = LightingPipelineMode.Legacy;
+
+            // Pin the clock so a capture can be taken at a chosen hour without waiting for the cycle.
+            if (float.TryParse(Environment.GetEnvironmentVariable("NYVORN_V7_TIME"),
+                    System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,
+                    out float pinnedTime))
+            {
+                session.SetWorldTimeOfDay(pinnedTime);
+            }
 
             string debugViewName = Environment.GetEnvironmentVariable("NYVORN_V7_VIEW");
             if (!string.IsNullOrEmpty(debugViewName) && Enum.TryParse(debugViewName, true, out LightingV7DebugView requestedView))
@@ -288,6 +299,7 @@ namespace Nyvorn.Source.Game.States
         {
             saveService.Save(session);
             v7Lighting?.Dispose();
+            v7Glow?.Dispose();
             session.ViewCoordinator.DisposeSceneRenderTarget();
             session.ViewCoordinator.DisposeWorldColorRenderTarget();
             session.ViewCoordinator.DisposePixelLightBuffer();
@@ -436,6 +448,19 @@ namespace Nyvorn.Source.Game.States
                 if (keyboard.IsKeyDown(Keys.F8) && !previousConsoleKeyboard.IsKeyDown(Keys.F8))
                 {
                     LightingV7Config.DirectShadowsEnabled = !LightingV7Config.DirectShadowsEnabled;
+                }
+
+                // F7: directional sun on/off.
+                if (keyboard.IsKeyDown(Keys.F7) && !previousConsoleKeyboard.IsKeyDown(Keys.F7))
+                {
+                    LightingV7Config.SunEnabled = !LightingV7Config.SunEnabled;
+                }
+
+                // F6 held: run the day/night cycle fast, to sweep noon -> dusk -> night.
+                if (keyboard.IsKeyDown(Keys.F6))
+                {
+                    float advance = dt * (LightingV7Config.DebugTimeScale - 1f) / session.DayNightCycle.DayLengthSeconds;
+                    session.SetWorldTimeOfDay(session.TimeOfDay01 + advance);
                 }
             }
 
@@ -600,10 +625,19 @@ namespace Nyvorn.Source.Game.States
             if (lightingMode == LightingPipelineMode.V7)
             {
                 // V7: classify + seed sky, add point sources, propagate, upload texture.
+                var skyState = session.EnvironmentSystem.SkyState;
+                float timeOfDay01 = session.TimeOfDay01;
+
                 v7Lighting.LiquidSystem = session.LiquidSystem;
-                v7Lighting.SkyColor = LightingV7Config.SkyColorDay;   // Phase 3: per-hour / weather colour
+                v7Lighting.SandSystem = session.SandSystem;
+                v7Lighting.SkyColor = LightingV7Sky.GetSkyColor(skyState, timeOfDay01);
+                v7Lighting.SunColor = LightingV7Sky.GetSunColor(skyState, timeOfDay01);
+                v7Lighting.SunSlope = LightingV7Sky.GetSunSlope(timeOfDay01);
+
                 v7Lighting.BeginFrame(camera.Position.X, camera.Position.Y, screenW, screenH, camera.Zoom, tileSize);
+                long sourcesStart = Stopwatch.GetTimestamp();
                 AddV7PointLights(tileSize);
+                v7SourcesMs = (Stopwatch.GetTimestamp() - sourcesStart) * 1000.0 / Stopwatch.Frequency;
                 v7Lighting.EndFrame();
             }
             else
@@ -1273,11 +1307,13 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             {
                 spriteBatch.DrawString(consoleFont,
                     $"LIGHTING: V7 (F9)  view: {v7Lighting.DebugView} (F10)  " +
-                    $"direct+shadows: {(LightingV7Config.DirectShadowsEnabled ? "ON" : "OFF")} (F8)  F12: screenshot",
+                    $"shadows: {(LightingV7Config.DirectShadowsEnabled ? "ON" : "OFF")} (F8)  " +
+                    $"sun: {(LightingV7Config.SunEnabled ? "ON" : "OFF")} (F7)  " +
+                    $"time x{LightingV7Config.DebugTimeScale:0} (hold F6)  F12: shot",
                     new Vector2(10, 10), Color.Yellow);
                 spriteBatch.DrawString(consoleFont,
                     $"V7 cpu: {v7Lighting.LastCpuMs:0.00} ms " +
-                    $"(cls {v7Lighting.LastClassifyMs:0.00} / ao {v7Lighting.LastAoMs:0.00} / " +
+                    $"(cls {v7Lighting.LastClassifyMs:0.00} / src {v7SourcesMs:0.00} / ao {v7Lighting.LastAoMs:0.00} / " +
                     $"dir {v7Lighting.LastDirectMs:0.00} / prop {v7Lighting.LastPropagateMs:0.00} / " +
                     $"fill {v7Lighting.LastFillMs - v7Lighting.LastUploadMs:0.00} / upload {v7Lighting.LastUploadMs:0.00})  " +
                     $"region: {v7Lighting.RegionWidth}x{v7Lighting.RegionHeight}  sources: {v7Lighting.SourceCount}",
@@ -1455,14 +1491,88 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
         private void AddV7PointLights(int tileSize)
         {
-            var torches = session.TorchRuntimeSystem?.Torches;
-            if (torches == null)
-                return;
+            float visualTimeSeconds = session.EnvironmentSystem.SkyState.VisualTimeSeconds;
 
-            Vector3 color = LightingV7Config.TorchColor;
-            float intensity = LightingV7Config.TorchIntensity;
-            for (int i = 0; i < torches.Count; i++)
-                v7Lighting.AddPointLight(torches[i].LightOrigin, color, intensity, tileSize);
+            var torches = session.TorchRuntimeSystem?.Torches;
+            if (torches != null)
+            {
+                Vector3 torchColor = LightingV7Config.TorchColor;
+                float torchIntensity = LightingV7Config.TorchIntensity;
+
+                for (int i = 0; i < torches.Count; i++)
+                {
+                    Vector2 origin = torches[i].LightOrigin;
+                    float flicker = LightingV7Glow.GetFlicker(origin, visualTimeSeconds);
+                    v7Lighting.AddPointLight(origin, torchColor, torchIntensity * flicker, tileSize);
+                }
+            }
+
+            // Cave mushrooms: soft cyan emissives. They get no direct term (see
+            // EmissivesCastDirectShadows), so they seed the flood at full strength and read as a glow
+            // around the cap rather than a lamp throwing shadows.
+            var decorations = session.WorldMap.SurfaceDecorations;
+            if (decorations != null && decorations.Count > 0)
+            {
+                Vector3 mushroomColor = LightingV7Config.MushroomEmission;
+                float mushroomIntensity = LightingV7Config.MushroomIntensity;
+                bool mushroomDirect = LightingV7Config.EmissivesCastDirectShadows;
+
+                int originTileX = v7Lighting.OriginTileX;
+                int originTileY = v7Lighting.OriginTileY;
+                int endTileX = originTileX + v7Lighting.RegionWidth;
+                int endTileY = originTileY + v7Lighting.RegionHeight;
+                int worldWidthTiles = session.WorldMap.Width;
+
+                for (int i = 0; i < decorations.Count; i++)
+                {
+                    var decoration = decorations[i];
+                    if (decoration.Type != Nyvorn.Source.World.Decorations.SurfaceDecorationType.Mushroom)
+                        continue;
+
+                    // The region lives in unwrapped camera space, so test the tile against both the
+                    // direct position and one world width either side.
+                    int tileY = decoration.Tile.Y;
+                    if (tileY < originTileY || tileY >= endTileY)
+                        continue;
+
+                    int tileX = decoration.Tile.X;
+                    if (!InRegionX(tileX, originTileX, endTileX, worldWidthTiles, out int resolvedTileX))
+                        continue;
+
+                    var position = new Vector2(
+                        resolvedTileX * tileSize + tileSize * 0.5f,
+                        tileY * tileSize + tileSize * 0.5f);
+
+                    v7Lighting.AddPointLight(position, mushroomColor, mushroomIntensity, tileSize, mushroomDirect);
+                }
+            }
+        }
+
+        /// <summary>Resolves a wrapped tile X into the region's unwrapped space, if it falls inside.</summary>
+        private static bool InRegionX(int tileX, int originTileX, int endTileX, int worldWidthTiles, out int resolvedTileX)
+        {
+            if (tileX >= originTileX && tileX < endTileX)
+            {
+                resolvedTileX = tileX;
+                return true;
+            }
+
+            int shifted = tileX + worldWidthTiles;
+            if (shifted >= originTileX && shifted < endTileX)
+            {
+                resolvedTileX = shifted;
+                return true;
+            }
+
+            shifted = tileX - worldWidthTiles;
+            if (shifted >= originTileX && shifted < endTileX)
+            {
+                resolvedTileX = shifted;
+                return true;
+            }
+
+            resolvedTileX = tileX;
+            return false;
         }
 
         /// <summary>
@@ -1505,13 +1615,49 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 return;
 
             float visualTimeSeconds = session.EnvironmentSystem.SkyState.VisualTimeSeconds;
+            int tileSize = session.WorldMap.TileSize;
+
             for (int i = 0; i < visibleLoopOffsets.Count; i++)
             {
                 float worldOffset = visibleLoopOffsets[i] * worldWidthPixels;
                 Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
 
+                // Emissive layer: drawn after the lit composite, so it is never darkened.
                 spriteBatch.Begin(samplerState: SamplerState.PointClamp, blendState: BlendState.AlphaBlend, transformMatrix: transform);
                 session.TorchRuntimeSystem.DrawFlames(spriteBatch, visualTimeSeconds);
+                spriteBatch.End();
+            }
+
+            // Halo pass: one additive radial sprite per source, in the source's own colour.
+            if (v7Glow == null || LightingV7Config.GlowAlpha <= 0f)
+                return;
+
+            float torchRadius = LightingV7Config.GlowRadiusTiles;
+            float emissiveRadius = torchRadius * LightingV7Config.EmissiveGlowScale;
+            float glowAlpha = LightingV7Config.GlowAlpha;
+
+            for (int i = 0; i < visibleLoopOffsets.Count; i++)
+            {
+                float worldOffset = visibleLoopOffsets[i] * worldWidthPixels;
+                Matrix transform = Matrix.CreateTranslation(worldOffset, 0f, 0f) * session.Camera.GetViewMatrix();
+
+                spriteBatch.Begin(samplerState: SamplerState.LinearClamp, blendState: BlendState.Additive, transformMatrix: transform);
+
+                foreach (var source in v7Lighting.Sources)
+                {
+                    // Colour already carries the source's flicker, so the halo breathes with the light.
+                    Vector3 color = source.Color;
+                    float peak = MathF.Max(color.X, MathF.Max(color.Y, color.Z));
+                    if (peak <= 0f)
+                        continue;
+
+                    Vector3 normalized = color / peak;
+                    float radius = source.CastsDirectShadow ? torchRadius : emissiveRadius;
+                    float alpha = glowAlpha * MathHelper.Clamp(peak, 0f, 1.5f);
+
+                    v7Glow.Draw(spriteBatch, source.WorldPixels, normalized, radius, alpha, tileSize);
+                }
+
                 spriteBatch.End();
             }
         }

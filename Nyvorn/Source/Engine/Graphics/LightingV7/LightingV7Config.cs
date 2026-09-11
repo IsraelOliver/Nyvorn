@@ -57,7 +57,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         public static bool DirectShadowsEnabled = true;
 
         // Reach of the direct term, in tiles. Beyond it only the flood contributes.
-        public static int DirectRadiusTiles = 24;
+        public static int DirectRadiusTiles = 13;
 
         // Fraction of the source that feeds the flood (the light that "bounces" into shadow).
         public static float BounceStrength = 0.35f;
@@ -68,6 +68,62 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         // Halos (Phase 2)
         public static int GlowRadiusTiles = 3;
         public static float GlowAlpha = 0.35f;
+
+        // --- Emissive sources (Phase 2) ---
+        // Cave mushroom: the cyan glow from reference image 1.
+        public static Vector3 MushroomEmission = new(0.30f, 0.95f, 0.90f);
+        public static float MushroomIntensity = 0.55f;
+
+        // Tissue: warm orange afterglow, scaled by the cell's own presence.
+        public static Vector3 TissueEmission = new(1.00f, 0.56f, 0.23f);
+        public static float TissueIntensity = 0.60f;
+        public static bool TissueEmissiveEnabled = true;
+
+        // Emissive tiles and decorations are soft ambient glows, not lamps: giving each one a hard
+        // shadow reads wrong and costs a full ray pass per source. They seed the flood at full
+        // strength instead. Torches keep their direct term.
+        public static bool EmissivesCastDirectShadows = false;
+
+        // Halo sprite size relative to GlowRadiusTiles for emissives (they glow smaller than torches).
+        public static float EmissiveGlowScale = 0.6f;
+
+        // --- Sky colour by hour (Phase 3) ---
+        // V7 keeps its own night curve instead of reusing SkyState.AmbientLight, which is far
+        // brighter at night than a multiplicative light map wants.
+        public static Vector3 SkyColorDawn = new(1.00f, 0.78f, 0.62f);
+
+        // Total darkness multiplier at full eclipse.
+        public static float EclipseSkyMultiplier = 0.25f;
+
+        // How much a full two-moon conjunction lifts the night sky (0 = no effect).
+        public static float MoonConjunctionBoost = 0.60f;
+
+        // --- Directional sun (Phase 3) ---
+        public static bool SunEnabled = true;
+
+        // How much of the sky flood survives when the sun is on. The rest of the daylight comes
+        // from the direct sun term, which is what creates the shafts.
+        public static float SkyBounce = 0.60f;
+        public static float SunIntensity = 1.00f;
+
+        // Horizontal tiles the beam travels per row at dawn/dusk. 0 would be straight down.
+        public static float SunMaxSlope = 2.50f;
+
+        public static Vector3 SunColorNoon = new(1.00f, 0.98f, 0.92f);
+        public static Vector3 SunColorHorizon = new(1.00f, 0.58f, 0.32f);
+
+        // --- Water (Phase 3) ---
+        // Per channel: red dies first, blue carries furthest, so depth goes blue.
+        public static Vector3 WaterDecayRGB = new(0.90f, 0.93f, 0.96f);
+
+        // --- Loose sand (Phase 3) ---
+        // A tile's sand fill is estimated from a 4-pixel probe, so it lands on 0, .25, .5, .75, 1.
+        // Above this fraction the tile also blocks the direct ray and the sun.
+        public static float SandOcclusionThreshold = 0.5f;
+
+        // --- Debug ---
+        // Hold the time key to run the day/night cycle this much faster.
+        public static float DebugTimeScale = 60f;
 
         // 0 = off
         public static int PosterizeLevels = 0;

@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework;
 using Nyvorn.Source.Engine.Graphics.LightingV7;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
+using Nyvorn.Source.Gameplay.World.Simulation;
+using Nyvorn.Source.Engine.Physics.Liquids;
 
 namespace LightingV7Validator
 {
@@ -44,6 +46,9 @@ namespace LightingV7Validator
             Console.WriteLine($"DirectShadows={LightingV7Config.DirectShadowsEnabled}  DirectRadius={LightingV7Config.DirectRadiusTiles}  " +
                               $"Bounce={LightingV7Config.BounceStrength}  AOStrength={LightingV7Config.AOStrength}\n");
 
+            Scenario11_DirectionalSun();
+            Scenario12_WaterPerChannel();
+            Scenario13_SkyColourByHour();
             Scenario8_PlatformShadow();
             Scenario9_AmbientOcclusion();
             Scenario10_PlayerBehindBlock();
@@ -212,10 +217,12 @@ namespace LightingV7Validator
             CarveRect(map, 180, plankY - 20, 50, 32);             // open room, background wall kept
             FillRect(map, 202, plankY, 4, 1, TileType.Platform);  // the plank
 
+            // Torch kept well inside DirectRadiusTiles of the probe row, or there is no direct term
+            // there to be shadowed in the first place.
             var sys = Build(map);
-            Frame(sys, map, 204, plankY - 8, torches: new[] { new Point(198, plankY + 8) });
+            Frame(sys, map, 204, plankY - 4, torches: new[] { new Point(198, plankY + 4) });
 
-            int probeY = plankY - 7;
+            int probeY = plankY - 4;
             Console.WriteLine($"  direct term along y={probeY} (7 tiles above the plank):");
             Console.Write("   ");
             for (int x = 198; x <= 218; x += 2)
@@ -267,6 +274,132 @@ namespace LightingV7Validator
             Console.WriteLine($"  cell right behind the block : direct {Direct(sys, 202, roomY):0.000}  total {Total(sys, 202, roomY):0.000}");
             Console.WriteLine($"  one row above (clear line)  : direct {Direct(sys, 202, roomY - 2):0.000}  total {Total(sys, 202, roomY - 2):0.000}");
             Console.WriteLine("  -> the shadow is a band behind the block, not a darkening of the whole area.\n");
+        }
+
+        // ---- Scenario 11: a hole in the surface must throw a slanted shaft, and none at night.
+        private static void Scenario11_DirectionalSun()
+        {
+            Header("11. Directional sun through an opening (expect: slanted shaft, leaning with the hour)");
+
+            // A roofed hall with one hole in the ceiling. The beam enters the hole and lands on the
+            // floor; where it lands is the whole point, so that is what gets measured.
+            const int ceilingY = SurfaceEnd + 2;   // 90
+            const int floorY = SurfaceEnd + 26;    // 114, still inside Shallow
+            const int holeX = 200;
+
+            WorldMap map = SolidWorld();
+            ClearAbove(map, ceilingY - 1);                                  // open sky right down to the roof
+            CarveRect(map, 120, ceilingY + 1, 160, floorY - ceilingY - 1);  // the hall
+            CarveRect(map, holeX, ceilingY, 3, 1);                          // hole in the ceiling
+
+            var sys = Build(map);
+            int travel = floorY - 1 - ceilingY;
+
+            foreach ((string label, float hour) in new[] { ("09:00", 9f / 24f), ("12:00", 12f / 24f), ("16:00", 16f / 24f), ("23:00", 23f / 24f) })
+            {
+                FrameAtHour(sys, map, holeX, (ceilingY + floorY) / 2, hour);
+
+                float slope = LightingV7Sky.GetSunSlope(hour);
+                int brightestX = -1;
+                float brightest = 0f;
+                for (int x = 120; x < 280; x++)
+                {
+                    float value = sys.GetSunAt(x, floorY - 1);
+                    if (value > brightest) { brightest = value; brightestX = x; }
+                }
+
+                string landing = brightest > 0f
+                    ? $"lands at x={brightestX} ({brightestX - holeX:+0;-0;0} from the hole), value {brightest:0.00}"
+                    : "no beam";
+                Console.WriteLine($"  {label}  slope {slope,5:0.00}  predicted drift {slope * travel,6:0.0}  {landing}");
+            }
+
+            Console.WriteLine("  -> the landing point tracks the slant, and 23:00 has no beam at all.\n");
+        }
+
+        // ---- Scenario 12: light under water must lose red before blue.
+        private static void Scenario12_WaterPerChannel()
+        {
+            Header("12. Water per-channel decay (expect: red dies first, blue carries deepest)");
+
+            WorldMap map = SolidWorld();
+            int surfaceRow = 200;
+            CarveRect(map, 180, surfaceRow - 4, 40, 30);
+
+            var liquid = new LiquidSystem(map) { };
+            for (int x = 182; x < 218; x++)
+                for (int y = surfaceRow; y < surfaceRow + 24; y++)
+                    liquid.SetLiquidAt(x * TileSize + 4, y * TileSize + 4, LiquidType.Water, true);
+
+            var sys = Build(map);
+            sys.LiquidSystem = liquid;
+            Frame(sys, map, 200, surfaceRow, torches: new[] { new Point(200, surfaceRow - 2) });
+
+            Console.WriteLine("  depth below the torch (R / G / B):");
+            for (int d = 0; d <= 16; d += 4)
+            {
+                Vector3 total = sys.GetBlockAt(200, surfaceRow + d) + sys.GetDirectAt(200, surfaceRow + d);
+                Console.WriteLine($"   {d,2} tiles: {total.X:0.000} / {total.Y:0.000} / {total.Z:0.000}" +
+                                  (total.X > 0.0001f ? $"   B/R = {total.Z / total.X:0.00}x" : ""));
+            }
+            Console.WriteLine($"  -> the torch itself is B/R {LightingV7Config.TorchColor.Z / LightingV7Config.TorchColor.X:0.00}; " +
+                              "B/R climbing with depth is the water shifting the light blue.\n");
+        }
+
+        // ---- Scenario 13: the sky colour curve across a day.
+        private static void Scenario13_SkyColourByHour()
+        {
+            Header("13. Sky and sun colour by hour (expect: bright neutral noon, warm dusk, dark night)");
+
+            var clear = DefaultSkyState(rain: 0f, eclipse: 0f, conjunction: 0f);
+            foreach ((string label, float hour) in new[]
+            {
+                ("03:00", 3f / 24f), ("06:00", 6f / 24f), ("09:00", 9f / 24f), ("12:00", 12f / 24f),
+                ("17:00", 17f / 24f), ("18:30", 18.5f / 24f), ("21:00", 21f / 24f)
+            })
+            {
+                Vector3 skyColor = LightingV7Sky.GetSkyColor(clear, hour);
+                Vector3 sunColor = LightingV7Sky.GetSunColor(clear, hour);
+                Console.WriteLine($"   {label}  sky ({skyColor.X:0.00} {skyColor.Y:0.00} {skyColor.Z:0.00})   " +
+                                  $"sun ({sunColor.X:0.00} {sunColor.Y:0.00} {sunColor.Z:0.00})");
+            }
+
+            Vector3 noonClear = LightingV7Sky.GetSkyColor(clear, 12f / 24f);
+            Vector3 noonRain = LightingV7Sky.GetSkyColor(DefaultSkyState(1f, 0f, 0f), 12f / 24f);
+            Vector3 noonEclipse = LightingV7Sky.GetSkyColor(DefaultSkyState(0f, 1f, 0f), 12f / 24f);
+            Vector3 nightPlain = LightingV7Sky.GetSkyColor(clear, 0f);
+            Vector3 nightConjunction = LightingV7Sky.GetSkyColor(DefaultSkyState(0f, 0f, 1f), 0f);
+
+            Console.WriteLine($"   noon clear   {noonClear.Y:0.00} -> full rain {noonRain.Y:0.00} (x{noonRain.Y / noonClear.Y:0.00})");
+            Console.WriteLine($"   noon clear   {noonClear.Y:0.00} -> full eclipse {noonEclipse.Y:0.00}");
+            Console.WriteLine($"   night plain  {nightPlain.Y:0.00} -> full conjunction {nightConjunction.Y:0.00} (x{nightConjunction.Y / nightPlain.Y:0.00})");
+            Console.WriteLine($"   sun at 23:00 is {LightingV7Sky.GetSunColor(clear, 23f / 24f).Length():0.000} (zero = no shafts at night)\n");
+        }
+
+        private static SkyState DefaultSkyState(float rain, float eclipse, float conjunction)
+        {
+            return new SkyState(
+                Color.Black, Color.Black, Color.Black, Color.Black, Color.White, Color.Black,
+                0f, 0f,
+                new MoonState(0f, 0f, 0f), new MoonState(0f, 0f, 0f),
+                conjunction,
+                0f, 0f, 0f,
+                rain, eclipse, 0f, 0f, 0f, 0f);
+        }
+
+        private static void FrameAtHour(LightingV7System sys, WorldMap map, int centreTileX, int centreTileY, float hour)
+        {
+            var skyState = DefaultSkyState(0f, 0f, 0f);
+            sys.SunColor = LightingV7Sky.GetSunColor(skyState, hour);
+            sys.SunSlope = LightingV7Sky.GetSunSlope(hour);
+            sys.SkyColor = LightingV7Sky.GetSkyColor(skyState, hour);
+
+            const int screenW = 1920, screenH = 1080;
+            const float zoom = 2f;
+            sys.BeginFrame(centreTileX * TileSize - (screenW / zoom) * 0.5f,
+                           centreTileY * TileSize - (screenH / zoom) * 0.5f,
+                           screenW, screenH, zoom, TileSize);
+            sys.EndFrame();
         }
 
         // ---------- helpers ----------

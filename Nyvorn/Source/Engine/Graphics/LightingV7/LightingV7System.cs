@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Nyvorn.Source.Engine.Physics.Liquids;
+using Nyvorn.Source.Engine.Physics.Sand;
 using Nyvorn.Source.World;
 using Nyvorn.Source.World.Generation;
 
@@ -16,8 +17,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         SkyOnly = 2,    // sky channel, grayscale
         BlockOnly = 3,  // block (RGB): direct + indirect
         DirectOnly = 4, // direct term alone, where the hard shadows live
-        AmbientOcclusion = 5,
-        Medium = 6      // cell classification / decay
+        SunOnly = 5,    // directional sun visibility, where the shafts live
+        AmbientOcclusion = 6,
+        Medium = 7      // cell classification / decay
     }
 
     /// <summary>
@@ -53,12 +55,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         private int height;
         private int cellCount;
 
-        /// <summary>A light source kept for the direct pass, in region-local tile coordinates.</summary>
-        private struct PointSource
+        /// <summary>A light source kept for the direct pass and the halo pass.</summary>
+        public struct PointSource
         {
             public int LocalX;
             public int LocalY;
             public Vector3 Color;
+            public Vector2 WorldPixels;
+            public bool CastsDirectShadow;
         }
 
         private float[] sky = Array.Empty<float>();
@@ -71,6 +75,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         private float[] ambientOcclusion = Array.Empty<float>();
         private float[] decay = Array.Empty<float>();
         private float[] skyDecay = Array.Empty<float>();
+
+        // Per-channel decay, only filled and only used when the region actually holds water.
+        // Everywhere else the three channels share `decay`, which keeps the common sweep cheap.
+        private float[] decayWaterR = Array.Empty<float>();
+        private float[] decayWaterG = Array.Empty<float>();
+        private float[] decayWaterB = Array.Empty<float>();
+        private bool hasWater;
+
+        // Direct sunlight visibility, produced by the slanted scan. Already scaled and capped.
+        private float[] sunDirect = Array.Empty<float>();
+        private bool[] columnHasSand = Array.Empty<bool>();
         private CellMedium[] medium = Array.Empty<CellMedium>();
 
         // Solid foreground tiles and platforms. Background walls are not occluders: the reference
@@ -117,6 +132,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         public Vector3 GetDirectAt(int worldTileX, int worldTileY) =>
             TryGetIndex(worldTileX, worldTileY, out int i) ? new Vector3(directR[i], directG[i], directB[i]) : Vector3.Zero;
 
+        /// <summary>Direct sun visibility at a world tile, for diagnostics.</summary>
+        public float GetSunAt(int worldTileX, int worldTileY) =>
+            TryGetIndex(worldTileX, worldTileY, out int i) ? sunDirect[i] : 0f;
+
         /// <summary>Ambient occlusion factor at a world tile, for diagnostics. 1 = unoccluded.</summary>
         public float GetAmbientOcclusionAt(int worldTileX, int worldTileY) =>
             TryGetIndex(worldTileX, worldTileY, out int i) ? ambientOcclusion[i] : 1f;
@@ -137,6 +156,21 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
 
         /// <summary>Optional. When set, water cells use WaterDecay (lerped by fill amount).</summary>
         public LiquidSystem LiquidSystem { get; set; }
+
+        /// <summary>Optional. When set, loose sand partially occludes a tile.</summary>
+        public Engine.Physics.Sand.SandSystem SandSystem { get; set; }
+
+        /// <summary>Colour of the direct sun for this frame. Zero at night.</summary>
+        public Vector3 SunColor { get; set; } = Vector3.Zero;
+
+        /// <summary>
+        /// Beam slant: horizontal tiles travelled per row downward. 0 is straight down (noon),
+        /// positive leans one way, negative the other.
+        /// </summary>
+        public float SunSlope { get; set; }
+
+        /// <summary>Sources of this frame, for the halo pass.</summary>
+        public ReadOnlySpan<PointSource> Sources => sources.AsSpan(0, SourceCount);
 
         /// <summary>Global sky colour multiplied into the Sky channel when filling the texture.</summary>
         public Vector3 SkyColor { get; set; } = LightingV7Config.SkyColorDay;
@@ -180,7 +214,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
 
         public void CycleDebugView()
         {
-            DebugView = (LightingV7DebugView)(((int)DebugView + 1) % 7);
+            DebugView = (LightingV7DebugView)(((int)DebugView + 1) % 8);
         }
 
         /// <summary>
@@ -219,8 +253,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             SourceCount = 0;
         }
 
-        /// <summary>Adds a point source. Position in world pixels (unwrapped camera space or wrapped: both work).</summary>
-        public void AddPointLight(Vector2 positionPixels, Vector3 color, float intensity, int tileSize)
+        /// <summary>
+        /// Adds a point source. Position in world pixels (unwrapped camera space or wrapped: both work).
+        /// castsDirectShadow false means the source has no direct term, so it seeds the flood at
+        /// full strength instead of only the bounce fraction - the right model for a soft emissive.
+        /// </summary>
+        public void AddPointLight(Vector2 positionPixels, Vector3 color, float intensity, int tileSize, bool castsDirectShadow = true)
         {
             int tileX = (int)MathF.Floor(positionPixels.X / tileSize);
             int tileY = (int)MathF.Floor(positionPixels.Y / tileSize);
@@ -249,7 +287,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
 
             // With direct shadows on, the source is split: the direct pass carries the shadowed
             // term and the flood only carries the bounce, so shadowed areas stay dim but readable.
-            float seedScale = LightingV7Config.DirectShadowsEnabled
+            bool direct = castsDirectShadow && LightingV7Config.DirectShadowsEnabled;
+            float seedScale = direct
                 ? MathHelper.Clamp(LightingV7Config.BounceStrength, 0f, 1f)
                 : 1f;
 
@@ -265,7 +304,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             if (SourceCount >= sources.Length)
                 Array.Resize(ref sources, sources.Length * 2);
 
-            sources[SourceCount] = new PointSource { LocalX = localX, LocalY = localY, Color = emitted };
+            sources[SourceCount] = new PointSource
+            {
+                LocalX = localX,
+                LocalY = localY,
+                Color = emitted,
+                WorldPixels = positionPixels,
+                CastsDirectShadow = direct
+            };
             SourceCount++;
         }
 
@@ -343,6 +389,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             for (int s = 0; s < SourceCount; s++)
             {
                 PointSource source = sources[s];
+                if (!source.CastsDirectShadow)
+                    continue;
+
                 int sx = source.LocalX;
                 int sy = source.LocalY;
 
@@ -378,6 +427,162 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         directG[i] += source.Color.Y * falloff;
                         directB[i] += source.Color.Z * falloff;
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Direct sunlight as a slanted scan, one row at a time:
+        ///   visible[x, y] = visible[x - shift, y - 1] AND this cell is not an occluder
+        /// The shift comes from the sun's slant for the hour, so a gap in the ceiling produces a
+        /// diagonal shaft that moves across the day instead of a vertical column.
+        ///
+        /// The top row seeds where the cell is open air with no background wall, the same rule the
+        /// sky channel uses. That keeps the sun out of walled Shallow caves, which would otherwise
+        /// sprout beams just because the region's top edge happens to sit inside them.
+        /// Rows are capped by SkyCap, so the beams fade out below the Shallow layer and stop.
+        /// </summary>
+        private void ComputeDirectionalSun()
+        {
+            Span<float> sun = sunDirect.AsSpan(0, cellCount);
+
+            Vector3 color = SunColor;
+            bool sunLit = LightingV7Config.SunEnabled &&
+                          (color.X > 0f || color.Y > 0f || color.Z > 0f);
+
+            if (!sunLit)
+            {
+                sun.Clear();
+                return;
+            }
+
+            float intensity = LightingV7Config.SunIntensity;
+            int w = width;
+            int h = height;
+            float slope = MathHelper.Clamp(SunSlope, -LightingV7Config.SunMaxSlope, LightingV7Config.SunMaxSlope);
+
+            // Seeding the top row from the region alone only works while the sky is inside the
+            // region. Underground it never is, and the beams simply never appear. So the top row is
+            // traced up through the world instead, following the same slant in reverse until the
+            // ray leaves the map (sun gets in) or meets a tile (blocked). Nearly every column hits
+            // rock on its first step, so this costs almost nothing outside of open shafts.
+            float topCap = rowCap[0];
+            for (int x = 0; x < w; x++)
+                sun[x] = TraceSunToSky(originX + x, originY, slope) ? intensity * topCap : 0f;
+
+            int previousOffset = 0;
+
+            for (int y = 1; y < h; y++)
+            {
+                int row = y * w;
+                int previousRow = row - w;
+
+                // Per-row integer step taken from the accumulated slant, so a fractional slope
+                // still lands on whole tiles and the beam edge steps like the tile grid.
+                int offset = (int)MathF.Round(slope * y);
+                int shift = offset - previousOffset;
+                previousOffset = offset;
+
+                float cap = rowCap[y] * intensity;
+
+                for (int x = 0; x < w; x++)
+                {
+                    if (occluder[row + x])
+                    {
+                        sun[row + x] = 0f;
+                        continue;
+                    }
+
+                    // Strictly the recurrence: sun reaches a cell only by an unbroken slanted line
+                    // back to open sky at the top of the region. Re-seeding open-air cells here
+                    // would hand full sun to every wall-free pocket and erase the beams entirely.
+                    int sourceX = x - shift;
+                    float inherited = (sourceX >= 0 && sourceX < w) ? sun[previousRow + sourceX] : 0f;
+
+                    sun[row + x] = MathF.Min(inherited, cap);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Walks the sun ray upward from a tile, outside the region, to see whether it reaches open
+        /// sky. Returns false as soon as any tile blocks it.
+        /// </summary>
+        private bool TraceSunToSky(int worldX, int worldY, float slope)
+        {
+            if (worldY <= 0)
+                return true;
+
+            float x = worldX + 0.5f;
+
+            for (int y = worldY - 1; y >= 0; y--)
+            {
+                // Going up reverses the slant.
+                x -= slope;
+
+                int tileX = worldMap.WrapTileX((int)MathF.Floor(x));
+                if (worldMap.GetTile(tileX, y) != TileType.Empty)
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Same as SweepRgb but with a separate decay per channel, used when the region holds water:
+        /// red dies fastest and blue carries furthest, so depth reads blue rather than just dark.
+        /// </summary>
+        private void SweepRgbPerChannel()
+        {
+            int w = width;
+            int h = height;
+            Span<float> r = blockR.AsSpan(0, cellCount);
+            Span<float> g = blockG.AsSpan(0, cellCount);
+            Span<float> b = blockB.AsSpan(0, cellCount);
+            Span<float> dr = decayWaterR.AsSpan(0, cellCount);
+            Span<float> dg = decayWaterG.AsSpan(0, cellCount);
+            Span<float> db = decayWaterB.AsSpan(0, cellCount);
+
+            for (int y = 0; y < h; y++)
+            {
+                int row = y * w;
+                for (int x = 1; x < w; x++)
+                {
+                    int i = row + x;
+                    float vr = r[i - 1] * dr[i]; if (vr > r[i]) r[i] = vr;
+                    float vg = g[i - 1] * dg[i]; if (vg > g[i]) g[i] = vg;
+                    float vb = b[i - 1] * db[i]; if (vb > b[i]) b[i] = vb;
+                }
+                for (int x = w - 2; x >= 0; x--)
+                {
+                    int i = row + x;
+                    float vr = r[i + 1] * dr[i]; if (vr > r[i]) r[i] = vr;
+                    float vg = g[i + 1] * dg[i]; if (vg > g[i]) g[i] = vg;
+                    float vb = b[i + 1] * db[i]; if (vb > b[i]) b[i] = vb;
+                }
+            }
+
+            for (int y = 1; y < h; y++)
+            {
+                int row = y * w;
+                for (int x = 0; x < w; x++)
+                {
+                    int i = row + x;
+                    float vr = r[i - w] * dr[i]; if (vr > r[i]) r[i] = vr;
+                    float vg = g[i - w] * dg[i]; if (vg > g[i]) g[i] = vg;
+                    float vb = b[i - w] * db[i]; if (vb > b[i]) b[i] = vb;
+                }
+            }
+
+            for (int y = h - 2; y >= 0; y--)
+            {
+                int row = y * w;
+                for (int x = 0; x < w; x++)
+                {
+                    int i = row + x;
+                    float vr = r[i + w] * dr[i]; if (vr > r[i]) r[i] = vr;
+                    float vg = g[i + w] * dg[i]; if (vg > g[i]) g[i] = vg;
+                    float vb = b[i + w] * db[i]; if (vb > b[i]) b[i] = vb;
                 }
             }
         }
@@ -436,6 +641,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         {
             double tDirect = stopwatch.Elapsed.TotalMilliseconds;
             ComputeDirect();
+            ComputeDirectionalSun();
             LastDirectMs = stopwatch.Elapsed.TotalMilliseconds - tDirect;
 
             double t0 = stopwatch.Elapsed.TotalMilliseconds;
@@ -445,7 +651,12 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 if (hasSkySeed)
                     Sweep(sky, skyDecay, rowCap);
                 if (hasBlockSeed)
-                    SweepRgb();
+                {
+                    if (hasWater)
+                        SweepRgbPerChannel();
+                    else
+                        SweepRgb();
+                }
             }
             double t1 = stopwatch.Elapsed.TotalMilliseconds;
             LastPropagateMs = t1 - t0;
@@ -470,6 +681,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 ambientOcclusion = new float[cellCount];
                 decay = new float[cellCount];
                 skyDecay = new float[cellCount];
+                decayWaterR = new float[cellCount];
+                decayWaterG = new float[cellCount];
+                decayWaterB = new float[cellCount];
+                sunDirect = new float[cellCount];
                 medium = new CellMedium[cellCount];
                 occluder = new bool[cellCount];
                 texels = new Color[cellCount];
@@ -480,6 +695,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 rowCap = new float[height];
                 rowAmbient = new float[height];
             }
+
+            if (columnHasSand.Length < width)
+                columnHasSand = new bool[width];
 
             if (graphicsDevice == null)
                 return;
@@ -513,6 +731,25 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             int worldHeight = worldMap.Height;
             hasSkySeed = false;
             hasBlockSeed = false;
+            hasWater = false;
+
+            Vector3 waterDecayRgb = LightingV7Config.WaterDecayRGB;
+
+            // Loose sand: one column probe per column instead of a 64-pixel probe per cell.
+            SandSystem sand = SandSystem;
+            bool anySand = sand != null;
+            if (anySand)
+            {
+                for (int localX = 0; localX < width; localX++)
+                    columnHasSand[localX] = sand.HasSandInTileColumn(worldMap.WrapTileX(originX + localX));
+            }
+
+            float sandThreshold = LightingV7Config.SandOcclusionThreshold;
+
+            // Tissue glows from the tile grid itself, so it is seeded here rather than as a source.
+            var tissueField = worldMap.TissueField;
+            bool tissueEmissive = LightingV7Config.TissueEmissiveEnabled && tissueField != null;
+            Vector3 tissueEmission = LightingV7Config.TissueEmission * LightingV7Config.TissueIntensity;
 
             for (int localY = 0; localY < height; localY++)
             {
@@ -598,6 +835,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         medium[i] = CellMedium.Solid;
                         decay[i] = solidDecay;
                         skyDecay[i] = solidDecay;
+                        decayWaterR[i] = solidDecay;
+                        decayWaterG[i] = solidDecay;
+                        decayWaterB[i] = solidDecay;
                         sky[i] = 0f;
                         wrappedX = nextWrappedX;
                         continue;
@@ -605,8 +845,33 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
 
                     float d = airDecay;
                     float sd = skyAirDecay;
+                    float dr = airDecay, dg = airDecay, db = airDecay;
                     bool hasWall = wall != TileType.Empty;
                     CellMedium m = hasWall ? CellMedium.AirWalled : CellMedium.AirOpen;
+
+                    // Loose sand partially fills an otherwise empty tile. A 4-pixel probe is enough
+                    // resolution to drive a lerp between air and solid decay.
+                    if (anySand && columnHasSand[localX])
+                    {
+                        int px = wrappedX * 8;
+                        int py = worldY * 8;
+                        int filled = 0;
+                        if (sand.HasSandAt(px + 2, py + 2)) filled++;
+                        if (sand.HasSandAt(px + 6, py + 2)) filled++;
+                        if (sand.HasSandAt(px + 2, py + 6)) filled++;
+                        if (sand.HasSandAt(px + 6, py + 6)) filled++;
+
+                        if (filled > 0)
+                        {
+                            float sandFill = filled * 0.25f;
+                            d = airDecay + (solidDecay - airDecay) * sandFill;
+                            sd = skyAirDecay + (solidDecay - skyAirDecay) * sandFill;
+                            dr = d; dg = d; db = d;
+
+                            if (sandFill > sandThreshold)
+                                occluder[i] = true;
+                        }
+                    }
 
                     if (rowHasLiquid)
                     {
@@ -614,16 +879,39 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         if (amount > 0)
                         {
                             float fill = MathF.Min(1f, amount / maxLiquid);
-                            d = airDecay + (waterDecay - airDecay) * fill;
-                            sd = skyAirDecay + (waterDecay - skyAirDecay) * fill;
+                            // Per channel, so depth turns blue instead of merely dimmer.
+                            dr = d + (waterDecayRgb.X - d) * fill;
+                            dg = d + (waterDecayRgb.Y - d) * fill;
+                            db = d + (waterDecayRgb.Z - d) * fill;
+                            d = dg;
+                            sd = sd + (waterDecay - sd) * fill;
+                            hasWater = true;
                             if (fill >= 0.5f) m = CellMedium.Water;
                         }
                     }
 
                     decay[i] = d;
                     skyDecay[i] = sd;
+                    decayWaterR[i] = dr;
+                    decayWaterG[i] = dg;
+                    decayWaterB[i] = db;
                     medium[i] = m;
                     sky[i] = hasWall ? 0f : rowSeed;
+
+                    // Tissue seeds the block channel straight from the grid.
+                    if (tissueEmissive)
+                    {
+                        TissueCellState tissue = tissueField.GetState(wrappedX, worldY);
+                        if (tissue.Presence > 0.05f)
+                        {
+                            float strength = tissue.Presence;
+                            blockR[i] = tissueEmission.X * strength;
+                            blockG[i] = tissueEmission.Y * strength;
+                            blockB[i] = tissueEmission.Z * strength;
+                            hasBlockSeed = true;
+                        }
+                    }
+
                     wrappedX = nextWrappedX;
                 }
             }
@@ -760,6 +1048,9 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             float cutoff = LightingV7Config.LightCutoff;
             float invOverbright = 1f / MathF.Max(0.01f, LightingV7Config.OverbrightScale);
             Vector3 skyColor = SkyColor;
+            Vector3 sunColor = SunColor;
+            bool sunOn = LightingV7Config.SunEnabled;
+            float bounce = sunOn ? LightingV7Config.SkyBounce : 1f;
 
             switch (DebugView)
             {
@@ -793,6 +1084,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                             MathHelper.Clamp(directG[i] * invOverbright, 0f, 1f),
                             MathHelper.Clamp(directB[i] * invOverbright, 0f, 1f),
                             1f);
+                    }
+                    break;
+
+                case LightingV7DebugView.SunOnly:
+                    for (int i = 0; i < cellCount; i++)
+                    {
+                        float v = MathHelper.Clamp(sunDirect[i], 0f, 1f);
+                        texels[i] = new Color(v * SunColor.X, v * SunColor.Y, v * SunColor.Z, 1f);
                     }
                     break;
 
@@ -835,13 +1134,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                             if (g < cutoff) g = 0f;
                             if (b < cutoff) b = 0f;
 
+                            // Sky = bounced flood + direct sun. With the sun off the flood carries
+                            // the full daylight instead, so the toggle is a clean A/B.
+                            float sunTerm = sunDirect[i];
+                            float skyR = s * bounce * skyColor.X + sunTerm * sunColor.X;
+                            float skyG = s * bounce * skyColor.Y + sunTerm * sunColor.Y;
+                            float skyB = s * bounce * skyColor.Z + sunTerm * sunColor.Z;
+
                             // Per channel MAX against the sky, not a sum: adding them made ground
                             // near a torch read about twice as bright as ground in open daylight.
                             // Whichever light dominates a cell wins; they no longer stack.
                             float occlusion = ambientOcclusion[i];
-                            r = MathF.Max(r, s * skyColor.X) * occlusion + ambient;
-                            g = MathF.Max(g, s * skyColor.Y) * occlusion + ambient;
-                            b = MathF.Max(b, s * skyColor.Z) * occlusion + ambient;
+                            r = MathF.Max(r, skyR) * occlusion + ambient;
+                            g = MathF.Max(g, skyG) * occlusion + ambient;
+                            b = MathF.Max(b, skyB) * occlusion + ambient;
 
                             texels[i] = new Color(
                                 MathHelper.Clamp(r * invOverbright, 0f, 1f),
