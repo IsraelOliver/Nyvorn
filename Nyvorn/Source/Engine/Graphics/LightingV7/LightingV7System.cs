@@ -14,8 +14,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         Off = 0,        // normal composed frame
         FinalLight = 1, // light texture as sent to the compositor
         SkyOnly = 2,    // sky channel, grayscale
-        BlockOnly = 3,  // block (RGB) channel
-        Medium = 4      // cell classification / decay
+        BlockOnly = 3,  // block (RGB): direct + indirect
+        DirectOnly = 4, // direct term alone, where the hard shadows live
+        AmbientOcclusion = 5,
+        Medium = 6      // cell classification / decay
     }
 
     /// <summary>
@@ -51,13 +53,36 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         private int height;
         private int cellCount;
 
+        /// <summary>A light source kept for the direct pass, in region-local tile coordinates.</summary>
+        private struct PointSource
+        {
+            public int LocalX;
+            public int LocalY;
+            public Vector3 Color;
+        }
+
         private float[] sky = Array.Empty<float>();
         private float[] blockR = Array.Empty<float>();
         private float[] blockG = Array.Empty<float>();
         private float[] blockB = Array.Empty<float>();
+        private float[] directR = Array.Empty<float>();
+        private float[] directG = Array.Empty<float>();
+        private float[] directB = Array.Empty<float>();
+        private float[] ambientOcclusion = Array.Empty<float>();
         private float[] decay = Array.Empty<float>();
         private float[] skyDecay = Array.Empty<float>();
         private CellMedium[] medium = Array.Empty<CellMedium>();
+
+        // Solid foreground tiles and platforms. Background walls are not occluders: the reference
+        // art shows shadows falling ON the back wall, so the wall must stay lit-but-shadowed.
+        private bool[] occluder = Array.Empty<bool>();
+
+        private PointSource[] sources = new PointSource[64];
+
+        // A channel with no seed anywhere stays zero however many times it is swept, so the whole
+        // pass can be skipped. Underground that removes the sky channel; a lightless area removes RGB.
+        private bool hasSkySeed;
+        private bool hasBlockSeed;
         private float[] rowCap = Array.Empty<float>();
         private float[] rowAmbient = Array.Empty<float>();
         private Color[] texels = Array.Empty<Color>();
@@ -84,9 +109,17 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         public float GetSkyAt(int worldTileX, int worldTileY) =>
             TryGetIndex(worldTileX, worldTileY, out int i) ? sky[i] : 0f;
 
-        /// <summary>Block channel at a world tile, for diagnostics. Returns zero outside the active region.</summary>
+        /// <summary>Indirect (flood) block channel at a world tile, for diagnostics.</summary>
         public Vector3 GetBlockAt(int worldTileX, int worldTileY) =>
             TryGetIndex(worldTileX, worldTileY, out int i) ? new Vector3(blockR[i], blockG[i], blockB[i]) : Vector3.Zero;
+
+        /// <summary>Direct (hard-shadowed) block channel at a world tile, for diagnostics.</summary>
+        public Vector3 GetDirectAt(int worldTileX, int worldTileY) =>
+            TryGetIndex(worldTileX, worldTileY, out int i) ? new Vector3(directR[i], directG[i], directB[i]) : Vector3.Zero;
+
+        /// <summary>Ambient occlusion factor at a world tile, for diagnostics. 1 = unoccluded.</summary>
+        public float GetAmbientOcclusionAt(int worldTileX, int worldTileY) =>
+            TryGetIndex(worldTileX, worldTileY, out int i) ? ambientOcclusion[i] : 1f;
 
         private bool TryGetIndex(int worldTileX, int worldTileY, out int index)
         {
@@ -120,6 +153,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         public double LastPropagateMs { get; private set; }
         public double LastFillMs { get; private set; }
         public double LastUploadMs { get; private set; }
+        public double LastDirectMs { get; private set; }
+        public double LastAoMs { get; private set; }
         public int SourceCount { get; private set; }
 
         public void SetLayers(IReadOnlyList<WorldLayerDefinition> layers)
@@ -145,7 +180,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
 
         public void CycleDebugView()
         {
-            DebugView = (LightingV7DebugView)(((int)DebugView + 1) % 5);
+            DebugView = (LightingV7DebugView)(((int)DebugView + 1) % 7);
         }
 
         /// <summary>
@@ -177,6 +212,10 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             ClassifyAndSeed();
             LastClassifyMs = stopwatch.Elapsed.TotalMilliseconds - t0;
 
+            double t1 = stopwatch.Elapsed.TotalMilliseconds;
+            ComputeAmbientOcclusion();
+            LastAoMs = stopwatch.Elapsed.TotalMilliseconds - t1;
+
             SourceCount = 0;
         }
 
@@ -206,25 +245,207 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             if (localX < 0 || localX >= width || localY < 0 || localY >= height)
                 return;
 
+            Vector3 emitted = color * intensity;
+
+            // With direct shadows on, the source is split: the direct pass carries the shadowed
+            // term and the flood only carries the bounce, so shadowed areas stay dim but readable.
+            float seedScale = LightingV7Config.DirectShadowsEnabled
+                ? MathHelper.Clamp(LightingV7Config.BounceStrength, 0f, 1f)
+                : 1f;
+
             int index = localY * width + localX;
-            float r = color.X * intensity;
-            float g = color.Y * intensity;
-            float b = color.Z * intensity;
+            float r = emitted.X * seedScale;
+            float g = emitted.Y * seedScale;
+            float b = emitted.Z * seedScale;
             if (r > blockR[index]) blockR[index] = r;
             if (g > blockG[index]) blockG[index] = g;
             if (b > blockB[index]) blockB[index] = b;
+            hasBlockSeed = true;
+
+            if (SourceCount >= sources.Length)
+                Array.Resize(ref sources, sources.Length * 2);
+
+            sources[SourceCount] = new PointSource { LocalX = localX, LocalY = localY, Color = emitted };
             SourceCount++;
+        }
+
+        /// <summary>
+        /// Contact darkening: how enclosed each air cell is, from its 3x3 neighbourhood.
+        /// Orthogonal neighbours count 1, diagonals 0.5, so a fully buried cell sums to 6.
+        /// Solid cells keep 1 (they are a lit face, not a crevice).
+        /// </summary>
+        private void ComputeAmbientOcclusion()
+        {
+            float strength = MathHelper.Clamp(LightingV7Config.AOStrength, 0f, 1f);
+            Span<float> ao = ambientOcclusion.AsSpan(0, cellCount);
+
+            if (strength <= 0f)
+            {
+                ao.Fill(1f);
+                return;
+            }
+
+            int w = width;
+            int h = height;
+            float scale = strength / 6f;
+
+            // The one-cell border sits deep inside the 48-tile margin and is never on screen, so it
+            // is left neutral rather than paying a bounds test in the inner loop.
+            ao.Fill(1f);
+
+            for (int y = 1; y < h - 1; y++)
+            {
+                int row = y * w;
+                int above = row - w;
+                int below = row + w;
+
+                for (int x = 1; x < w - 1; x++)
+                {
+                    int i = row + x;
+                    if (occluder[i])
+                        continue;
+
+                    float sum = 0f;
+                    if (occluder[i - 1]) sum += 1f;
+                    if (occluder[i + 1]) sum += 1f;
+                    if (occluder[above + x]) sum += 1f;
+                    if (occluder[below + x]) sum += 1f;
+                    if (occluder[above + x - 1]) sum += 0.5f;
+                    if (occluder[above + x + 1]) sum += 0.5f;
+                    if (occluder[below + x - 1]) sum += 0.5f;
+                    if (occluder[below + x + 1]) sum += 0.5f;
+
+                    ao[i] = 1f - sum * scale;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Direct term: for every cell within DirectRadiusTiles of a source, walk a DDA ray from the
+        /// source centre to the cell centre. Any occluder strictly between them kills the light, so
+        /// a plank on a wall throws a hard diagonal shadow. The destination cell is never treated as
+        /// its own blocker - a solid tile facing the source is the lit face.
+        /// Falloff is (1 - d/R)^2. Contributions from several sources add.
+        /// </summary>
+        private void ComputeDirect()
+        {
+            Array.Clear(directR, 0, cellCount);
+            Array.Clear(directG, 0, cellCount);
+            Array.Clear(directB, 0, cellCount);
+
+            if (!LightingV7Config.DirectShadowsEnabled || SourceCount == 0)
+                return;
+
+            int radius = Math.Max(1, LightingV7Config.DirectRadiusTiles);
+            float invRadius = 1f / radius;
+            int radiusSquared = radius * radius;
+
+            for (int s = 0; s < SourceCount; s++)
+            {
+                PointSource source = sources[s];
+                int sx = source.LocalX;
+                int sy = source.LocalY;
+
+                int minX = Math.Max(0, sx - radius);
+                int maxX = Math.Min(width - 1, sx + radius);
+                int minY = Math.Max(0, sy - radius);
+                int maxY = Math.Min(height - 1, sy + radius);
+
+                for (int y = minY; y <= maxY; y++)
+                {
+                    int dy = y - sy;
+                    int dySquared = dy * dy;
+                    int row = y * width;
+
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        int dx = x - sx;
+                        int distanceSquared = dx * dx + dySquared;
+                        if (distanceSquared > radiusSquared)
+                            continue;
+
+                        float distance = MathF.Sqrt(distanceSquared);
+                        float falloff = 1f - distance * invRadius;
+                        falloff *= falloff;
+                        if (falloff <= 0f)
+                            continue;
+
+                        if (!IsDirectlyVisible(sx, sy, x, y))
+                            continue;
+
+                        int i = row + x;
+                        directR[i] += source.Color.X * falloff;
+                        directG[i] += source.Color.Y * falloff;
+                        directB[i] += source.Color.Z * falloff;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Amanatides-Woo tile traversal from the source centre to the target centre.
+        /// Returns false when an occluder lies strictly between the two cells.
+        /// </summary>
+        private bool IsDirectlyVisible(int sx, int sy, int tx, int ty)
+        {
+            int dx = tx - sx;
+            int dy = ty - sy;
+            if (dx == 0 && dy == 0)
+                return true;
+
+            int stepX = dx >= 0 ? 1 : -1;
+            int stepY = dy >= 0 ? 1 : -1;
+            float absDx = MathF.Abs(dx);
+            float absDy = MathF.Abs(dy);
+
+            // Parameter (0..1 along the ray) to cross one whole tile, and to reach the first border.
+            float tDeltaX = absDx > 0f ? 1f / absDx : float.MaxValue;
+            float tDeltaY = absDy > 0f ? 1f / absDy : float.MaxValue;
+            float tMaxX = absDx > 0f ? 0.5f / absDx : float.MaxValue;
+            float tMaxY = absDy > 0f ? 0.5f / absDy : float.MaxValue;
+
+            int x = sx;
+            int y = sy;
+            int guard = (int)(absDx + absDy) + 2;   // every step advances one axis by one tile
+
+            while (guard-- > 0)
+            {
+                if (tMaxX < tMaxY)
+                {
+                    tMaxX += tDeltaX;
+                    x += stepX;
+                }
+                else
+                {
+                    tMaxY += tDeltaY;
+                    y += stepY;
+                }
+
+                if (x == tx && y == ty)
+                    return true;
+
+                if (occluder[y * width + x])
+                    return false;
+            }
+
+            return true;
         }
 
         /// <summary>Propagates all channels and uploads the texture.</summary>
         public void EndFrame()
         {
+            double tDirect = stopwatch.Elapsed.TotalMilliseconds;
+            ComputeDirect();
+            LastDirectMs = stopwatch.Elapsed.TotalMilliseconds - tDirect;
+
             double t0 = stopwatch.Elapsed.TotalMilliseconds;
             int rounds = Math.Max(1, LightingV7Config.PropagationRounds);
             for (int round = 0; round < rounds; round++)
             {
-                Sweep(sky, skyDecay, rowCap);
-                SweepRgb();
+                if (hasSkySeed)
+                    Sweep(sky, skyDecay, rowCap);
+                if (hasBlockSeed)
+                    SweepRgb();
             }
             double t1 = stopwatch.Elapsed.TotalMilliseconds;
             LastPropagateMs = t1 - t0;
@@ -243,9 +464,14 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 blockR = new float[cellCount];
                 blockG = new float[cellCount];
                 blockB = new float[cellCount];
+                directR = new float[cellCount];
+                directG = new float[cellCount];
+                directB = new float[cellCount];
+                ambientOcclusion = new float[cellCount];
                 decay = new float[cellCount];
                 skyDecay = new float[cellCount];
                 medium = new CellMedium[cellCount];
+                occluder = new bool[cellCount];
                 texels = new Color[cellCount];
             }
 
@@ -285,6 +511,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
             float maxLiquid = hasLiquid ? Math.Max(1, liquid.Rules.MaxLiquidAmount) : 1f;
 
             int worldHeight = worldMap.Height;
+            hasSkySeed = false;
+            hasBlockSeed = false;
 
             for (int localY = 0; localY < height; localY++)
             {
@@ -302,6 +530,8 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 else rowAmbient[localY] = LightingV7Config.AmbientDeep;
 
                 float rowSeed = worldY <= surfaceEndY ? surfaceSeed : (worldY <= shallowEndY ? shallowSeed : 0f);
+                if (rowSeed > 0f)
+                    hasSkySeed = true;
 
                 int row = localY * width;
 
@@ -315,6 +545,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         decay[i] = airDecay;
                         skyDecay[i] = skyAirDecay;
                         sky[i] = surfaceSeed;
+                        occluder[i] = false;
                         blockR[i] = 0f; blockG[i] = 0f; blockB[i] = 0f;
                     }
                     continue;
@@ -329,20 +560,38 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         decay[i] = solidDecay;
                         skyDecay[i] = solidDecay;
                         sky[i] = 0f;
+                        occluder[i] = true;
                         blockR[i] = 0f; blockG[i] = 0f; blockB[i] = 0f;
                     }
                     continue;
                 }
 
+                // One dictionary hit per row instead of one per air cell.
+                bool rowHasLiquid = hasLiquid && liquid.HasLiquidInRow(worldY);
+
+                // Walk the wrapped x incrementally so the modulo runs once per row, not per cell.
+                int worldWidth = worldMap.Width;
+                int wrappedX = originX + 0;
+                wrappedX %= worldWidth;
+                if (wrappedX < 0) wrappedX += worldWidth;
+
                 for (int localX = 0; localX < width; localX++)
                 {
                     int i = row + localX;
-                    int worldX = worldMap.WrapTileX(originX + localX);
 
                     blockR[i] = 0f; blockG[i] = 0f; blockB[i] = 0f;
 
-                    TileType tile = worldMap.GetTile(worldX, worldY);
-                    bool solid = tile != TileType.Empty && tile != TileType.Platform;
+                    worldMap.GetTilePairWrapped(wrappedX, worldY, out TileType tile, out TileType wall);
+
+                    int nextWrappedX = wrappedX + 1;
+                    if (nextWrappedX >= worldWidth) nextWrappedX = 0;
+
+                    bool isPlatform = tile == TileType.Platform;
+                    bool solid = tile != TileType.Empty && !isPlatform;
+
+                    // Platforms block the direct ray (they are what casts the plank shadow in the
+                    // reference) but do not slow the flood, so light still wraps around them.
+                    occluder[i] = solid || isPlatform;
 
                     if (solid)
                     {
@@ -350,17 +599,18 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         decay[i] = solidDecay;
                         skyDecay[i] = solidDecay;
                         sky[i] = 0f;
+                        wrappedX = nextWrappedX;
                         continue;
                     }
 
                     float d = airDecay;
                     float sd = skyAirDecay;
-                    bool hasWall = worldMap.GetBackgroundTile(worldX, worldY) != TileType.Empty;
+                    bool hasWall = wall != TileType.Empty;
                     CellMedium m = hasWall ? CellMedium.AirWalled : CellMedium.AirOpen;
 
-                    if (hasLiquid)
+                    if (rowHasLiquid)
                     {
-                        int amount = liquid.GetLiquidAmountAtTile(worldX, worldY);
+                        int amount = liquid.GetLiquidAmountAtTile(wrappedX, worldY);
                         if (amount > 0)
                         {
                             float fill = MathF.Min(1f, amount / maxLiquid);
@@ -374,6 +624,7 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                     skyDecay[i] = sd;
                     medium[i] = m;
                     sky[i] = hasWall ? 0f : rowSeed;
+                    wrappedX = nextWrappedX;
                 }
             }
         }
@@ -523,14 +774,33 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                 case LightingV7DebugView.BlockOnly:
                     for (int i = 0; i < cellCount; i++)
                     {
-                        float r = blockR[i] < cutoff ? 0f : blockR[i];
-                        float g = blockG[i] < cutoff ? 0f : blockG[i];
-                        float b = blockB[i] < cutoff ? 0f : blockB[i];
+                        float r = blockR[i] + directR[i];
+                        float g = blockG[i] + directG[i];
+                        float b = blockB[i] + directB[i];
                         texels[i] = new Color(
                             MathHelper.Clamp(r * invOverbright, 0f, 1f),
                             MathHelper.Clamp(g * invOverbright, 0f, 1f),
                             MathHelper.Clamp(b * invOverbright, 0f, 1f),
                             1f);
+                    }
+                    break;
+
+                case LightingV7DebugView.DirectOnly:
+                    for (int i = 0; i < cellCount; i++)
+                    {
+                        texels[i] = new Color(
+                            MathHelper.Clamp(directR[i] * invOverbright, 0f, 1f),
+                            MathHelper.Clamp(directG[i] * invOverbright, 0f, 1f),
+                            MathHelper.Clamp(directB[i] * invOverbright, 0f, 1f),
+                            1f);
+                    }
+                    break;
+
+                case LightingV7DebugView.AmbientOcclusion:
+                    for (int i = 0; i < cellCount; i++)
+                    {
+                        float v = MathHelper.Clamp(ambientOcclusion[i], 0f, 1f);
+                        texels[i] = new Color(v, v, v, 1f);
                     }
                     break;
 
@@ -556,18 +826,27 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
                         {
                             int i = row + x;
                             float s = sky[i] < cutoff ? 0f : sky[i];
-                            float r = blockR[i] < cutoff ? 0f : blockR[i];
-                            float g = blockG[i] < cutoff ? 0f : blockG[i];
-                            float b = blockB[i] < cutoff ? 0f : blockB[i];
 
-                            r = (r + s * skyColor.X + ambient) * invOverbright;
-                            g = (g + s * skyColor.Y + ambient) * invOverbright;
-                            b = (b + s * skyColor.Z + ambient) * invOverbright;
+                            // Block = direct (hard-shadowed) + indirect (flood bounce).
+                            float r = blockR[i] + directR[i];
+                            float g = blockG[i] + directG[i];
+                            float b = blockB[i] + directB[i];
+                            if (r < cutoff) r = 0f;
+                            if (g < cutoff) g = 0f;
+                            if (b < cutoff) b = 0f;
+
+                            // Per channel MAX against the sky, not a sum: adding them made ground
+                            // near a torch read about twice as bright as ground in open daylight.
+                            // Whichever light dominates a cell wins; they no longer stack.
+                            float occlusion = ambientOcclusion[i];
+                            r = MathF.Max(r, s * skyColor.X) * occlusion + ambient;
+                            g = MathF.Max(g, s * skyColor.Y) * occlusion + ambient;
+                            b = MathF.Max(b, s * skyColor.Z) * occlusion + ambient;
 
                             texels[i] = new Color(
-                                MathHelper.Clamp(r, 0f, 1f),
-                                MathHelper.Clamp(g, 0f, 1f),
-                                MathHelper.Clamp(b, 0f, 1f),
+                                MathHelper.Clamp(r * invOverbright, 0f, 1f),
+                                MathHelper.Clamp(g * invOverbright, 0f, 1f),
+                                MathHelper.Clamp(b * invOverbright, 0f, 1f),
                                 1f);
                         }
                     }

@@ -41,6 +41,12 @@ namespace LightingV7Validator
             Console.WriteLine($"SurfaceSkySeed={LightingV7Config.SurfaceSkySeed}  ShallowSkySeed={LightingV7Config.ShallowSkySeed}  " +
                               $"SkyFadeTiles={LightingV7Config.SkyFadeTiles}\n");
 
+            Console.WriteLine($"DirectShadows={LightingV7Config.DirectShadowsEnabled}  DirectRadius={LightingV7Config.DirectRadiusTiles}  " +
+                              $"Bounce={LightingV7Config.BounceStrength}  AOStrength={LightingV7Config.AOStrength}\n");
+
+            Scenario8_PlatformShadow();
+            Scenario9_AmbientOcclusion();
+            Scenario10_PlayerBehindBlock();
             Scenario1_TorchInClosedCavern();
             Scenario2_CaveOpeningInShallow();
             Scenario3_SkyHoleInsideCavern();
@@ -64,12 +70,12 @@ namespace LightingV7Validator
             Console.WriteLine($"  sky at torch tile: {sys.GetSkyAt(torchTileX, roomY):0.000}  (expect 0.000)");
             Console.Write("  block R by distance in air: ");
             for (int d = 0; d <= 20; d += 4)
-                Console.Write($"{d}t={sys.GetBlockAt(torchTileX + d, roomY).X:0.00}  ");
+                Console.Write($"{d}t={Total(sys, torchTileX + d, roomY):0.00}  ");
             Console.WriteLine();
 
             Console.Write("  block R into solid rock (from room edge at x=220): ");
             for (int d = 0; d <= 6; d++)
-                Console.Write($"+{d}t={sys.GetBlockAt(220 + d, roomY).X:0.000}  ");
+                Console.Write($"+{d}t={Total(sys, 220 + d, roomY):0.000}  ");
             Console.WriteLine();
             Console.WriteLine("  -> rock edge is visible while values stay above ~0.02, black beyond.\n");
         }
@@ -140,9 +146,9 @@ namespace LightingV7Validator
             var sys = Build(map);
             Frame(sys, map, 200, 200, torches: new[] { new Point(190, 198) });
 
-            float direct = sys.GetBlockAt(195, 198).X;      // 5 tiles from torch, same room
-            float behindWall = sys.GetBlockAt(207, 198).X;  // straight through the 6-tile wall
-            float detour = sys.GetBlockAt(222, 205).X;      // top of the far shaft, ~40 tiles of open air
+            float direct = Total(sys, 195, 198);      // 5 tiles from torch, same room
+            float behindWall = Total(sys, 207, 198);  // straight through the 6-tile wall
+            float detour = Total(sys, 222, 205);      // top of the far shaft, ~40 tiles of open air
 
             Console.WriteLine($"  5 tiles from torch, same room   : {direct:0.000}");
             Console.WriteLine($"  just past the 6-tile stone wall : {behindWall:0.000}");
@@ -173,7 +179,7 @@ namespace LightingV7Validator
             for (int f = 0; f < 10; f++)
                 Frame(sys, map, 200, SurfaceEnd + 30, torchArray);
 
-            double worst = 0, total = 0, classify = 0, propagate = 0, fill = 0;
+            double worst = 0, total = 0, classify = 0, propagate = 0, fill = 0, ao = 0, direct = 0;
             const int frames = 60;
             for (int f = 0; f < frames; f++)
             {
@@ -182,16 +188,94 @@ namespace LightingV7Validator
                 classify += sys.LastClassifyMs;
                 propagate += sys.LastPropagateMs;
                 fill += sys.LastFillMs;
+                ao += sys.LastAoMs;
+                direct += sys.LastDirectMs;
                 if (sys.LastCpuMs > worst) worst = sys.LastCpuMs;
             }
 
             Console.WriteLine($"  region: {sys.RegionWidth}x{sys.RegionHeight} tiles ({sys.RegionWidth * sys.RegionHeight} cells), sources: {sys.SourceCount}");
             Console.WriteLine($"  avg {total / frames:0.00} ms   worst {worst:0.00} ms   over {frames} frames");
-            Console.WriteLine($"  breakdown: classify {classify / frames:0.00} ms | propagate {propagate / frames:0.00} ms | fill {fill / frames:0.00} ms");
+            Console.WriteLine($"  breakdown: classify {classify / frames:0.00} | ao {ao / frames:0.00} | direct {direct / frames:0.00} " +
+                              $"| propagate {propagate / frames:0.00} | fill {fill / frames:0.00}  (ms)");
             Console.WriteLine(total / frames < 1.5 ? "  -> PASS\n" : "  -> ABOVE TARGET\n");
         }
 
+        // ---- Scenario 8: a short platform on a back wall must throw a diagonal shadow past it.
+        private static void Scenario8_PlatformShadow()
+        {
+            Header("8. Platform on a back wall (expect: diagonal shadow away from the torch, wall still readable)");
+
+            // Plank at y=200 spanning x 202..205, torch low and to the LEFT of it, so the shadow
+            // is thrown up and to the RIGHT - the diagonal cast in the reference art.
+            WorldMap map = SolidWorld();
+            const int plankY = 200;
+            CarveRect(map, 180, plankY - 20, 50, 32);             // open room, background wall kept
+            FillRect(map, 202, plankY, 4, 1, TileType.Platform);  // the plank
+
+            var sys = Build(map);
+            Frame(sys, map, 204, plankY - 8, torches: new[] { new Point(198, plankY + 8) });
+
+            int probeY = plankY - 7;
+            Console.WriteLine($"  direct term along y={probeY} (7 tiles above the plank):");
+            Console.Write("   ");
+            for (int x = 198; x <= 218; x += 2)
+                Console.Write($"x={x}:{Direct(sys, x, probeY):0.00} ");
+            Console.WriteLine();
+
+            float lit = Direct(sys, 200, probeY);
+            float shadowed = Direct(sys, 210, probeY);
+            float shadowedTotal = Total(sys, 210, probeY);
+            Console.WriteLine($"  beside the plank's shadow : direct {lit:0.000}");
+            Console.WriteLine($"  inside the plank's shadow : direct {shadowed:0.000}, with bounce {shadowedTotal:0.000}");
+            Console.WriteLine($"  -> shadow is {(shadowed <= 0.0001f ? "hard (direct = 0)" : "NOT hard")}; " +
+                              $"the bounce leaves {shadowedTotal:0.000} there, so the wall stays readable.\n");
+        }
+
+        // ---- Scenario 9: corners and undersides pick up contact darkening.
+        private static void Scenario9_AmbientOcclusion()
+        {
+            Header("9. Ambient occlusion (expect: floor/wall corner and under a platform darker)");
+
+            WorldMap map = SolidWorld();
+            int roomY = 200;
+            CarveRect(map, 180, roomY - 10, 40, 11);             // room with floor at roomY+1
+            FillRect(map, 200, roomY - 4, 4, 1, TileType.Platform);
+
+            var sys = Build(map);
+            Frame(sys, map, 200, roomY, torches: Array.Empty<Point>());
+
+            Console.WriteLine($"  open air, no neighbours      : ao {Ao(sys, 190, roomY - 6):0.000}");
+            Console.WriteLine($"  resting on the floor         : ao {Ao(sys, 190, roomY):0.000}");
+            Console.WriteLine($"  floor/wall inner corner      : ao {Ao(sys, 180, roomY):0.000}");
+            Console.WriteLine($"  directly under the platform  : ao {Ao(sys, 201, roomY - 3):0.000}");
+            Console.WriteLine($"  -> lower is darker; fully enclosed would be {1f - LightingV7Config.AOStrength:0.000}.\n");
+        }
+
+        // ---- Scenario 10: a single block between torch and player puts the player in shadow.
+        private static void Scenario10_PlayerBehindBlock()
+        {
+            Header("10. Player behind one block (expect: player cell in shadow, neighbours lit)");
+
+            WorldMap map = SolidWorld();
+            int roomY = 200;
+            CarveRect(map, 180, roomY - 8, 40, 16);
+            FillRect(map, 200, roomY, 1, 1, TileType.Stone);  // single blocking tile
+
+            var sys = Build(map);
+            Frame(sys, map, 200, roomY, torches: new[] { new Point(194, roomY) });
+
+            Console.WriteLine($"  cell right behind the block : direct {Direct(sys, 202, roomY):0.000}  total {Total(sys, 202, roomY):0.000}");
+            Console.WriteLine($"  one row above (clear line)  : direct {Direct(sys, 202, roomY - 2):0.000}  total {Total(sys, 202, roomY - 2):0.000}");
+            Console.WriteLine("  -> the shadow is a band behind the block, not a darkening of the whole area.\n");
+        }
+
         // ---------- helpers ----------
+
+        private static float Direct(LightingV7System sys, int x, int y) => sys.GetDirectAt(x, y).X;
+
+        private static float Total(LightingV7System sys, int x, int y) => sys.GetBlockAt(x, y).X + sys.GetDirectAt(x, y).X;
+
+        private static float Ao(LightingV7System sys, int x, int y) => sys.GetAmbientOcclusionAt(x, y);
 
         private static void Header(string title)
         {

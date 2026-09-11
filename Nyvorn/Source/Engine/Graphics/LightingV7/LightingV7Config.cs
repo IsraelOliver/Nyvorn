@@ -51,6 +51,20 @@ namespace Nyvorn.Source.Engine.Graphics.LightingV7
         public static float AmbientCavern = 0.00f;
         public static float AmbientDeep = 0.00f;
 
+        // --- Direct light with shadows (Phase 1.5) ---
+        // When off, a source seeds the flood at full intensity (Phase 1 behaviour).
+        // When on, the source is split: a hard-shadowed direct term plus a weaker flood seed.
+        public static bool DirectShadowsEnabled = true;
+
+        // Reach of the direct term, in tiles. Beyond it only the flood contributes.
+        public static int DirectRadiusTiles = 24;
+
+        // Fraction of the source that feeds the flood (the light that "bounces" into shadow).
+        public static float BounceStrength = 0.35f;
+
+        // Contact darkening in corners and under platforms. 0 = off.
+        public static float AOStrength = 0.35f;
+
         // Halos (Phase 2)
         public static int GlowRadiusTiles = 3;
         public static float GlowAlpha = 0.35f;

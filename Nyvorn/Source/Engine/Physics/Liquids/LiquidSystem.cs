@@ -157,6 +157,13 @@ namespace Nyvorn.Source.Engine.Physics.Liquids
             return MathHelper.Clamp(coveredArea / (float)queryArea, 0f, 1f);
         }
 
+        // Lets a per-tile loop skip a whole row with one dictionary hit instead of one per cell.
+        // Most rows hold no liquid at all, so this turns the common case from N lookups into 1.
+        public bool HasLiquidInRow(int cellY)
+        {
+            return occupiedRows.TryGetValue(cellY, out SortedSet<int> row) && row.Count > 0;
+        }
+
         public int GetLiquidAmountAtTile(int x, int y)
         {
             x = WrapCellX(x);

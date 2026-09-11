@@ -85,6 +85,16 @@ namespace Nyvorn.Source.World
             return _tiles[WrapTileX(x), y];
         }
 
+        // Reads both layers at once for an ALREADY wrapped x and an in-bounds y. GetTile and
+        // GetBackgroundTile each redo the bounds test and the wrap modulo on every call, which is
+        // wasted work in per-tile loops (the lighting region is tens of thousands of cells per
+        // frame) that walk x in order and can wrap incrementally. Callers own the validation.
+        public void GetTilePairWrapped(int wrappedX, int y, out TileType foreground, out TileType background)
+        {
+            foreground = _tiles[wrappedX, y];
+            background = _backgroundTiles[wrappedX, y];
+        }
+
         public void SetTile(int x, int y, TileType type)
         {
             if (!InBounds(x, y))

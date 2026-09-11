@@ -431,6 +431,12 @@ namespace Nyvorn.Source.Game.States
                 {
                     v7ScreenshotRequested = true;
                 }
+
+                // F8: direct light with hard shadows on/off. Off = Phase 1 flood-only look.
+                if (keyboard.IsKeyDown(Keys.F8) && !previousConsoleKeyboard.IsKeyDown(Keys.F8))
+                {
+                    LightingV7Config.DirectShadowsEnabled = !LightingV7Config.DirectShadowsEnabled;
+                }
             }
 
             // DEBUG HOTKEY: Shift+P to toggle presentation mode (TILE vs PIXEL_TEST)
@@ -1266,11 +1272,13 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             if (v7)
             {
                 spriteBatch.DrawString(consoleFont,
-                    $"LIGHTING: V7 (F9)  view: {v7Lighting.DebugView} (F10)  F12: screenshot",
+                    $"LIGHTING: V7 (F9)  view: {v7Lighting.DebugView} (F10)  " +
+                    $"direct+shadows: {(LightingV7Config.DirectShadowsEnabled ? "ON" : "OFF")} (F8)  F12: screenshot",
                     new Vector2(10, 10), Color.Yellow);
                 spriteBatch.DrawString(consoleFont,
                     $"V7 cpu: {v7Lighting.LastCpuMs:0.00} ms " +
-                    $"(cls {v7Lighting.LastClassifyMs:0.00} / prop {v7Lighting.LastPropagateMs:0.00} / " +
+                    $"(cls {v7Lighting.LastClassifyMs:0.00} / ao {v7Lighting.LastAoMs:0.00} / " +
+                    $"dir {v7Lighting.LastDirectMs:0.00} / prop {v7Lighting.LastPropagateMs:0.00} / " +
                     $"fill {v7Lighting.LastFillMs - v7Lighting.LastUploadMs:0.00} / upload {v7Lighting.LastUploadMs:0.00})  " +
                     $"region: {v7Lighting.RegionWidth}x{v7Lighting.RegionHeight}  sources: {v7Lighting.SourceCount}",
                     new Vector2(10, 25), Color.Cyan);
