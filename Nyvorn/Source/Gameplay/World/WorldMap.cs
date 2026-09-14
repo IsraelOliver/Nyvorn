@@ -17,6 +17,8 @@ namespace Nyvorn.Source.World
         private const int DefaultChunkTileSize = 32;
         private const int MaxCachedChunks = 96;
         private static readonly Color BackgroundTileTint = new Color(104, 104, 104, 255);
+        // Runtime presentation only; not persisted. Also neutralizes emitted background particles.
+        public bool NeutralLightingAlbedo { get; set; }
 
         public int Width { get; }
         public int Height { get; }
@@ -595,7 +597,7 @@ namespace Nyvorn.Source.World
         {
             texture = GetTextureForTile(tile);
             sourceRectangle = Rectangle.Empty;
-            tint = background ? BackgroundTileTint : Color.White;
+            tint = background && !NeutralLightingAlbedo ? BackgroundTileTint : Color.White;
 
             if (tile == TileType.Empty || texture == null || !InBounds(x, y))
                 return false;
@@ -982,7 +984,7 @@ namespace Nyvorn.Source.World
             DrawTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY, 0, 0);
         }
 
-        public void DrawBackground(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY)
+        public void DrawBackground(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, Color? tint = null)
         {
             int minTileX = System.Math.Clamp(startTileX, 0, Width - 1);
             int maxTileX = System.Math.Clamp(endTileX, 0, Width - 1);
@@ -992,7 +994,7 @@ namespace Nyvorn.Source.World
             if (minTileX > maxTileX || minTileY > maxTileY)
                 return;
 
-            DrawBackgroundTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY);
+            DrawBackgroundTiles(spriteBatch, minTileX, maxTileX, minTileY, maxTileY, tint);
         }
 
         public void DrawDecorations(SpriteBatch spriteBatch, int startTileX, int endTileX, int startTileY, int endTileY, TreeRenderLayer layer, Color ambientLight)
@@ -1239,7 +1241,7 @@ namespace Nyvorn.Source.World
             return Color.Lerp(Color.White, new Color(120, 112, 96), wetness01 * 0.35f);
         }
 
-        private void DrawBackgroundTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY)
+        private void DrawBackgroundTiles(SpriteBatch spriteBatch, int minTileX, int maxTileX, int minTileY, int maxTileY, Color? tint = null)
         {
             for (int y = minTileY; y <= maxTileY; y++)
             {
@@ -1268,7 +1270,7 @@ namespace Nyvorn.Source.World
                     };
 
                     Rectangle destination = new Rectangle(x * TileSize, y * TileSize, TileSize, TileSize);
-                    spriteBatch.Draw(texture, destination, sourceRectangle, BackgroundTileTint);
+                    spriteBatch.Draw(texture, destination, sourceRectangle, tint ?? BackgroundTileTint);
                 }
             }
         }

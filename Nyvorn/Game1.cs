@@ -5,6 +5,7 @@ using Nyvorn.Source.Game;
 using Nyvorn.Source.Game.States;
 using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using System.Diagnostics;
+using Nyvorn.Source.Engine.Graphics.LightingV8;
 
 namespace Nyvorn;
 
@@ -78,6 +79,11 @@ public class Game1 : Game
         _graphics = new GraphicsDeviceManager(this);
         _graphics.PreferredBackBufferWidth = TargetWidth;
         _graphics.PreferredBackBufferHeight = TargetHeight;
+        if (V8GameplayOptions.TransientWorld)
+        {
+            _graphics.PreferredBackBufferWidth = 1280;
+            _graphics.PreferredBackBufferHeight = 720;
+        }
         _graphics.HardwareModeSwitch = false;
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
@@ -94,11 +100,20 @@ public class Game1 : Game
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _stateMachine = new StateMachine();
-        _stateMachine.PushState(new WorldSelectState(GraphicsDevice, Content, _stateMachine));
+        if (V8GameplayOptions.TransientWorld)
+        {
+            // Real procedural world/session, transient identity: never reads or overwrites a user's save.
+            var session = new PlayingSessionFactory(GraphicsDevice, Content).Create("v8-transient-validation",
+                "V8 procedural validation", Nyvorn.Source.World.Generation.WorldSizePreset.Small, "V8-GAMEPLAY-2026");
+            _stateMachine.PushState(new PlayingState(GraphicsDevice, Content, _stateMachine, session));
+        }
+        else _stateMachine.PushState(new WorldSelectState(GraphicsDevice, Content, _stateMachine));
+        Window.Title = V8GameplayOptions.Enabled ? "Nyvorn — V8 direct + ambient" : "Nyvorn — V7";
     }
 
     protected override void Update(GameTime gameTime)
     {
+        if (V8GameplayOptions.CaptureFinished) { Exit(); return; }
         // Phase A0.0: Profiler update timing
         _renderedFrameProfiler.OnUpdateStart();
         _renderedFrameProfiler.EmergencyLog_EnterGameUpdate();

@@ -70,11 +70,12 @@ namespace Nyvorn.Source.Gameplay.World.Objects
             });
         }
 
-        public void Draw(SpriteBatch spriteBatch)
+        public void Draw(SpriteBatch spriteBatch, bool? openOnly = null)
         {
             for (int i = 0; i < furnitureItems.Count; i++)
             {
                 DoorInstance door = furnitureItems[i];
+                if (openOnly.HasValue && door.IsOpen != openOnly.Value) continue;
                 Rectangle source = door.IsOpen ? OpenSource : ClosedSource;
                 Rectangle destination = door.DrawBounds;
                 SpriteEffects effects = door.IsOpen && !door.OpensRight
@@ -86,7 +87,7 @@ namespace Nyvorn.Source.Gameplay.World.Objects
                 spriteBatch.Draw(Texture, destination, source, Color.White, 0f, Vector2.Zero, effects, 0f);
             }
 
-            if (previewVisible)
+            if (previewVisible && openOnly != false)
             {
                 DoorInstance preview = new DoorInstance(previewBaseTile, WorldMap.TileSize, false, true, previewFacingLeft);
                 SpriteEffects effects = previewFacingLeft ? SpriteEffects.FlipHorizontally : SpriteEffects.None;

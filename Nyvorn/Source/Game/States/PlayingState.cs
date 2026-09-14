@@ -56,7 +56,7 @@ namespace Nyvorn.Source.Game.States
     /// PlayingSessionViewCoordinator owns RenderTarget2D and related graphics resources.
     /// PlayingState calls session methods; does NOT create/dispose graphics resources directly.
     /// </summary>
-    public class PlayingState : IGameState
+    public partial class PlayingState : IGameState
     {
         public bool UpdateBelow => false;
         public bool DrawBelow => false;
@@ -232,6 +232,7 @@ namespace Nyvorn.Source.Game.States
             string debugViewName = Environment.GetEnvironmentVariable("NYVORN_V7_VIEW");
             if (!string.IsNullOrEmpty(debugViewName) && Enum.TryParse(debugViewName, true, out LightingV7DebugView requestedView))
                 v7Lighting.DebugView = requestedView;
+            InitializeV8();
         }
 
         private static System.Collections.Generic.IEnumerable<ArtificialLightSource> GetArtificialLightSourcesForV6(PlayingSession session)
@@ -297,7 +298,8 @@ namespace Nyvorn.Source.Game.States
 
         public void OnExit()
         {
-            saveService.Save(session);
+            if (!Engine.Graphics.LightingV8.V8GameplayOptions.TransientWorld) saveService.Save(session);
+            DisposeV8();
             v7Lighting?.Dispose();
             v7Glow?.Dispose();
             session.ViewCoordinator.DisposeSceneRenderTarget();
@@ -312,6 +314,7 @@ namespace Nyvorn.Source.Game.States
         public void Update(GameTime gameTime)
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            UpdateV8Input();
 
             // S6.1-BG: Update parallax transition state (temporal, no visual changes yet)
             session.UpdateDesiredParallax();
@@ -424,7 +427,7 @@ namespace Nyvorn.Source.Game.States
             if (v7StatusTimer > 0f)
                 v7StatusTimer -= dt;
 
-            if (!handledConsoleThisFrame)
+            if (!handledConsoleThisFrame && v8Renderer == null)
             {
                 if (keyboard.IsKeyDown(Keys.F9) && !previousConsoleKeyboard.IsKeyDown(Keys.F9))
                 {
@@ -564,7 +567,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             autoSaveTimer -= dt;
-            if (autoSaveTimer <= 0f)
+            if (autoSaveTimer <= 0f && !Engine.Graphics.LightingV8.V8GameplayOptions.TransientWorld)
             {
                 if (session.HasUnsavedWorldChanges)
                     saveService.Save(session);
@@ -618,6 +621,12 @@ namespace Nyvorn.Source.Game.States
             var camera = session.Camera;
             int tileSize = session.WorldMap.TileSize;
             int camTileX = (int)(camera.Position.X / tileSize);
+            if (v8Renderer != null)
+            {
+                try { DrawV8Gameplay(spriteBatch, screenW, screenH, drawDt); }
+                finally { LightingPipelineCoordinator.I.EndFrame(); }
+                return;
+            }
             int camTileY = (int)(camera.Position.Y / tileSize);
             int tileWindowWidth = (screenW + tileSize - 1) / tileSize;
             int tileWindowHeight = (screenH + tileSize - 1) / tileSize;
@@ -1368,6 +1377,11 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
             // F12: save worldRT, lightRT and the finished frame (everything above is already drawn).
             v7DrawCount++;
+            if (Engine.Graphics.LightingV8.V8GameplayOptions.V7Smoke && v7DrawCount == 30)
+            {
+                v7ScreenshotRequested = true;
+                Engine.Graphics.LightingV8.V8GameplayOptions.CaptureFinished = true;
+            }
             if (v7AutoShotFrame > 0 && v7DrawCount >= v7AutoShotFrame)
             {
                 v7AutoShotFrame = -1;

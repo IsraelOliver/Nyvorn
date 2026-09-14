@@ -565,3 +565,21 @@
 /processorParam:MakeSquare=False
 /processorParam:TextureFormat=Color
 /build:Tiles/parallax/9.png
+
+#begin effects/V8Direct.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/V8Direct.fx
+
+#begin effects/V8Faces.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/V8Faces.fx
+
+#begin effects/V8Receiver.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/V8Receiver.fx
