@@ -63,7 +63,52 @@ public sealed class V8AmbientValidation
         }
         if (name is "local-off" or "local-deep-off")
             Check(name + "/no-residual", local.All(p => Peak(p) == 0) && sky.All(p => Peak(p) == 0) && direct.All(p => Peak(p) == 0) && f.All(p => Peak(p) == 0));
-        if (name is "sky-sealed" or "sky-interior-void" or "sky-deep-void")
+        // Face band fixtures (V8DiagnosticScene.FaceBandSolid). Curve-agnostic: along a line into the solid from its sky
+        // face, pixels nearer the sky face must follow SkyBandWeight (relative to depth 1, the same air sample for the whole
+        // line), pixels nearer the dark face must stay 0. The value just before the midline is the step, recorded only.
+        if (name == "sky-band")
+        {
+            // 6-tile ceiling (block rows 11..15 plus the roof), centre column x 188, 28 px from the block sides.
+            FaceBand("6-tile ceiling (block)", Line(188, 88, 0, 1, 48), 48);
+        }
+        if (name == "sky-band-ceilings")
+            foreach (var c in V8DiagnosticScene.CeilingFixtures)
+                FaceBand($"{c.Thickness}-tile ceiling", Line((c.Left + c.Right + 1) * 4, (17 - c.Thickness) * 8, 0, 1, c.Thickness * 8), c.Thickness * 8);
+        if (name == "sky-band-walls")
+            foreach (var w in V8DiagnosticScene.WallFixtures)
+            {
+                // Row y 100: 36 px from the cap top and the roof bottom, so the horizontal faces are the nearest.
+                FaceBand($"{w.Thickness}-tile wall", Line(w.Left * 8, 100, 1, 0, w.Thickness * 8), w.Thickness * 8);
+                int pocketX = (w.Left + w.Thickness + 1) * 8;
+                Check($"sky band fixture: {w.Thickness}-tile wall pocket receives no sky or local", Peak(At(sky, pocketX + 64, 100 - 128)) == 0 &&
+                    Peak(At(local, pocketX + 64, 100 - 128)) == 0);
+            }
+        if (name == "sky-aperture")
+        {
+            // 2x2 background hole inside the room: exposure leaving it along the axis and along the 45 degree diagonal.
+            var hole = V8DiagnosticScene.Aperture;
+            int[] axis = Enumerable.Range(0, 12).Select(k => Peak(At(sky, (hole.X + 2 + k) * 8 + 4 + 64, (hole.Y + 1) * 8 + 4 - 128))).ToArray();
+            int[] diagonal = Enumerable.Range(0, 12).Select(k => Peak(At(sky, (hole.X + 2 + k) * 8 + 4 + 64, (hole.Y + 2 + k) * 8 + 4 - 128))).ToArray();
+            int Reach(int[] line)
+            {
+                int last = -1;
+                for (int k = 0; k < line.Length; k++) if (line[k] > 0) last = k;
+                return last + 1;
+            }
+            Check("sky aperture fixture: the 2x2 hole lights the room", axis[0] > 0 && diagonal[0] > 0);
+            results.Add($"INFO sky aperture fixture: sky peak along the axis, tiles 1..12 = {string.Join(",", axis)}; reach {Reach(axis)} tiles");
+            results.Add($"INFO sky aperture fixture: sky peak along the 45 degree diagonal, steps 1..12 = {string.Join(",", diagonal)}; reach {Reach(diagonal)} steps");
+        }
+        if (name == "sky-corner")
+        {
+            var lit = V8DiagnosticScene.CornerLit;
+            var pocket = V8DiagnosticScene.CornerPocket;
+            int litSky = Peak(At(sky, lit.X * 8 + 4 + 64, lit.Y * 8 + 4 - 128));
+            int pocketSky = Peak(At(sky, pocket.X * 8 + 4 + 64, pocket.Y * 8 + 4 - 128));
+            Check("sky corner fixture: the air beside the closed corner is lit", litSky > 0, $"sky {litSky}");
+            Check("sky corner fixture: no sky crosses the closed diagonal corner", pocketSky == 0, $"pocket sky {pocketSky}");
+        }
+        if (name is "sky-sealed" or "sky-interior-void" or "sky-deep-void" || name.StartsWith("sky-band"))
         {
             bool dark = true;
             for (int y = 16; y < 232; y++) for (int x = 16; x < 200; x++) dark &= Peak(At(sky, x, y)) == 0 && Peak(At(local, x, y)) == 0;
@@ -117,6 +162,27 @@ public sealed class V8AmbientValidation
         Check(name + "/additive-receiver", count > 0 && error <= 2, $"pixels={count} maxError={error}");
         if (name == "local") Check("entity readable inside direct shadow", shadowReadable > 0, $"pixels={shadowReadable}");
         File.WriteAllLines(Path.Combine(output, "ambient-checks.txt"), results);
+
+        // Face light (blue) along a world-pixel line; At() is relative to scene.Origin (-64, 128).
+        int[] Line(int worldX, int worldY, int dx, int dy, int count) =>
+            Enumerable.Range(0, count).Select(k => (int)At(faces, worldX + dx * k + 64, worldY + dy * k - 128).B).ToArray();
+        void FaceBand(string label, int[] line, int thickness)
+        {
+            int half = thickness / 2, depth = renderer.SkyFaceDepth;
+            float first = V8FaceChunks.SkyBandWeight(1, depth);
+            bool follows = line[0] > 40, dark = true;
+            int error = 0;
+            for (int k = 0; k < thickness; k++)
+            {
+                if (k >= half) { dark &= line[k] == 0; continue; }
+                int expected = (int)MathF.Round(line[0] * V8FaceChunks.SkyBandWeight(k + 1, depth) / first);
+                error = Math.Max(error, Math.Abs(line[k] - expected));
+            }
+            follows &= error <= 2;
+            Check($"sky band fixture: {label} follows the band curve (SkyFaceDepth {depth})", follows, $"max error {error}");
+            Check($"sky band fixture: {label} dark half stays 0 (no leak)", dark);
+            results.Add($"INFO sky band fixture: {label}: step at the midline {line[half - 1]} -> {line[half]} (blue 0..255); line = {string.Join(",", line)}");
+        }
     }
     private static Color Sample(Color[] pixels, Rectangle bounds, Vector2 world)
     {

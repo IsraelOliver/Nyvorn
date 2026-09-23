@@ -19,6 +19,7 @@ namespace Nyvorn.Source.World
         private static readonly Color BackgroundTileTint = new Color(104, 104, 104, 255);
         // Runtime presentation only; not persisted. Also neutralizes emitted background particles.
         public bool NeutralLightingAlbedo { get; set; }
+        public Color BackgroundAlbedoTint => NeutralLightingAlbedo ? Color.White : BackgroundTileTint;
 
         public int Width { get; }
         public int Height { get; }
@@ -597,7 +598,7 @@ namespace Nyvorn.Source.World
         {
             texture = GetTextureForTile(tile);
             sourceRectangle = Rectangle.Empty;
-            tint = background && !NeutralLightingAlbedo ? BackgroundTileTint : Color.White;
+            tint = background ? BackgroundAlbedoTint : Color.White;
 
             if (tile == TileType.Empty || texture == null || !InBounds(x, y))
                 return false;

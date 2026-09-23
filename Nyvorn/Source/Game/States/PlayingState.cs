@@ -315,6 +315,10 @@ namespace Nyvorn.Source.Game.States
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
             UpdateV8Input();
+            if (Engine.Graphics.LightingV8.V8GameplayOptions.ToggleBench)
+                UpdateLightingToggleBench();
+            if (Engine.Graphics.LightingV8.V8GameplayOptions.SkyCompare)
+                UpdateSkyCompare();
 
             // S6.1-BG: Update parallax transition state (temporal, no visual changes yet)
             session.UpdateDesiredParallax();
@@ -383,6 +387,7 @@ namespace Nyvorn.Source.Game.States
                 else
                 {
                     previousConsoleKeyboard = keyboard;
+                    lightingFrameInterrupted = true;
                     stateMachine.PushState(new PauseMenuState(graphicsDevice, content, stateMachine, session));
                     return;
                 }
@@ -427,7 +432,18 @@ namespace Nyvorn.Source.Game.States
             if (v7StatusTimer > 0f)
                 v7StatusTimer -= dt;
 
-            if (!handledConsoleThisFrame && v8Renderer == null)
+            // F4: V7 <-> V8 at runtime, edge-triggered (a held key does not repeat). Automated V8 captures pin V8.
+            if (!handledConsoleThisFrame &&
+                !Engine.Graphics.LightingV8.V8GameplayOptions.CaptureWorld &&
+                !Engine.Graphics.LightingV8.V8GameplayOptions.BackgroundProbe &&
+                !Engine.Graphics.LightingV8.V8GameplayOptions.PerfBench &&
+                !Engine.Graphics.LightingV8.V8GameplayOptions.SkyCompare &&
+                IsLightingTogglePress(keyboard, previousConsoleKeyboard))
+            {
+                SetLightingPipeline(!v8Active);
+            }
+
+            if (!handledConsoleThisFrame && !v8Active)
             {
                 if (keyboard.IsKeyDown(Keys.F9) && !previousConsoleKeyboard.IsKeyDown(Keys.F9))
                 {
@@ -581,6 +597,7 @@ namespace Nyvorn.Source.Game.States
             {
                 deathStatePushed = true;
                 previousConsoleKeyboard = keyboard;
+                lightingFrameInterrupted = true;
                 stateMachine.PushState(new DeathState(graphicsDevice, content, RetryFromDeath));
                 return;
             }
@@ -615,16 +632,18 @@ namespace Nyvorn.Source.Game.States
 
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
+            BeginLightingFrame(drawDt, screenW, screenH);
 
             // ETAPA 5.2: Compute V6 Terraria Lighting System before rendering
             var skyColor = session.EnvironmentSystem.SkyState.AmbientLight;
             var camera = session.Camera;
             int tileSize = session.WorldMap.TileSize;
             int camTileX = (int)(camera.Position.X / tileSize);
-            if (v8Renderer != null)
+            if (v8Active)
             {
+                // Only V8 computes and composes; V6/V7 below are skipped entirely.
                 try { DrawV8Gameplay(spriteBatch, screenW, screenH, drawDt); }
-                finally { LightingPipelineCoordinator.I.EndFrame(); }
+                finally { LightingPipelineCoordinator.I.EndFrame(); EndLightingFrame(); }
                 return;
             }
             int camTileY = (int)(camera.Position.Y / tileSize);
@@ -643,9 +662,11 @@ namespace Nyvorn.Source.Game.States
                 v7Lighting.SunColor = LightingV7Sky.GetSunColor(skyState, timeOfDay01);
                 v7Lighting.SunSlope = LightingV7Sky.GetSunSlope(timeOfDay01);
 
+                v7ComputeFrames++;
                 v7Lighting.BeginFrame(camera.Position.X, camera.Position.Y, screenW, screenH, camera.Zoom, tileSize);
                 long sourcesStart = Stopwatch.GetTimestamp();
-                AddV7PointLights(tileSize);
+                if (!v7SuppressLocalSources) // only --lighting-sky-compare sets this
+                    AddV7PointLights(tileSize);
                 v7SourcesMs = (Stopwatch.GetTimestamp() - sourcesStart) * 1000.0 / Stopwatch.Frequency;
                 v7Lighting.EndFrame();
             }
@@ -660,6 +681,7 @@ namespace Nyvorn.Source.Game.States
                     skyColor);
 
                 v6LightMapRenderer.Update();
+                v6ComputeFrames++;
             }
             float worldWidthPixels = session.WorldMap.PixelWidth;
             IReadOnlyList<int> visibleLoopOffsets = GetVisibleLoopOffsets(screenW, worldWidthPixels);
@@ -682,6 +704,7 @@ namespace Nyvorn.Source.Game.States
             {
                 // PHASE 0: End frame for pipeline isolation tracking
                 LightingPipelineCoordinator.I.EndFrame();
+                EndLightingFrame();
 
                 // Validate isolation in debug mode
 #if DEBUG
@@ -1318,7 +1341,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                     $"LIGHTING: V7 (F9)  view: {v7Lighting.DebugView} (F10)  " +
                     $"shadows: {(LightingV7Config.DirectShadowsEnabled ? "ON" : "OFF")} (F8)  " +
                     $"sun: {(LightingV7Config.SunEnabled ? "ON" : "OFF")} (F7)  " +
-                    $"time x{LightingV7Config.DebugTimeScale:0} (hold F6)  F12: shot",
+                    $"time x{LightingV7Config.DebugTimeScale:0} (hold F6)  F12: shot  F4: switch to V8",
                     new Vector2(10, 10), Color.Yellow);
                 spriteBatch.DrawString(consoleFont,
                     $"V7 cpu: {v7Lighting.LastCpuMs:0.00} ms " +
@@ -1331,7 +1354,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             else
             {
                 string modeLabel = presentationMode == LightingPresentationMode.Tile ? "TILE" : "PIXEL";
-                spriteBatch.DrawString(consoleFont, $"LIGHTING: LEGACY V6 {modeLabel} (F9 / Shift+P)", new Vector2(10, 10), Color.Yellow);
+                spriteBatch.DrawString(consoleFont, $"LIGHTING: LEGACY V6 {modeLabel} (F9 / Shift+P)  F4: switch to V8", new Vector2(10, 10), Color.Yellow);
 
                 // Show reconstruction mode diagnostic when in Pixel mode
                 if (presentationMode == LightingPresentationMode.Pixel)
@@ -1341,6 +1364,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
                 }
             }
 
+            DrawLightingStatsHud(spriteBatch, 92);
             if (v7StatusTimer > 0f && !string.IsNullOrEmpty(v7StatusMessage))
                 spriteBatch.DrawString(consoleFont, v7StatusMessage, new Vector2(10, 75), Color.White);
 

@@ -52,6 +52,7 @@ namespace Nyvorn.Source.Gameplay.World.Particles
                     Position = tileOrigin + localPosition,
                     Velocity = new Vector2(horizontalVelocity * speedScale, verticalVelocity * speedScale),
                     Tint = background ? tint * 0.86f : tint,
+                    Background = background,
                     Lifetime = 0.42f + (System.Random.Shared.NextSingle() * 0.22f),
                     Rotation = -0.25f + (System.Random.Shared.NextSingle() * 0.5f),
                     AngularVelocity = -4.5f + (System.Random.Shared.NextSingle() * 9f),
@@ -97,11 +98,14 @@ namespace Nyvorn.Source.Gameplay.World.Particles
                 float ageRatio = MathHelper.Clamp(particle.Age / particle.Lifetime, 0f, 1f);
                 float alpha = 1f - ageRatio;
                 Vector2 origin = new Vector2(particle.Source.Width * 0.5f, particle.Source.Height * 0.5f);
+                // Background shards resolve their albedo tint now, not at emission: the lighting pipeline
+                // (and so the background tint) can change while a shard is still in flight.
+                Color tint = particle.Background ? WorldMap.BackgroundAlbedoTint * 0.86f : particle.Tint;
                 spriteBatch.Draw(
                     particle.Texture,
                     particle.Position,
                     particle.Source,
-                    particle.Tint * alpha,
+                    tint * alpha,
                     particle.Rotation,
                     origin,
                     particle.Scale,
@@ -143,6 +147,7 @@ namespace Nyvorn.Source.Gameplay.World.Particles
             public Vector2 Position { get; set; }
             public Vector2 Velocity { get; set; }
             public Color Tint { get; init; }
+            public bool Background { get; init; }
             public float Lifetime { get; init; }
             public float Age { get; set; }
             public float Rotation { get; set; }

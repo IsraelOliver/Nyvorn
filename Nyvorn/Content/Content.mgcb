@@ -583,3 +583,9 @@
 /processor:EffectProcessor
 /processorParam:DebugMode=Auto
 /build:effects/V8Receiver.fx
+
+#begin effects/V8AmbientResolve.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/processorParam:DebugMode=Auto
+/build:effects/V8AmbientResolve.fx

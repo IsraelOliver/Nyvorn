@@ -29,11 +29,7 @@ public sealed class V8LightingRenderer : IDisposable
         StencilPass = StencilOperation.Keep, ReferenceStencil = 0 };
     private VertexPositionColorTexture[] shadows = new VertexPositionColorTexture[256];
     private readonly VertexPositionColorTexture[] lightQuad = new VertexPositionColorTexture[6];
-    private VertexPositionColorTexture[] faceVertices = Array.Empty<VertexPositionColorTexture>();
-    private DynamicVertexBuffer faceBuffer;
-    private int faceCount, faceGeneration = -1;
-    private Rectangle previousFaceBounds;
-    private int previousFaceWidth;
+    private readonly V8FaceChunks faces;
     public V8Geometry Geometry { get; } = new();
     public V8AmbientField Ambient { get; }
     public V8AmbientContext AmbientContext { get; set; }
@@ -41,23 +37,41 @@ public sealed class V8LightingRenderer : IDisposable
     public RenderTarget2D Foreground { get; private set; }
     public Rectangle LightBounds { get; private set; }
     private int resourceCreations;
-    public int ResourceCreations => resourceCreations + Ambient.ResourceCreations;
+    public int ResourceCreations => resourceCreations + Ambient.ResourceCreations + faces.ResourceCreations;
     public int FaceWidth { get; set; } = 8;
+    /// <summary>Depth, in art pixels, of the sky ambient band inside a solid below its exposed face (3 tiles), falling to
+    /// black (V8FaceChunks.SkyBandWeight). Direct and local fill keep FaceWidth. Each solid pixel still reads only its
+    /// nearest exposed face, so the band never reaches the far side of a thin wall.</summary>
+    public int SkyFaceDepth { get; set; } = 24;
+    /// <summary>Deepest face reach: margin of the light bounds, the geometry region and the face chunks.</summary>
+    public int FaceReach => Math.Max(FaceWidth, SkyFaceDepth);
     public int GeometryRegionStep { get; set; } = 1;
     public Nyvorn.Source.Engine.Physics.Sand.SandSystem Sand { get; set; }
     public double LastGeometryMs { get; private set; }
     public double LastDirectMs { get; private set; }
     public double LastAmbientMs { get; private set; }
     public double LastFacesMs { get; private set; }
+    // Faces split: per-pixel build of the vertex array, vertex upload, and the draw pass into Foreground.
+    public double LastFaceBuildMs { get; private set; }
+    public double LastFaceUploadMs { get; private set; }
+    public double LastFaceDrawMs { get; private set; }
+    public bool LastFacesRebuilt { get; private set; }
+    public int FaceVertexCount => faces.VisibleVertices;
+    public int FaceWeightedPixels => faces.VisibleWeightedPixels;
+    public int FaceChunksBuilt => faces.ChunksBuilt;
+    public int FaceChunksVisible => faces.ChunksVisible;
+    public int FaceChunksUncovered => faces.UncoveredChunks;
+    public int FaceArenaRewrites => faces.ArenaRewrites;
 
     public V8LightingRenderer(GraphicsDevice device, ContentManager content)
     {
         this.device = device;
-        Ambient = new V8AmbientField(device);
+        Ambient = new V8AmbientField(device, content.Load<Effect>("effects/V8AmbientResolve").Clone());
         directEffect = content.Load<Effect>("effects/V8Direct").Clone();
         faceEffect = content.Load<Effect>("effects/V8Faces").Clone();
         receiverEffect = content.Load<Effect>("effects/V8Receiver").Clone();
         maskEffect = new BasicEffect(device) { VertexColorEnabled = true };
+        faces = new V8FaceChunks(device);
     }
 
     public static Rectangle VisibleBounds(Matrix effectiveView, int screenWidth, int screenHeight)
@@ -76,15 +90,23 @@ public sealed class V8LightingRenderer : IDisposable
     public void Render(WorldMap map, IReadOnlyList<PlatformInstance> platforms, IReadOnlyList<DoorInstance> doors,
         IReadOnlyList<V8Light> sources, Rectangle viewBounds)
     {
-        if (FaceWidth < 1) throw new InvalidOperationException("Face width must be positive");
+        if (FaceWidth < 1 || SkyFaceDepth < 1) throw new InvalidOperationException("Face widths must be positive");
+        int reach = FaceReach;
         var bounds = viewBounds;
-        bounds.Inflate(FaceWidth + 2, FaceWidth + 2); // external face samples remain in the light field
+        bounds.Inflate(reach + 2, reach + 2); // external face samples remain in the light field
         EnsureTargets(bounds);
         float maxRadius = 0;
         foreach (var source in sources)
             if (source.Radius > 0) maxRadius = MathF.Max(maxRadius, source.Radius);
         var geometryBounds = bounds;
-        geometryBounds.Inflate((int)MathF.Ceiling(maxRadius) + FaceWidth + 2, (int)MathF.Ceiling(maxRadius) + FaceWidth + 2);
+        geometryBounds.Inflate((int)MathF.Ceiling(maxRadius) + reach + 2, (int)MathF.Ceiling(maxRadius) + reach + 2);
+        // Face chunks touching the light bounds must see their whole face reach margin, so a reused chunk is exact.
+        int chunk = V8FaceChunks.ChunkSize;
+        int coverLeft = V8FaceChunks.FloorDiv(bounds.Left, chunk) * chunk - reach;
+        int coverTop = V8FaceChunks.FloorDiv(bounds.Top, chunk) * chunk - reach;
+        int coverRight = (V8FaceChunks.FloorDiv(bounds.Right - 1, chunk) + 1) * chunk + reach;
+        int coverBottom = (V8FaceChunks.FloorDiv(bounds.Bottom - 1, chunk) + 1) * chunk + reach;
+        geometryBounds = Rectangle.Union(geometryBounds, new Rectangle(coverLeft, coverTop, coverRight - coverLeft, coverBottom - coverTop));
         if (GeometryRegionStep > 1)
         {
             // A containing world-aligned cache avoids scanning all contours on every camera pixel.
@@ -126,7 +148,11 @@ public sealed class V8LightingRenderer : IDisposable
         Ambient.Update(map, platforms, doors, sources, bounds, AmbientContext, Sand);
         LastAmbientMs = System.Diagnostics.Stopwatch.GetElapsedTime(stage).TotalMilliseconds;
         stage = System.Diagnostics.Stopwatch.GetTimestamp();
-        BuildFaces();
+        faces.Update(Geometry, bounds, FaceWidth, SkyFaceDepth);
+        LastFaceBuildMs = faces.LastBuildMs;
+        LastFaceUploadMs = faces.LastUploadMs;
+        LastFacesRebuilt = faces.ChunksBuilt > 0;
+        long drawStage = System.Diagnostics.Stopwatch.GetTimestamp();
         device.SetRenderTarget(Foreground);
         device.Clear(Color.Transparent);
         device.BlendState = BlendState.Opaque;
@@ -134,19 +160,13 @@ public sealed class V8LightingRenderer : IDisposable
         device.RasterizerState = RasterizerState.CullNone;
         faceEffect.Parameters["MatrixTransform"].SetValue(projection);
         faceEffect.Parameters["DirectTexture"].SetValue(Direct);
-        faceEffect.Parameters["SkyTexture"].SetValue(Ambient.SkyTexture);
-        faceEffect.Parameters["LocalTexture"].SetValue(Ambient.LocalTexture);
+        Ambient.Apply(faceEffect, 0); // faces reconstruct ambient at their external air sample, in light space
         faceEffect.Parameters["LightOrigin"].SetValue(bounds.Location.ToVector2());
         faceEffect.Parameters["LightSize"].SetValue(bounds.Size.ToVector2());
-        if (faceCount > 0)
-        {
-            device.SetVertexBuffer(faceBuffer);
-            foreach (var pass in faceEffect.CurrentTechnique.Passes)
-            { pass.Apply(); device.DrawPrimitives(PrimitiveType.TriangleList, 0, faceCount / 3); }
-            device.SetVertexBuffer(null);
-        }
+        faces.Draw(faceEffect);
         device.SetRenderTarget(null);
         device.DepthStencilState = DepthStencilState.None;
+        LastFaceDrawMs = System.Diagnostics.Stopwatch.GetElapsedTime(drawStage).TotalMilliseconds;
         LastFacesMs = System.Diagnostics.Stopwatch.GetElapsedTime(stage).TotalMilliseconds;
         device.BlendState = BlendState.AlphaBlend;
     }
@@ -185,45 +205,16 @@ public sealed class V8LightingRenderer : IDisposable
         { pass.Apply(); device.DrawUserPrimitives(PrimitiveType.TriangleList, lightQuad, 0, 2); }
     }
 
-    private void BuildFaces()
-    {
-        if (faceGeneration == Geometry.Generation && previousFaceBounds == LightBounds && previousFaceWidth == FaceWidth) return;
-        int required = LightBounds.Width * LightBounds.Height * 6;
-        if (faceVertices.Length < required) faceVertices = new VertexPositionColorTexture[required];
-        faceCount = 0;
-        for (int y = LightBounds.Top; y < LightBounds.Bottom; y++)
-            for (int x = LightBounds.Left; x < LightBounds.Right; x++)
-            {
-                if (!Geometry.IsSolid(x, y)) continue;
-                Geometry.TryFace(x, y, FaceWidth, out Vector2 sample, out float weight);
-                Vector2 uv = (sample - LightBounds.Location.ToVector2()) / LightBounds.Size.ToVector2();
-                Quad(faceVertices, faceCount, new(x, y), new(x + 1, y), new(x + 1, y + 1), new(x, y + 1), uv, new Color(weight, weight, weight, 1f));
-                faceCount += 6;
-            }
-        if (faceCount > 0)
-        {
-            if (faceBuffer == null || faceBuffer.VertexCount < faceCount)
-            {
-                faceBuffer?.Dispose();
-                // Reserve for the entire receiver region so moving into denser terrain never
-                // allocates a new GPU buffer. Capacity changes are limited to viewport growth.
-                faceBuffer = new DynamicVertexBuffer(device, VertexPositionColorTexture.VertexDeclaration, Math.Max(required, 4096), BufferUsage.WriteOnly);
-                resourceCreations++;
-            }
-            faceBuffer.SetData(faceVertices, 0, faceCount, SetDataOptions.Discard);
-        }
-        faceGeneration = Geometry.Generation; previousFaceBounds = LightBounds; previousFaceWidth = FaceWidth;
-    }
-
-    public void BeginReceivers(SpriteBatch batch, Matrix effectiveView, int screenWidth, int screenHeight, bool foreground, float worldOffsetX = 0)
+    /// <param name="backgroundSky">True for the background wall: it keeps the background sky intensity.</param>
+    public void BeginReceivers(SpriteBatch batch, Matrix effectiveView, int screenWidth, int screenHeight, bool foreground, float worldOffsetX = 0, bool backgroundSky = false)
     {
         receiverEffect.Parameters["MatrixTransform"].SetValue(effectiveView * Matrix.CreateOrthographicOffCenter(0, screenWidth, screenHeight, 0, 0, 1));
         receiverEffect.Parameters["LightOrigin"].SetValue(LightBounds.Location.ToVector2() - new Vector2(worldOffsetX, 0));
         receiverEffect.Parameters["LightSize"].SetValue(LightBounds.Size.ToVector2());
         receiverEffect.Parameters["LightTexture"].SetValue(foreground ? Foreground : Direct);
-        receiverEffect.Parameters["SkyTexture"].SetValue(Ambient.SkyTexture);
-        receiverEffect.Parameters["LocalTexture"].SetValue(Ambient.LocalTexture);
-        receiverEffect.Parameters["AmbientScale"].SetValue(foreground ? 0f : 1f);
+        // Foreground terrain reads the face buffer (ambient already included); other receivers reconstruct ambient.
+        receiverEffect.CurrentTechnique = receiverEffect.Techniques[foreground ? "ForegroundReceiver" : "Receiver"];
+        Ambient.Apply(receiverEffect, worldOffsetX, backgroundSky, backgroundSky);
         batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp,
             DepthStencilState.None, RasterizerState.CullNone, receiverEffect);
     }
@@ -248,7 +239,7 @@ public sealed class V8LightingRenderer : IDisposable
     }
     public void Dispose()
     {
-        Direct?.Dispose(); Foreground?.Dispose(); faceBuffer?.Dispose();
+        Direct?.Dispose(); Foreground?.Dispose(); faces.Dispose();
         Ambient.Dispose();
         directEffect.Dispose(); faceEffect.Dispose(); receiverEffect.Dispose(); maskEffect.Dispose();
         noColor.Dispose(); add.Dispose(); write.Dispose(); visible.Dispose();

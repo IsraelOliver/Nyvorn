@@ -79,10 +79,16 @@ public class Game1 : Game
         _graphics = new GraphicsDeviceManager(this);
         _graphics.PreferredBackBufferWidth = TargetWidth;
         _graphics.PreferredBackBufferHeight = TargetHeight;
-        if (V8GameplayOptions.TransientWorld)
+        // Captures use 1280x720; the toggle bench measures at the normal gameplay size.
+        if (V8GameplayOptions.TransientWorld && !V8GameplayOptions.ToggleBench && !V8GameplayOptions.PerfBench)
         {
             _graphics.PreferredBackBufferWidth = 1280;
             _graphics.PreferredBackBufferHeight = 720;
+        }
+        if (V8GameplayOptions.UncappedFrames)
+        {
+            IsFixedTimeStep = false;
+            _graphics.SynchronizeWithVerticalRetrace = false;
         }
         _graphics.HardwareModeSwitch = false;
         Content.RootDirectory = "Content";
@@ -108,7 +114,7 @@ public class Game1 : Game
             _stateMachine.PushState(new PlayingState(GraphicsDevice, Content, _stateMachine, session));
         }
         else _stateMachine.PushState(new WorldSelectState(GraphicsDevice, Content, _stateMachine));
-        Window.Title = V8GameplayOptions.Enabled ? "Nyvorn — V8 direct + ambient" : "Nyvorn — V7";
+        Window.Title = "Nyvorn — lighting " + (V8GameplayOptions.Enabled ? "V8" : "V7");
     }
 
     protected override void Update(GameTime gameTime)
@@ -134,8 +140,19 @@ public class Game1 : Game
             // Phase A0.0: Record IsRunningSlowly
             _renderedFrameProfiler.OnUpdateSetIsRunningSlowly(gameTime.IsRunningSlowly);
 
+            long stateUpdateStart = Stopwatch.GetTimestamp();
             _stateMachine.Update(gameTime);
+            double stateUpdateMs = Stopwatch.GetElapsedTime(stateUpdateStart).TotalMilliseconds;
             _previousKeyboard = keyboard;
+
+            // F4 can switch the lighting pipeline at runtime; keep the title in sync with the active one.
+            if (_stateMachine.CurrentState is PlayingState lightingState)
+            {
+                lightingState.RecordUpdateCpu(stateUpdateMs);
+                string title = "Nyvorn — lighting " + lightingState.ActiveLightingLabel;
+                if (Window.Title != title)
+                    Window.Title = title;
+            }
 
             // Phase A0.0: Pass profiler to PlayingState if created
             if (_stateMachine.CurrentState is PlayingState playingState && playingState != null)
@@ -564,6 +581,9 @@ public class Game1 : Game
             long presentEndTicks = Stopwatch.GetTimestamp();
             double presentMs = (presentEndTicks - presentStartTicks) / (double)Stopwatch.Frequency * 1000.0;
             _renderedFrameProfiler.OnPresentMeasured(presentMs);
+            // Same Present time for the lighting frame diagnostics, with window focus.
+            if (_stateMachine?.CurrentState is PlayingState lightingState)
+                lightingState.RecordPresent(presentMs, IsActive);
             _renderedFrameProfiler.EmergencyLog_ExitEndDraw();
         }
     }

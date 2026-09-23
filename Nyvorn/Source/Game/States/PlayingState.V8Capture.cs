@@ -15,7 +15,7 @@ public partial class PlayingState
 {
     private readonly string[] v8WorldCases = { "surface-day", "surface-night", "shallow-day", "shallow-night", "shallow-sealed",
         "cavern-torch", "cavern-off", "deep-torch", "deep-off", "wall-before", "wall-mined", "wall-rebuilt",
-        "door-closed", "door-open", "many-sources", "camera-shift", "zoom", "wide-view", "camera-pan", "wrap", "sand" };
+        "door-closed", "door-open", "many-sources", "camera-shift", "zoom", "wide-view", "camera-pan", "region-cross", "wrap", "sand" };
     private int v8WorldCase, v8CaseFrames;
     private bool v8CasePrepared;
     private Vector2 v8Spawn, v8CaptureCenter;
@@ -24,7 +24,8 @@ public partial class PlayingState
     private readonly List<string> v8WorldChecks = new();
     private Color[] v8WallBaseline;
     private Rectangle v8WallBounds;
-    private Color[] v8ManyDirect, v8ManyLocal;
+    private Color[] v8ManyDirect, v8ManyLocal, v8ManyForeground;
+    private int v8WallWitness;
     private Rectangle v8ManyBounds;
     private Point v8ManyRoom;
     private int v8StableResources;
@@ -62,7 +63,7 @@ public partial class PlayingState
                 WorldLayerType type = name.StartsWith("shallow") ? WorldLayerType.ShallowUnderground :
                     name.StartsWith("deep") ? WorldLayerType.DeepCavern : WorldLayerType.Cavern;
                 var layer = session.LayerDefinitions.First(l => l.LayerType == type);
-                bool keepRoom = name is "wall-mined" or "wall-rebuilt" or "door-open" or "camera-shift" or "zoom" or "wide-view" or "camera-pan" or "shallow-sealed";
+                bool keepRoom = name is "wall-mined" or "wall-rebuilt" or "door-open" or "camera-shift" or "zoom" or "wide-view" or "camera-pan" or "region-cross" or "shallow-sealed";
                 if (!keepRoom)
                 {
                     v8Room = new Point(name == "wrap" ? -24 : 140, layer.StartY + 12);
@@ -84,6 +85,8 @@ public partial class PlayingState
                 }
                 v8CaptureCenter = new Vector2((v8Room.X + 30) * size, (v8Room.Y + 19) * size);
                 if (name == "camera-shift") v8CaptureCenter += new Vector2(13.25f, -5.5f);
+                // Crosses the 64 px geometry region and larger reuse boundaries on both axes.
+                if (name == "region-cross") v8CaptureCenter += new Vector2(131f, 67f);
                 if (name == "sand") v8CaptureCenter += new Vector2(0, 6 * size);
             }
             v8CpuSamples.Clear(); v8FrameSamples.Clear(); v8CasePrepared = true;
@@ -114,7 +117,9 @@ public partial class PlayingState
         for (int x = 20; x < 29; x++) platforms.Add(new PlatformSaveData { PositionX = (v8Room.X + x) * size, PositionY = (v8Room.Y + 19) * size });
         session.PlatformRuntimeSystem.Restore(platforms);
         var torches = new List<TorchSaveData>();
-        if (!name.EndsWith("off") && !name.StartsWith("shallow")) AddTorch(14, 14);
+        // Wall cases put the torch 6 tiles from the x=36 divider, so the witness behind it stays inside the direct
+        // radius (14 tiles since 2026-09-16). Every other case keeps the original position.
+        if (!name.EndsWith("off") && !name.StartsWith("shallow")) AddTorch(name.StartsWith("wall") ? 30 : 14, 14);
         if (name is "many-sources" or "wrap") { AddTorch(29, 30); AddTorch(48, 18); AddTorch(55, 30); }
         if (name == "sand") AddTorch(31, 30);
         session.TorchRuntimeSystem.Restore(torches);
@@ -162,6 +167,7 @@ public partial class PlayingState
         var sky = V8Capture.Read(v8Renderer.Ambient.SkyTexture);
         var direct = V8Capture.Read(v8Renderer.Direct);
         var local = V8Capture.Read(v8Renderer.Ambient.LocalTexture);
+        var foreground = V8Capture.Read(v8Renderer.Foreground);
         var bounds = v8Renderer.LightBounds;
         bool zero = true;
         for (int y = 0; y < bounds.Height; y++)
@@ -169,6 +175,22 @@ public partial class PlayingState
                 for (int x = 0; x < bounds.Width; x++)
                 { var c = sky[y * bounds.Width + x]; zero &= c.R == 0 && c.G == 0 && c.B == 0; }
         V8WorldCheck("sky zero in forbidden layers", zero);
+        // The frame path reconstructs ambient in V8Ambient.fxh; compare it with the former CPU reconstruction of the
+        // same grid. Tolerance: 8-bit cell storage (local halved) plus final-pixel quantization, at most ~3/255.
+        var referenceSky = new Color[sky.Length];
+        var referenceLocal = new Color[local.Length];
+        v8Renderer.Ambient.BuildReferencePixels(referenceSky, referenceLocal);
+        int ambientSkyError = 0, ambientLocalError = 0, ambientSkyAbove1 = 0, ambientLocalAbove1 = 0;
+        for (int i = 0; i < sky.Length; i++)
+        {
+            int s = Math.Max(Error(sky[i], referenceSky[i]), Math.Abs(sky[i].A - referenceSky[i].A));
+            int l = Error(local[i], referenceLocal[i]);
+            ambientSkyError = Math.Max(ambientSkyError, s); ambientLocalError = Math.Max(ambientLocalError, l);
+            if (s > 1) ambientSkyAbove1++;
+            if (l > 1) ambientLocalAbove1++;
+        }
+        V8WorldCheck($"shader ambient matches former CPU reconstruction (max error sky {ambientSkyError}/255, local {ambientLocalError}/255; texels >1: sky {ambientSkyAbove1}, local {ambientLocalAbove1} of {sky.Length})",
+            ambientSkyError <= 3 && ambientLocalError <= 3);
         V8WorldCheck("stable graphics resources", v8StableResources == v8Renderer.ResourceCreations);
         string name = V8WorldCaptureLabel;
         if (name.EndsWith("off"))
@@ -187,8 +209,30 @@ public partial class PlayingState
                     if (session.SandSystem.HasSandAt(x, y)) { sandPixels++; classified &= v8Renderer.Geometry.IsSolid(x, y); }
             V8WorldCheck($"dynamic sand classified ({sandPixels} pixels)", sandPixels > 100 && classified);
         }
-        if (name == "many-sources") { v8ManyDirect = direct; v8ManyLocal = local; v8ManyBounds = bounds; v8ManyRoom = v8Room; }
-        if (name is "camera-shift" or "zoom" or "wide-view" or "camera-pan" or "wrap")
+        if (name == "many-sources") { v8ManyDirect = direct; v8ManyLocal = local; v8ManyForeground = foreground; v8ManyBounds = bounds; v8ManyRoom = v8Room; }
+        if (name is "camera-shift" or "zoom" or "wide-view" or "camera-pan" or "region-cross" or "wrap")
+        {
+            // Every art pixel of the room: the face buffer must not depend on camera, zoom, region alignment or wrap.
+            // Pixels closer than FaceReach+2 to either light bounds are skipped (their external sample may lie outside).
+            Point shift = (v8Room - v8ManyRoom) * new Point(8, 8);
+            Rectangle inner = bounds, innerMany = v8ManyBounds;
+            inner.Inflate(-(v8Renderer.FaceReach + 2), -(v8Renderer.FaceReach + 2));
+            innerMany.Inflate(-(v8Renderer.FaceReach + 2), -(v8Renderer.FaceReach + 2));
+            int faceError = 0, facePixels = 0, faceLit = 0;
+            for (int py = v8Room.Y * 8; py < (v8Room.Y + 40) * 8; py++)
+                for (int px = v8Room.X * 8; px < (v8Room.X + 64) * 8; px++)
+                {
+                    Point p = new(px, py), old = p - shift;
+                    if (!inner.Contains(p) || !innerMany.Contains(old)) continue;
+                    Color a = foreground[(p.Y - bounds.Y) * bounds.Width + p.X - bounds.X];
+                    Color b = v8ManyForeground[(old.Y - v8ManyBounds.Y) * v8ManyBounds.Width + old.X - v8ManyBounds.X];
+                    faceError = Math.Max(faceError, Math.Max(Error(a, b), Math.Abs(a.A - b.A)));
+                    facePixels++;
+                    if (a.R + a.G + a.B > 0) faceLit++;
+                }
+            V8WorldCheck($"world-anchored faces ({facePixels} pixels, {faceLit} lit; max error {faceError})", facePixels > 20000 && faceLit > 500 && faceError <= 1);
+        }
+        if (name is "camera-shift" or "zoom" or "wide-view" or "camera-pan" or "region-cross" or "wrap")
         {
             Point delta = (v8Room - v8ManyRoom) * new Point(8, 8);
             int directError = 0, localError = 0, samples = 0;
@@ -203,9 +247,26 @@ public partial class PlayingState
             }
             V8WorldCheck($"world-anchored direct/local ({samples} samples; errors {directError}/{localError})", samples > 200 && directError <= 1 && localError <= 1);
         }
-        if (V8WorldCaptureLabel == "wall-before") { v8WallBaseline = direct; v8WallBounds = bounds; }
-        if (V8WorldCaptureLabel == "wall-mined") V8WorldCheck("mining changes direct", bounds == v8WallBounds && !direct.SequenceEqual(v8WallBaseline));
-        if (V8WorldCaptureLabel == "wall-rebuilt") V8WorldCheck("construction restores direct", bounds == v8WallBounds && direct.SequenceEqual(v8WallBaseline));
+        // Witness behind the x=36 divider, about 8 tiles from the torch of the wall cases: inside the direct radius, with
+        // the wall strictly between. Measured on the direct buffer, never on the composed frame.
+        int WallWitnessDirect()
+        {
+            Point p = new((v8Room.X + 38) * 8 + 4, (v8Room.Y + 15) * 8 + 4);
+            if (!bounds.Contains(p)) return -1;
+            var c = direct[(p.Y - bounds.Y) * bounds.Width + p.X - bounds.X];
+            return Math.Max(c.R, Math.Max(c.G, c.B));
+        }
+        if (V8WorldCaptureLabel == "wall-before")
+        {
+            v8WallBaseline = direct; v8WallBounds = bounds; v8WallWitness = WallWitnessDirect();
+            V8WorldCheck($"wall blocks direct at the witness (direct {v8WallWitness})", v8WallWitness == 0);
+        }
+        if (V8WorldCaptureLabel == "wall-mined")
+            V8WorldCheck($"mining opens direct at the witness (direct {WallWitnessDirect()}, was {v8WallWitness})",
+                bounds == v8WallBounds && !direct.SequenceEqual(v8WallBaseline) && WallWitnessDirect() > 20);
+        if (V8WorldCaptureLabel == "wall-rebuilt")
+            V8WorldCheck($"construction restores direct at the witness (direct {WallWitnessDirect()})",
+                bounds == v8WallBounds && direct.SequenceEqual(v8WallBaseline) && WallWitnessDirect() == 0);
         long InteriorTotal(Color[] field)
         {
             long sum = 0;

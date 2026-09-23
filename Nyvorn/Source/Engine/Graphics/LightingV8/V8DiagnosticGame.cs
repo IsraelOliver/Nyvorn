@@ -38,7 +38,8 @@ public sealed class V8DiagnosticGame : Microsoft.Xna.Framework.Game
         ambientMode = Array.Exists(args, a => a == "--v8-ambient");
         if (ambientMode) cases = new[] { "local", "local-moved", "local-wrap", "local-off", "sky-sealed", "sky-window",
             "sky-moved", "sky-fissure", "sky-interior-void", "sky-deep-void", "local-cavern", "local-deep", "local-deep-off",
-            "combined", "corner", "door-closed", "door-open" };
+            "combined", "corner", "door-closed", "door-open", "sky-band", "sky-band-ceilings", "sky-band-walls",
+            "sky-aperture", "sky-corner" };
         output = Path.GetFullPath("screenshots/v8");
         for (int i = 0; i + 1 < args.Length; i++)
             if (args[i] == "--v8-output") output = Path.GetFullPath(args[i + 1]);
@@ -134,6 +135,8 @@ public sealed class V8DiagnosticGame : Microsoft.Xna.Framework.Game
         lighting.AmbientContext = scene.ConfigureAmbient(name);
         if (name.EndsWith("moved")) viewOrigin += new Vector2(17.35f, -11.2f);
         if (name == "local-wrap") viewOrigin += new Vector2(scene.Map.PixelWidth, 0);
+        // Fixtures that live in the Surface rows above the roof.
+        if (name.StartsWith("sky-band") || name == "sky-corner") viewOrigin += new Vector2(0, -80);
     }
     protected override void Draw(GameTime gameTime)
     {
@@ -198,7 +201,7 @@ public sealed class V8DiagnosticGame : Microsoft.Xna.Framework.Game
             scene.DrawExterior(batch, visible, lighting.AmbientContext, exteriorPixel);
             batch.End();
         }
-        Begin(lit, false, view, w, h); scene.DrawBackground(batch, visible); batch.End();
+        Begin(lit, false, view, w, h, background: true); scene.DrawBackground(batch, visible); batch.End();
         Begin(lit, true, view, w, h); scene.DrawForeground(batch, visible); batch.End();
         Begin(lit, false, view, w, h); scene.DrawEntities(batch, visible); batch.End();
         GraphicsDevice.SetRenderTarget(null);
@@ -211,9 +214,9 @@ public sealed class V8DiagnosticGame : Microsoft.Xna.Framework.Game
         scene.DrawEntities(batch, visible); batch.End();
         GraphicsDevice.SetRenderTarget(null);
     }
-    private void Begin(bool lit, bool foreground, Matrix view, int w, int h)
+    private void Begin(bool lit, bool foreground, Matrix view, int w, int h, bool background = false)
     {
-        if (lit) lighting.BeginReceivers(batch, view, w, h, foreground);
+        if (lit) lighting.BeginReceivers(batch, view, w, h, foreground, 0, background);
         else batch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: view);
     }
     private void Save(string name, Matrix view, Rectangle visible)

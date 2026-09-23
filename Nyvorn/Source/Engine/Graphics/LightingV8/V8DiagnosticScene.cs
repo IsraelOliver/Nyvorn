@@ -37,6 +37,16 @@ public sealed class V8DiagnosticScene
                 (x >= 3 && x < 8 && y >= 22) || (x >= 34 && x < 41 && y >= 20) ? TileType.Dirt : TileType.Empty);
             if (Map.GetBackgroundTile(x - 8, y + 16) != TileType.Stone) Map.SetBackgroundTile(x - 8, y + 16, TileType.Stone);
         }
+        // Surface rows above the roof: open, except the face-band fixtures (see FaceBandSolid). Pocket background walls
+        // keep the sky-band-walls pockets from being exterior apertures.
+        for (int y = 8; y < 16; y++) for (int x = -8; x < 40; x++)
+        {
+            Map.SetTile(x, y, FaceBandSolid(name, x, y) ? TileType.Dirt : TileType.Empty);
+            bool pocket = (name == "sky-band-walls" && y > 8 &&
+                System.Array.Exists(WallFixtures, w => x >= w.Left + w.Thickness && x < w.Left + w.Thickness + 2)) ||
+                (name == "sky-corner" && x == CornerPocket.X && y == CornerPocket.Y);
+            Map.SetBackgroundTile(x, y, pocket ? TileType.Stone : TileType.Empty);
+        }
         Lights.Clear(); Doors.Clear(); Doors.Add(ClosedDoor);
         var context = new V8AmbientContext {
             Layers = new[] { new WorldLayerDefinition(WorldLayerType.Space, 0, 7),
@@ -44,7 +54,8 @@ public sealed class V8DiagnosticScene
                 new(WorldLayerType.Cavern, 40, 51), new(WorldLayerType.DeepCavern, 52, 63) },
             SkyState = default(SkyState) with { AmbientLight = new Color(130, 175, 225) },
             SkyEnabled = name.StartsWith("sky-") || name == "combined",
-            LocalEnabled = !name.StartsWith("sky-")
+            LocalEnabled = !name.StartsWith("sky-"),
+            SkyDiagonalTransport = !V8GameplayOptions.SkyFourNeighbours
         };
         if (context.LocalEnabled && !name.EndsWith("off")) Lights.Add(First);
         bool seal = context.SkyEnabled || name.StartsWith("door-");
@@ -55,6 +66,11 @@ public sealed class V8DiagnosticScene
             // Second opening straddles the Shallow/Cavern border, exposing interpolation errors.
             for (int y = 21; y < 27; y++) Map.SetBackgroundTile(12 - 8, y + 16, TileType.Empty);
         }
+        // sky-aperture: a 2x2 background hole inside the room, away from its walls, so the exposure can be profiled
+        // along the axis and along the 45 degree diagonal.
+        if (name == "sky-aperture")
+            for (int y = Aperture.Y; y <= Aperture.Y + 1; y++) for (int x = Aperture.X; x <= Aperture.X + 1; x++)
+                Map.SetBackgroundTile(x, y, TileType.Empty);
         if (name == "sky-fissure")
             for (int y = 10; y < 17; y++) Map.SetBackgroundTile(14 - 8, y + 16, TileType.Empty);
         if (name == "sky-interior-void") context.ExteriorOverride = (_, _) => false;
@@ -79,6 +95,40 @@ public sealed class V8DiagnosticScene
             Doors.Clear(); Doors.Add(new DoorInstance(new Point(18, 28), 8, isOpen: name == "door-open"));
         }
         return context;
+    }
+
+    // Face-band fixtures, world tile coordinates, all above the 1-tile roof (row 16) of the sealed room.
+    // Ceilings: the roof thickened to Thickness tiles over tiles Left..Right (rows 17 - Thickness .. 16).
+    public static readonly (int Left, int Right, int Thickness)[] CeilingFixtures = { (30, 37, 1), (0, 7, 2), (10, 17, 3), (20, 27, 5) };
+    // Walls: a Thickness-tile wall (rows 8..15) with exterior sky on its left, then a 2-tile dark pocket (background
+    // wall) closed by a cap on row 8, the roof below and a 2-tile right wall.
+    public static readonly (int Left, int Thickness)[] WallFixtures = { (-6, 1), (1, 2), (9, 3), (18, 5) };
+
+    /// <summary>sky-aperture: top-left tile of the 2x2 background hole inside the room (world tiles).</summary>
+    public static readonly Point Aperture = new(4, 20);
+    /// <summary>sky-corner: the pocket reachable from the lit air only across a closed diagonal corner.
+    ///   A X   A = CornerLit (open air, seeds sky), X = solid, D = CornerPocket (background wall, enclosed by four solids).
+    ///   X D </summary>
+    public static readonly Point CornerLit = new(0, 11);
+    public static readonly Point CornerPocket = new(1, 12);
+
+    private static bool FaceBandSolid(string name, int x, int y)
+    {
+        if (name == "sky-corner")
+            return (x == CornerPocket.X && y == CornerLit.Y) || (x == CornerLit.X && y == CornerPocket.Y) ||
+                (x == CornerPocket.X + 1 && y == CornerPocket.Y) || (x == CornerPocket.X && y == CornerPocket.Y + 1);
+        // sky-band: soil block, tiles 20..26 x rows 11..15, on the roof (a 6-tile ceiling).
+        if (name == "sky-band") return y >= 11 && x >= 20 && x <= 26;
+        if (name == "sky-band-ceilings")
+            return System.Array.Exists(CeilingFixtures, c => x >= c.Left && x <= c.Right && y >= 17 - c.Thickness);
+        if (name == "sky-band-walls")
+            foreach (var w in WallFixtures)
+            {
+                if (x < w.Left || x >= w.Left + w.Thickness + 4) continue;
+                bool pocketColumn = x >= w.Left + w.Thickness && x < w.Left + w.Thickness + 2;
+                return y == 8 || !pocketColumn;
+            }
+        return false;
     }
 
     public V8DiagnosticScene(ContentManager content)
