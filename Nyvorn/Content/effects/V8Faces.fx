@@ -31,8 +31,8 @@ float4 PS(VSOut i) : COLOR0 {
     AmbientAt(i.Sample, sky, local, sampleLayer);
     // Layer eligibility of the actual solid receiver vetoes sky (formerly the sky texture alpha at the receiver).
     float skyAllowed = AmbientLayerWeight(i.Receiver) > 0 ? 1 : 0;
-    // Color.r weights direct + local (quadratic over FaceWidth); Color.g weights sky (smooth band over SkyFaceDepth).
-    float3 light = (tex2D(DirectSampler, i.DirectUV).rgb + local) * i.Color.r + skyAllowed * sky * i.Color.g;
+    // Color.r weights direct and local (quadratic over FaceWidth); Color.g weights sky (smooth band over SkyFaceDepth).
+    float3 light = ComposeLight(tex2D(DirectSampler, i.DirectUV).rgb * i.Color.r, local * i.Color.r, skyAllowed * sky * i.Color.g);
     return float4(light, 1);
 }
 technique Faces { pass P { VertexShader = compile VS_MODEL VS(); PixelShader = compile PS_MODEL PS(); } }

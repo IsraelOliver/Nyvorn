@@ -68,21 +68,30 @@ public sealed class V8Validation
         }
         if (name == "reverse")
         {
-            Check("source order direct", MaxDifference(two, direct) == 0);
-            Check("source order composition", MaxDifference(twoFinal, f) == 0);
+            // Additive blending is exact in any order. The prototype's C + F(1 - C) is commutative too, but each source is
+            // stored in 8 bits before the next one blends, so one quantisation step is allowed under that rule only.
+            int orderTolerance = renderer.Composition == V8Composition.Sum ? 0 : 1;
+            Check("source order direct", MaxDifference(two, direct) <= orderTolerance, $"rule={renderer.Composition}");
+            Check("source order composition", MaxDifference(twoFinal, f) <= orderTolerance, $"rule={renderer.Composition}");
         }
         if (name == "second")
         {
             // Select an overlapping, unoccluded region. Compare to independently captured fields.
+            // Expected accumulation of the two independently captured sources under the active rule: shipped = sum clamped
+            // by the 8-bit target; prototype = C + F(1 - C) (Blend.One / Blend.InverseSourceColor).
+            bool screen = renderer.Composition != V8Composition.Sum;
+            byte Accumulate(byte a, byte b) => screen
+                ? (byte)Math.Clamp((int)MathF.Round(a + b - a * b / 255f), 0, 255)
+                : (byte)Math.Min(255, a + b);
             int error = 0, overlap = 0;
             for (int i = 0; i < two.Length; i++)
             {
                 if (Peak(primary[i]) > 10 && Peak(direct[i]) > 10) overlap++;
-                var sum = new Color((byte)Math.Min(255, primary[i].R + direct[i].R),
-                    (byte)Math.Min(255, primary[i].G + direct[i].G), (byte)Math.Min(255, primary[i].B + direct[i].B));
-                error = Math.Max(error, Difference(sum, two[i]));
+                var expected = new Color(Accumulate(primary[i].R, direct[i].R), Accumulate(primary[i].G, direct[i].G),
+                    Accumulate(primary[i].B, direct[i].B));
+                error = Math.Max(error, Difference(expected, two[i]));
             }
-            Check("overlapping sources add independently", overlap > 100 && error <= 1, $"overlap={overlap} maxDelta={error}");
+            Check("overlapping sources add independently", overlap > 100 && error <= 1, $"rule={renderer.Composition} overlap={overlap} maxDelta={error}");
             Check("two sources preserve accumulated RGB", two.Where((p, i) => p.R < primary[i].R || p.G < direct[i].G || p.B < direct[i].B).Count() == 0);
         }
         if (name == "right")

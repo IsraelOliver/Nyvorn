@@ -426,7 +426,17 @@ namespace Nyvorn.Source.Gameplay.UI
             for (int y = 0; y < targetHeight; y++)
             {
                 for (int x = 0; x < targetWidth; x++)
-                    minimapPixels[(y * targetWidth) + x] = GetTileColor(worldMap.GetTile(x, y));
+                {
+                    TileType foreground = worldMap.GetTile(x, y);
+                    Color color = GetTileColor(foreground);
+                    if (foreground == TileType.Empty)
+                    {
+                        TileType background = worldMap.GetBackgroundTile(x, y);
+                        if (background != TileType.Empty)
+                            color = Color.Lerp(Color.Black, GetTileColor(background), 0.45f);
+                    }
+                    minimapPixels[(y * targetWidth) + x] = color;
+                }
             }
 
             DrawTreesOnMinimapTexture(worldMap, targetWidth, targetHeight);

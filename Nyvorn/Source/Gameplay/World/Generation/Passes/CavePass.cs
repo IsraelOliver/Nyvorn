@@ -174,12 +174,20 @@ namespace Nyvorn.Source.World.Generation.Passes
             const float warpFrequency = 0.040f;
             const float warpStrength = 18f;
 
+            // Narrow the existing fissures over 12 rows, then preserve 8 full rows of Shallow background.
+            const int closingTiles = 20;
+            const int sealedTiles = 8;
+            int cavernStart = endY + 1;
+            int sealedStart = cavernStart - sealedTiles;
+            if (y >= sealedStart) return false;
+            float closing = SmoothStep01((y + 0.5f - (cavernStart - closingTiles)) / (closingTiles - sealedTiles));
+
             float warpX = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency) * warpStrength;
             float warpY = WorldFieldSampler.Fractal(context, warpNoise, x, y, warpFrequency, warpFrequency, 1000f, 1000f) * warpStrength;
 
             float sample = WorldFieldSampler.SampleSeamedNoise(context, caveNoise, x, y, frequencyX, frequencyY, warpX, warpY);
 
-            return sample > threshold;
+            return sample > Lerp(threshold, 1f, closing);
         }
 
         private static void CarveBackgroundFissures(

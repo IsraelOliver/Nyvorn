@@ -29,8 +29,10 @@ public partial class PlayingState
     // Frames in which each pipeline actually computed lighting; used by the toggle validation.
     private long v7ComputeFrames, v6ComputeFrames, v8RenderFrames;
 
-    /// <summary>Pipeline that draws the next frame: "V8", "V7" or "V6 Legacy" (F9 still selects V7/Legacy when V8 is off).</summary>
-    public string ActiveLightingLabel => v8Active ? "V8" : lightingMode == LightingPipelineMode.V7 ? "V7" : "V6 Legacy";
+    /// <summary>Pipeline that draws the next frame: "V9" (default), "V9 probe", "V8", "V7" or "V6 Legacy" (F9 still selects
+    /// V7/Legacy when V7 was selected at launch and V8 is off).</summary>
+    public string ActiveLightingLabel => v9Active ? (Nyvorn.Source.Engine.Graphics.LightingV9Probe.V9ProbeOptions.Enabled ? "V9 probe" : "V9")
+        : v8Active ? "V8" : lightingMode == LightingPipelineMode.V7 ? "V7" : "V6 Legacy";
     private string InactiveLightingLabel => v8Active ? (lightingMode == LightingPipelineMode.V7 ? "V7" : "V6 Legacy") : "V8";
     // Set when this state stops drawing (pause/death overlay pushed): the resume frame is not a pipeline frame.
     private bool lightingFrameInterrupted;
@@ -92,6 +94,8 @@ public partial class PlayingState
             PrepareLightingToggleBench(width, height);
         if (V8GameplayOptions.SkyCompare)
             PrepareSkyCompare(width, height);
+        if (V8GameplayOptions.CompositionCompare)
+            PrepareCompositionCompare(width, height);
 
         drawStartTimestamp = Stopwatch.GetTimestamp();
         string label = ActiveLightingLabel;
@@ -131,6 +135,8 @@ public partial class PlayingState
             FinishLightingToggleBenchFrame();
         if (V8GameplayOptions.SkyCompare)
             FinishSkyCompareFrame();
+        if (V8GameplayOptions.CompositionCompare)
+            FinishCompositionCompareFrame();
     }
 
     private void DrawLightingStatsHud(SpriteBatch batch, float y)

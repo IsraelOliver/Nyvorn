@@ -62,6 +62,13 @@ namespace Nyvorn.Source.Game.States
             else if ((leftClickPressed && GetWorldSelectButtonBounds().Contains(mouse.Position)) ||
                      (keyboard.IsKeyDown(Keys.W) && !previousKeyboard.IsKeyDown(Keys.W)))
             {
+                // The V9 gameplay probe and the V9 smoke are transient sessions: leaving closes the process, never saves and
+                // never opens the world list (a user world loaded in this process would otherwise run without autosave).
+                if (Nyvorn.Source.Engine.Graphics.LightingV9Probe.V9Gameplay.TransientSession)
+                {
+                    Nyvorn.Source.Engine.Graphics.LightingV9Probe.V9Gameplay.Finished = true;
+                    return;
+                }
                 saveService.Save(session);
                 stateMachine.Clear();
                 stateMachine.PushState(new WorldSelectState(graphicsDevice, content, stateMachine));

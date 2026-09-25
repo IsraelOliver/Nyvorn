@@ -43,8 +43,7 @@ namespace Nyvorn.Source.World.Generation.Passes
             PromoteSurfaceGrassShell(context);
 
             FillBackgroundShallowUnderground(context);
-            FillBackgroundCavern(context);
-            FillBackgroundDeepCavern(context);
+            // Cavern and Deep keep their empty background; only Shallow generates a background wall.
 
             context.ProgressReporter?.Complete(Name, "Crosta preenchida");
         }

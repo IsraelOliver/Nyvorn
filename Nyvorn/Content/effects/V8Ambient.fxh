@@ -16,6 +16,16 @@ float3 AmbientSkyColor;
 // Background wall only: exposure below this reads as zero and the rest is rescaled, giving the background its own
 // visual range without touching the transport. 0 (every other receiver, the faces and the capture resolves) is a no-op.
 float AmbientSkyCutoff;
+// Composition prototype (diagnostic, 2026-09-23). 0 = shipped sum direct + sky + local. 1 = bounded, per channel:
+// artificial T = D + A(1 - D), light L = S + T(1 - S). Each input is in [0, 1] (direct from an 8-bit target, local
+// and sky saturated in AmbientAt), so L <= 1 and a receiver never exceeds its albedo.
+float BoundedComposition;
+float3 ComposeLight(float3 direct, float3 local, float3 sky)
+{
+    float3 artificial = direct + local * (1 - direct);
+    float3 bounded = sky + artificial * (1 - sky);
+    return lerp(direct + sky + local, bounded, BoundedComposition);
+}
 
 float4 AmbientFieldAt(float2 cell) { return tex2D(AmbientFieldSampler, (cell + 0.5) / AmbientTextureSize); }
 float4 AmbientLocalAt(float2 cell) { return tex2D(AmbientLocalSampler, (cell + 0.5) / AmbientTextureSize); }

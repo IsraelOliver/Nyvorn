@@ -28,6 +28,7 @@ public partial class PlayingState
         if (V8GameplayOptions.ToggleBench) InitializeLightingToggleBench();
         if (V8GameplayOptions.PerfBench) InitializeV8PerfBench();
         if (V8GameplayOptions.SkyCompare) InitializeSkyCompare();
+        if (V8GameplayOptions.CompositionCompare) InitializeCompositionCompare();
     }
 
     // Created on first activation and kept across toggles until OnExit; never recreated by switching.
@@ -41,6 +42,7 @@ public partial class PlayingState
         v8Renderer = new V8LightingRenderer(graphicsDevice, content) {
             Sand = session.SandSystem,
             GeometryRegionStep = 64,
+            Composition = V8GameplayOptions.Composition, // Sum unless --v8-composition is given (diagnostic)
             // V6 reference: by day exterior receivers take AmbientLight x 1; the background wall keeps SkyIntensity.
             AmbientContext = new V8AmbientContext { Layers = session.LayerDefinitions, ReceiverDaySkyIntensity = 1f,
                 // Background visual range approved at 12 tiles; --v8-bg-range overrides it for diagnostics.
@@ -129,13 +131,14 @@ public partial class PlayingState
         DrawLightingStatsHud(batch, 96);
         batch.End();
         graphicsDevice.SetRenderTarget(null);
-        bool capture = v8CaptureRequested || ShouldCaptureV8WorldFrame || ShouldCaptureV8BackgroundProbe;
+        bool capture = v8CaptureRequested || ShouldCaptureV8WorldFrame || ShouldCaptureV8BackgroundProbe || ShouldCaptureComposition;
         if (capture)
         {
             graphicsDevice.SetRenderTarget(v8Albedo); graphicsDevice.Clear(Color.Transparent);
             DrawV8Receivers(batch, width, height, loops, true);
             graphicsDevice.SetRenderTarget(null);
-            SaveV8GameplayFrame(V8GameplayOptions.CaptureWorld ? V8WorldCaptureLabel : V8GameplayOptions.BackgroundProbe ? V8BackgroundProbeLabel : DateTime.Now.ToString("yyyyMMdd-HHmmss-fff"), view);
+            SaveV8GameplayFrame(V8GameplayOptions.CompositionCompare ? MixCaptureLabel : V8GameplayOptions.CaptureWorld ? V8WorldCaptureLabel :
+                V8GameplayOptions.BackgroundProbe ? V8BackgroundProbeLabel : DateTime.Now.ToString("yyyyMMdd-HHmmss-fff"), view);
             v8CaptureRequested = false;
         }
         batch.Begin(samplerState: SamplerState.PointClamp); batch.Draw(v8Final, Vector2.Zero, Color.White); batch.End();

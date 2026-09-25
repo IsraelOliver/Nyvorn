@@ -9,6 +9,12 @@ using Nyvorn.Source.Gameplay.World.Objects;
 
 namespace Nyvorn.Source.Engine.Graphics.LightingV8;
 
+/// <summary>Composition prototype (diagnostic, 2026-09-23). Sum is the shipped behaviour.
+/// DirectScreen: the direct term of several sources is accumulated as C + F(1 - C) (Blend.One / InverseSourceColor)
+/// instead of a sum clamped by the 8-bit target. Bounded: DirectScreen plus, in receivers and faces,
+/// T = D + A(1 - D) and L = S + T(1 - S) per channel (V8Ambient.fxh ComposeLight), so light never exceeds 1.</summary>
+public enum V8Composition { Sum, DirectScreen, Bounded }
+
 /// <summary>V8 renderer shared by the diagnostic and future gameplay integration.
 /// Targets use one texel per world-art pixel, independent of viewport zoom. Caller draws receivers
 /// in world coordinates with the same effective camera matrix. No scene tint or ambient is implicit.</summary>
@@ -20,6 +26,10 @@ public sealed class V8LightingRenderer : IDisposable
     private readonly BlendState noColor = new() { ColorWriteChannels = ColorWriteChannels.None };
     private readonly BlendState add = new() {
         ColorSourceBlend = Blend.One, ColorDestinationBlend = Blend.One,
+        AlphaSourceBlend = Blend.Zero, AlphaDestinationBlend = Blend.One };
+    // Prototype: C + F(1 - C) per colour channel; alpha untouched, as in `add`.
+    private readonly BlendState screen = new() {
+        ColorSourceBlend = Blend.One, ColorDestinationBlend = Blend.InverseSourceColor,
         AlphaSourceBlend = Blend.Zero, AlphaDestinationBlend = Blend.One };
     private readonly DepthStencilState write = new() {
         DepthBufferEnable = false, StencilEnable = true, StencilFunction = CompareFunction.Always,
@@ -43,6 +53,8 @@ public sealed class V8LightingRenderer : IDisposable
     /// black (V8FaceChunks.SkyBandWeight). Direct and local fill keep FaceWidth. Each solid pixel still reads only its
     /// nearest exposed face, so the band never reaches the far side of a thin wall.</summary>
     public int SkyFaceDepth { get; set; } = 24;
+    /// <summary>Diagnostic composition prototype; Sum (default) is the shipped behaviour.</summary>
+    public V8Composition Composition { get; set; }
     /// <summary>Deepest face reach: margin of the light bounds, the geometry region and the face chunks.</summary>
     public int FaceReach => Math.Max(FaceWidth, SkyFaceDepth);
     public int GeometryRegionStep { get; set; } = 1;
@@ -163,6 +175,7 @@ public sealed class V8LightingRenderer : IDisposable
         Ambient.Apply(faceEffect, 0); // faces reconstruct ambient at their external air sample, in light space
         faceEffect.Parameters["LightOrigin"].SetValue(bounds.Location.ToVector2());
         faceEffect.Parameters["LightSize"].SetValue(bounds.Size.ToVector2());
+        faceEffect.Parameters["BoundedComposition"]?.SetValue(Composition == V8Composition.Bounded ? 1f : 0f);
         faces.Draw(faceEffect);
         device.SetRenderTarget(null);
         device.DepthStencilState = DepthStencilState.None;
@@ -195,7 +208,7 @@ public sealed class V8LightingRenderer : IDisposable
             pass.Apply();
             if (count > 0) device.DrawUserPrimitives(PrimitiveType.TriangleList, shadows, 0, count / 3);
         }
-        device.BlendState = add; device.DepthStencilState = visible;
+        device.BlendState = Composition == V8Composition.Sum ? add : screen; device.DepthStencilState = visible;
         directEffect.Parameters["SourcePosition"].SetValue(source.Position);
         directEffect.Parameters["Radiance"].SetValue(source.Radiance);
         directEffect.Parameters["Radius"].SetValue(source.Radius);
@@ -215,6 +228,7 @@ public sealed class V8LightingRenderer : IDisposable
         // Foreground terrain reads the face buffer (ambient already included); other receivers reconstruct ambient.
         receiverEffect.CurrentTechnique = receiverEffect.Techniques[foreground ? "ForegroundReceiver" : "Receiver"];
         Ambient.Apply(receiverEffect, worldOffsetX, backgroundSky, backgroundSky);
+        receiverEffect.Parameters["BoundedComposition"]?.SetValue(Composition == V8Composition.Bounded ? 1f : 0f);
         batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp,
             DepthStencilState.None, RasterizerState.CullNone, receiverEffect);
     }
@@ -242,6 +256,6 @@ public sealed class V8LightingRenderer : IDisposable
         Direct?.Dispose(); Foreground?.Dispose(); faces.Dispose();
         Ambient.Dispose();
         directEffect.Dispose(); faceEffect.Dispose(); receiverEffect.Dispose(); maskEffect.Dispose();
-        noColor.Dispose(); add.Dispose(); write.Dispose(); visible.Dispose();
+        noColor.Dispose(); add.Dispose(); screen.Dispose(); write.Dispose(); visible.Dispose();
     }
 }

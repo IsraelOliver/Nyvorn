@@ -16,7 +16,11 @@ public static class V8GameplayOptions
     public static bool UncappedFrames { get; private set; }
     public static bool PerfBench { get; private set; }
     public static bool SkyCompare { get; private set; }
-    public static bool TransientWorld => CaptureWorld || V7Smoke || BackgroundProbe || ToggleBench || PerfBench || SkyCompare;
+    /// <summary>--lighting-composition-compare: controlled scenes, V7 | V8 sum | V8 direct-screen | V8 bounded.</summary>
+    public static bool CompositionCompare { get; private set; }
+    /// <summary>Diagnostic only (--v8-composition sum|direct-screen|bounded). Sum (default) is the shipped behaviour.</summary>
+    public static V8Composition Composition { get; private set; }
+    public static bool TransientWorld => CaptureWorld || V7Smoke || BackgroundProbe || ToggleBench || PerfBench || SkyCompare || CompositionCompare;
     public static bool CaptureFinished { get; set; }
     public static string Output { get; private set; }
     /// <summary>Diagnostic only (--v8-bg-range &lt;tiles&gt;): visual sky range of the background wall. Null keeps
@@ -53,12 +57,16 @@ public static class V8GameplayOptions
         SkyCompare = Array.Exists(args, a => a == "--lighting-sky-compare");
         if (SkyCompare && (Enabled || CaptureWorld || BackgroundProbe || ToggleBench || PerfBench || V7Smoke))
             throw new ArgumentException("--lighting-sky-compare starts from the V7 default and drives camera, hour and pipeline itself; run it alone");
+        CompositionCompare = Array.Exists(args, a => a == "--lighting-composition-compare");
+        if (CompositionCompare && (Enabled || CaptureWorld || BackgroundProbe || ToggleBench || PerfBench || V7Smoke || SkyCompare))
+            throw new ArgumentException("--lighting-composition-compare starts from the V7 default and drives camera, hour, pipeline and composition itself; run it alone");
         Output = Path.GetFullPath("screenshots/v8/gameplay");
         SkyFourNeighbours = Array.Exists(args, a => a == "--v8-sky-4-neighbours");
         BackgroundSkyRange = null;
         TorchDirectRadiusTiles = null;
         TorchLocalRadiusTiles = null;
         TorchLocalIntensity = null;
+        Composition = V8Composition.Sum;
         for (int i = 0; i + 1 < args.Length; i++)
         {
             if (args[i] == "--v8-output") Output = Path.GetFullPath(args[i + 1]);
@@ -80,6 +88,14 @@ public static class V8GameplayOptions
                     throw new ArgumentException("--v8-torch-local-intensity needs a non-negative number");
                 TorchLocalIntensity = intensity;
             }
+            if (args[i] == "--v8-composition")
+                Composition = args[i + 1] switch
+                {
+                    "sum" => V8Composition.Sum,
+                    "direct-screen" => V8Composition.DirectScreen,
+                    "bounded" => V8Composition.Bounded,
+                    _ => throw new ArgumentException("--v8-composition must be sum, direct-screen or bounded")
+                };
             if (args[i] == "--v8-bg-range")
             {
                 if (!float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out float range) || range <= 0)

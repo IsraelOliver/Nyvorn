@@ -153,9 +153,18 @@ public sealed class V8AmbientValidation
             dx -= MathF.Floor(dx / scene.Map.PixelWidth) * scene.Map.PixelWidth;
             if (dx >= 32 || world.Y < scene.EntityPosition.Y || world.Y >= scene.EntityPosition.Y + 32) continue;
             Color d = Sample(direct, bounds, world), s = Sample(sky, bounds, world), l = Sample(local, bounds, world);
-            var expected = new Color((byte)Math.Min(255, MathF.Round(ea[i].R * (d.R + s.R + l.R) / 255f)),
-                (byte)Math.Min(255, MathF.Round(ea[i].G * (d.G + s.G + l.G) / 255f)),
-                (byte)Math.Min(255, MathF.Round(ea[i].B * (d.B + s.B + l.B) / 255f)), ea[i].A);
+            // Expected light under the active rule: shipped sum, or the bounded prototype (V8Ambient.fxh ComposeLight).
+            bool bounded = renderer.Composition == V8Composition.Bounded;
+            float Light(byte dc, byte sc, byte lc)
+            {
+                float dv = dc / 255f, sv = sc / 255f, lv = lc / 255f;
+                if (!bounded) return dv + sv + lv;
+                float t = dv + lv * (1 - dv);
+                return sv + t * (1 - sv);
+            }
+            var expected = new Color((byte)Math.Min(255, MathF.Round(ea[i].R * Light(d.R, s.R, l.R))),
+                (byte)Math.Min(255, MathF.Round(ea[i].G * Light(d.G, s.G, l.G))),
+                (byte)Math.Min(255, MathF.Round(ea[i].B * Light(d.B, s.B, l.B))), ea[i].A);
             error = Math.Max(error, Difference(expected, el[i])); count++;
             if (Peak(d) == 0 && Peak(el[i]) > 0) shadowReadable++;
         }

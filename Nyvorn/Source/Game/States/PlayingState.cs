@@ -233,6 +233,8 @@ namespace Nyvorn.Source.Game.States
             if (!string.IsNullOrEmpty(debugViewName) && Enum.TryParse(debugViewName, true, out LightingV7DebugView requestedView))
                 v7Lighting.DebugView = requestedView;
             InitializeV8();
+            InitializeV9(); // default pipeline unless V7/V8 were selected explicitly (V9Gameplay)
+            InitializeV9Probe();
         }
 
         private static System.Collections.Generic.IEnumerable<ArtificialLightSource> GetArtificialLightSourcesForV6(PlayingSession session)
@@ -298,8 +300,9 @@ namespace Nyvorn.Source.Game.States
 
         public void OnExit()
         {
-            if (!Engine.Graphics.LightingV8.V8GameplayOptions.TransientWorld) saveService.Save(session);
+            if (!Engine.Graphics.LightingV8.V8GameplayOptions.TransientWorld && !Engine.Graphics.LightingV9Probe.V9Gameplay.TransientSession) saveService.Save(session);
             DisposeV8();
+            DisposeV9();
             v7Lighting?.Dispose();
             v7Glow?.Dispose();
             session.ViewCoordinator.DisposeSceneRenderTarget();
@@ -315,10 +318,13 @@ namespace Nyvorn.Source.Game.States
         {
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
             UpdateV8Input();
+            UpdateV9ProbeInput();
             if (Engine.Graphics.LightingV8.V8GameplayOptions.ToggleBench)
                 UpdateLightingToggleBench();
             if (Engine.Graphics.LightingV8.V8GameplayOptions.SkyCompare)
                 UpdateSkyCompare();
+            if (Engine.Graphics.LightingV8.V8GameplayOptions.CompositionCompare)
+                UpdateCompositionCompare();
 
             // S6.1-BG: Update parallax transition state (temporal, no visual changes yet)
             session.UpdateDesiredParallax();
@@ -438,12 +444,14 @@ namespace Nyvorn.Source.Game.States
                 !Engine.Graphics.LightingV8.V8GameplayOptions.BackgroundProbe &&
                 !Engine.Graphics.LightingV8.V8GameplayOptions.PerfBench &&
                 !Engine.Graphics.LightingV8.V8GameplayOptions.SkyCompare &&
+                !Engine.Graphics.LightingV8.V8GameplayOptions.CompositionCompare &&
+                !v9Active && // V9 runs alone; V7/V8 are selected at launch (--lighting-v7 / --lighting-v8)
                 IsLightingTogglePress(keyboard, previousConsoleKeyboard))
             {
                 SetLightingPipeline(!v8Active);
             }
 
-            if (!handledConsoleThisFrame && !v8Active)
+            if (!handledConsoleThisFrame && !v8Active && !v9Active)
             {
                 if (keyboard.IsKeyDown(Keys.F9) && !previousConsoleKeyboard.IsKeyDown(Keys.F9))
                 {
@@ -583,7 +591,7 @@ namespace Nyvorn.Source.Game.States
             }
 
             autoSaveTimer -= dt;
-            if (autoSaveTimer <= 0f && !Engine.Graphics.LightingV8.V8GameplayOptions.TransientWorld)
+            if (autoSaveTimer <= 0f && !Engine.Graphics.LightingV8.V8GameplayOptions.TransientWorld && !Engine.Graphics.LightingV9Probe.V9Gameplay.TransientSession)
             {
                 if (session.HasUnsavedWorldChanges)
                     saveService.Save(session);
@@ -639,6 +647,17 @@ namespace Nyvorn.Source.Game.States
             var camera = session.Camera;
             int tileSize = session.WorldMap.TileSize;
             int camTileX = (int)(camera.Position.X / tileSize);
+            if (v9Active)
+            {
+                // Only V9 computes and composes; V6/V7/V8 below are skipped entirely. The probe adds its instrumentation.
+                try
+                {
+                    if (Engine.Graphics.LightingV9Probe.V9ProbeOptions.Enabled) DrawV9Probe(spriteBatch, screenW, screenH, drawDt);
+                    else DrawV9Gameplay(spriteBatch, screenW, screenH, drawDt);
+                }
+                finally { LightingPipelineCoordinator.I.EndFrame(); EndLightingFrame(); }
+                return;
+            }
             if (v8Active)
             {
                 // Only V8 computes and composes; V6/V7 below are skipped entirely.
@@ -3374,6 +3393,11 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
 
             if (parts.Length >= 2 && parts[1].Equals("save", System.StringComparison.OrdinalIgnoreCase))
             {
+                if (Engine.Graphics.LightingV9Probe.V9Gameplay.TransientSession)
+                {
+                    SetConsoleMessage("V9 probe/smoke: transient session, nothing is saved");
+                    return true;
+                }
                 saveService.Save(session);
                 autoSaveTimer = AutoSaveInterval;
                 SetConsoleMessage("World saved");
@@ -3512,7 +3536,7 @@ private void DrawGameplayWorld(SpriteBatch spriteBatch, int screenW, int screenH
             int screenW = graphicsDevice.PresentationParameters.BackBufferWidth;
             int screenH = graphicsDevice.PresentationParameters.BackBufferHeight;
             session.Camera.CenterOn(session.Player.Position + new Vector2(8f, 12f), screenW, screenH);
-            saveService.SavePlayerOnly(session);
+            if (!Engine.Graphics.LightingV9Probe.V9Gameplay.TransientSession) saveService.SavePlayerOnly(session);
             autoSaveTimer = AutoSaveInterval;
             stateMachine.PopState();
         }

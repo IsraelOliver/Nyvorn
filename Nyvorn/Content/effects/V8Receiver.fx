@@ -24,7 +24,7 @@ float4 PS(VSOut i) : COLOR0 {
     float3 sky, local;
     float layer;
     AmbientAt(i.World, sky, local, layer);
-    float3 light = tex2D(LightSampler, i.LightUV).rgb + sky + local;
+    float3 light = ComposeLight(tex2D(LightSampler, i.LightUV).rgb, local, sky);
     return float4(albedo.rgb * light, albedo.a);
 }
 // Foreground terrain: the light texture is the face buffer, which already holds direct + sky + local.

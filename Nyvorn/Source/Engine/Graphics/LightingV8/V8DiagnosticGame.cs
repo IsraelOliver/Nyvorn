@@ -56,7 +56,7 @@ public sealed class V8DiagnosticGame : Microsoft.Xna.Framework.Game
             Console.WriteLine(result);
             if (probeOnly) { Exit(); return; }
             // Nothing is built before the stencil contract has passed on this device.
-            lighting = new V8LightingRenderer(GraphicsDevice, Content);
+            lighting = new V8LightingRenderer(GraphicsDevice, Content) { Composition = V8GameplayOptions.Composition };
             scene = new V8DiagnosticScene(Content);
             validation = new V8Validation(output, scene);
             if (ambientMode)

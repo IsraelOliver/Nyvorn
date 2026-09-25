@@ -6,6 +6,7 @@ using Nyvorn.Source.Game.States;
 using Nyvorn.Source.Engine.Graphics.LightingPipeline;
 using System.Diagnostics;
 using Nyvorn.Source.Engine.Graphics.LightingV8;
+using Nyvorn.Source.Engine.Graphics.LightingV9Probe;
 
 namespace Nyvorn;
 
@@ -90,6 +91,15 @@ public class Game1 : Game
             IsFixedTimeStep = false;
             _graphics.SynchronizeWithVerticalRetrace = false;
         }
+        if (V9ProbeOptions.Enabled)
+        {
+            _graphics.PreferredBackBufferWidth = 1280;
+            _graphics.PreferredBackBufferHeight = 720;
+            if (V9ProbeOptions.Bench) { IsFixedTimeStep = false; _graphics.SynchronizeWithVerticalRetrace = false; }
+            // Captures: exactly one fixed update per drawn frame, never a catch-up burst after a slow capture frame, so
+            // sprite animation phases (player, flames) depend on the frame count only and captures are reproducible.
+            if (V9ProbeOptions.Capture) MaxElapsedTime = TargetElapsedTime;
+        }
         _graphics.HardwareModeSwitch = false;
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
@@ -106,7 +116,15 @@ public class Game1 : Game
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _stateMachine = new StateMachine();
-        if (V8GameplayOptions.TransientWorld)
+        if (V9Gameplay.TransientSession)
+        {
+            // Probe or smoke: the same real procedural world as the V8 validations, transient identity: no user save is
+            // read or written.
+            var session = new PlayingSessionFactory(GraphicsDevice, Content).Create(V9ProbeOptions.Enabled ? "v9-gameplay-probe" : "v9-gameplay-smoke",
+                V9ProbeOptions.Enabled ? "V9 gameplay probe" : "V9 gameplay smoke", Nyvorn.Source.World.Generation.WorldSizePreset.Small, "V8-GAMEPLAY-2026");
+            _stateMachine.PushState(new PlayingState(GraphicsDevice, Content, _stateMachine, session));
+        }
+        else if (V8GameplayOptions.TransientWorld)
         {
             // Real procedural world/session, transient identity: never reads or overwrites a user's save.
             var session = new PlayingSessionFactory(GraphicsDevice, Content).Create("v8-transient-validation",
@@ -114,12 +132,12 @@ public class Game1 : Game
             _stateMachine.PushState(new PlayingState(GraphicsDevice, Content, _stateMachine, session));
         }
         else _stateMachine.PushState(new WorldSelectState(GraphicsDevice, Content, _stateMachine));
-        Window.Title = "Nyvorn — lighting " + (V8GameplayOptions.Enabled ? "V8" : "V7");
+        Window.Title = "Nyvorn — lighting " + (V9ProbeOptions.Enabled ? "V9 probe" : V9Gameplay.Enabled ? "V9" : V8GameplayOptions.Enabled ? "V8" : "V7");
     }
 
     protected override void Update(GameTime gameTime)
     {
-        if (V8GameplayOptions.CaptureFinished) { Exit(); return; }
+        if (V8GameplayOptions.CaptureFinished || V9ProbeOptions.Finished || V9Gameplay.Finished) { Exit(); return; }
         // Phase A0.0: Profiler update timing
         _renderedFrameProfiler.OnUpdateStart();
         _renderedFrameProfiler.EmergencyLog_EnterGameUpdate();
