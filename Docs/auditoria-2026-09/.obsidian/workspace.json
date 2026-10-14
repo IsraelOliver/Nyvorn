@@ -1,0 +1,220 @@
+{
+  "main": {
+    "id": "3d5ffb4ab3bd8d96",
+    "type": "split",
+    "children": [
+      {
+        "id": "26b13a8d20aa3a55",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "6bdbfaa5a52386bf",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Visualização em gráfico"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "6658ed5dd739122a",
+    "type": "split",
+    "children": [
+      {
+        "id": "20006311957f9752",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d16d8215a362ac95",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "dcd284969b0adb73",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "caffa478a90ba01b",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "94037e4655070f0c",
+    "type": "split",
+    "children": [
+      {
+        "id": "e31e41abc91bf425",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "df2c799f7556bfdc",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "BASELINE.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos"
+            }
+          },
+          {
+            "id": "091531e589403596",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "BASELINE.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída"
+            }
+          },
+          {
+            "id": "0bd89712b0ce8488",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "5987d9322a953cb8",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "5f7f221a4fecd48e",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "BASELINE.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "6bdbfaa5a52386bf",
+  "lastOpenFiles": [
+    "Sem título.canvas",
+    "Design/Lore/NYVORN_LIVRO_COMPLETO_HISTORIA_PERSONAGENS_GAMEPLAY.md",
+    "Design/Lore/NYVORN_BIBLIA_v2_COMPLETA.md",
+    "Design/Lore/NYVORN_BIBLIA_COMPLETA_DETALHADA_1.md",
+    "Auditoria-2026-09/04-perguntas.md",
+    "Design/Lore/NYVORN_BIBLIA_COMPLETA_DETALHADA_1.md.tmp.17240.29ed823b84f3",
+    "Design/Lore/NYVORN_BIBLIA_v2_COMPLETA.md.tmp.17240.4370edf6c132",
+    "Auditoria-2026-09/00-system-map.md",
+    "sedsAynsq",
+    "Auditoria-2026-09/sedpVy0xG",
+    "Auditoria-2026-09/sedKBPkgc",
+    "Auditoria-2026-09/sed1MoUpT",
+    "Auditoria-2026-09/sedpvj3x4",
+    "Decisoes/iluminacao.md",
+    "INDEX.md",
+    "Auditoria-2026-09/00-INDEX.md",
+    "04-perguntas.md",
+    "INDEX.md.tmp.17240.95a8c07ed64b",
+    "Decisoes/iluminacao.md.tmp.17240.6966b99d0309",
+    "Auditoria-2026-09/sednr8S7r",
+    "Auditoria-2026-09/03-docs-divergentes.md",
+    "Auditoria-2026-09/02-iluminacao-historico.md",
+    "Auditoria-2026-09/01-estado.md",
+    "NYVORN_BIBLIA_COMPLETA_DETALHADA_1.md",
+    "NYVORN_LIVRO_COMPLETO_HISTORIA_PERSONAGENS_GAMEPLAY.md",
+    "03-docs-divergentes.md",
+    "01-estado.md",
+    "02-iluminacao-historico.md",
+    "00-INDEX.md",
+    "BASELINE.md"
+  ]
+}
